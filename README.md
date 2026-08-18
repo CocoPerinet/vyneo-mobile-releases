@@ -10,6 +10,11 @@ Téléchargez l'APK depuis la section
 Android peut demander d'autoriser l'installation depuis le navigateur ou le
 gestionnaire de fichiers. Cette confirmation système est normale.
 
+Play Protect peut aussi proposer d'analyser un APK distribué hors Play Store.
+Il est recommandé d'accepter cette analyse et de garder Play Protect activé.
+L'avertissement « application inconnue » peut persister tant que l'application
+n'est pas diffusée par Google Play ou suffisamment reconnue par Google.
+
 Les APK sont signés avec la clé stable Vynéo. Une version installée depuis ce
 canal pourra donc accepter les versions suivantes sans être désinstallée.
 

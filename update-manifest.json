@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "version": "0.3.0",
+  "publishedAt": "2026-08-18T11:10:59Z",
+  "mandatory": false,
+  "releaseNotes": "Première version publique signée : serveur Vynéo intégré et mises à jour depuis l'application.",
+  "platforms": {
+    "android": {
+      "build": 3,
+      "url": "https://github.com/CocoPerinet/vyneo-mobile-releases/releases/download/mobile-v0.3.0/Vyneo-Mobile-0.3.0.apk",
+      "sha256": "543b550d631ab84ec978230b3898661c17de8271197441829e4b15f218cccfc3",
+      "size": 70529688
+    }
+  }
+}

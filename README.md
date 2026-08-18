@@ -17,6 +17,8 @@ n'est pas diffusée par Google Play ou suffisamment reconnue par Google.
 
 Les APK sont signés avec la clé stable Vynéo. Une version installée depuis ce
 canal pourra donc accepter les versions suivantes sans être désinstallée.
+La connexion au serveur est intégrée à l'application : aucun réglage d'URL, de
+DNS privé ou de VPN n'est demandé aux utilisateurs.
 
 ## iOS
 

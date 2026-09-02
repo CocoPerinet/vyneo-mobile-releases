@@ -1,15 +1,15 @@
 {
   "schemaVersion": 1,
-  "version": "0.3.2",
-  "publishedAt": "2026-08-18T12:55:11Z",
+  "version": "0.3.3",
+  "publishedAt": "2026-09-02T13:31:12Z",
   "mandatory": false,
-  "releaseNotes": "Correction de la connexion universelle au serveur Vynéo en Wi-Fi et réseau mobile.",
+  "releaseNotes": "Correction de l’écran noir et du chargement infini sur Android. Connexion automatique au serveur Vynéo et formulaire de création de compte validés sur émulateur.",
   "platforms": {
     "android": {
-      "build": 5,
-      "url": "https://github.com/CocoPerinet/vyneo-mobile-releases/releases/download/mobile-v0.3.2/Vyneo-Mobile-0.3.2.apk",
-      "sha256": "a5f8a81f2bf8007d9240e4bf26f5069fa6352fca72335b387ad22d4d4afeaea5",
-      "size": 70531064
+      "build": 6,
+      "url": "https://github.com/CocoPerinet/vyneo-mobile-releases/releases/download/mobile-v0.3.3/Vyneo-Mobile-0.3.3.apk",
+      "sha256": "9d38702da42f8ec95c1d54b53647519575d0162a21defaad0602001d77abeb71",
+      "size": 70536016
     }
   }
 }

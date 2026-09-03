@@ -1,15 +1,15 @@
 {
   "schemaVersion": 1,
-  "version": "0.3.3",
-  "publishedAt": "2026-09-02T13:31:12Z",
+  "version": "0.3.4",
+  "publishedAt": "2026-09-03T00:00:22Z",
   "mandatory": false,
-  "releaseNotes": "Correction de l’écran noir et du chargement infini sur Android. Connexion automatique au serveur Vynéo et formulaire de création de compte validés sur émulateur.",
+  "releaseNotes": "Mise à jour directement dans Vynéo, session Jellyfin persistante et nouveau logo avec écran de démarrage.",
   "platforms": {
     "android": {
-      "build": 6,
-      "url": "https://github.com/CocoPerinet/vyneo-mobile-releases/releases/download/mobile-v0.3.3/Vyneo-Mobile-0.3.3.apk",
-      "sha256": "9d38702da42f8ec95c1d54b53647519575d0162a21defaad0602001d77abeb71",
-      "size": 70536016
+      "build": 7,
+      "url": "https://github.com/CocoPerinet/vyneo-mobile-releases/releases/download/mobile-v0.3.4/Vyneo-Mobile-0.3.4.apk",
+      "sha256": "1d89ef537722efbeecefc72ccd22f053bbdf0c82ccbacc73ce36be053c6428ca",
+      "size": 70342021
     }
   }
 }

@@ -3,7 +3,7 @@
   "version": "0.3.4",
   "publishedAt": "2026-09-03T00:00:22Z",
   "mandatory": false,
-  "releaseNotes": "Mise à jour directement dans Vynéo, session Jellyfin persistante et nouveau logo avec écran de démarrage.",
+  "releaseNotes": "Cette version active les prochaines mises à jour directement dans Vynéo, conserve la session Jellyfin et ajoute le nouveau logo avec écran de démarrage.",
   "platforms": {
     "android": {
       "build": 7,

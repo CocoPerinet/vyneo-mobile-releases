@@ -1,4 +1,10 @@
 export type MediaType="Movie"|"Series"|"Episode"|"BoxSet";
+export type CatalogKind="Movie"|"Series";
+export interface CatalogPage {
+  items:MediaItem[];
+  nextOffset:number|null;
+  total:number|null;
+}
 export type ViewKey="home"|"movies"|"series"|"anime"|"favorites"|"universes";
 export interface MediaItem {
   id:string;

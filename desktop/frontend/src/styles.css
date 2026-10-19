@@ -105,6 +105,12 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
 .vy-catalog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,270px),1fr));
   gap:25px 16px;align-items:start}
 .vy-catalog-grid .vy-card{width:100%;max-width:none}
+.vy-pagination{display:flex;justify-content:center;padding:35px 0 10px}
+.vy-pagination button{padding:12px 26px;color:var(--vy-text);
+  background:var(--vy-card-hi);border:1px solid rgba(255,255,255,.16);
+  border-radius:10px;font-weight:750;transition:background .15s ease}
+.vy-pagination button:hover:not(:disabled){background:#303749}
+.vy-pagination button:disabled{opacity:.6;cursor:wait}
 .vy-empty{padding:26px 3.3%;color:var(--vy-dim);font-size:15px}
 .vy-footer{display:flex;justify-content:space-between;gap:12px;padding:42px 3.3%;
   border-top:1px solid #ffffff11;color:var(--vy-dim);font-size:12px}

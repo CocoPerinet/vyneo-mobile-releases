@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type {LibrarySnapshot,MediaItem,SessionPublic,ViewKey,Shelf} from "./types";
+  import type {LibrarySnapshot,MediaItem,SessionPublic,ViewKey,Shelf,CatalogKind} from "./types";
   import {JellyfinApi} from "./api";
   import {ArtworkCache,lazyArtwork} from "./artwork";
   import {buildShelves,featuredMedia} from "./discover";
@@ -20,12 +20,22 @@
   const empty=():LibrarySnapshot=>({
     recent:[],resume:[],nextUp:[],favorites:[],watched:[],collections:[]
   });
+  type CatalogState={
+    items:MediaItem[];nextOffset:number|null;total:number|null;
+    loading:boolean;loaded:boolean;error:string;
+  };
+  const freshCatalog=():CatalogState=>({
+    items:[],nextOffset:0,total:null,loading:false,loaded:false,error:""
+  });
   let loginName=$state("");
   let loginPassword=$state("");
   let loginBusy=$state(false);
   let loginError=$state("");
   let session=$state<SessionPublic|null>(null);
   let data=$state<LibrarySnapshot>(empty());
+  let catalogs=$state<Record<CatalogKind,CatalogState>>({
+    Movie:freshCatalog(),Series:freshCatalog()
+  });
   let tab=$state<ViewKey>("home");
   let selected=$state<MediaItem|null>(null);
   let searchText=$state("");
@@ -33,6 +43,7 @@
   let searchBusy=$state(false);
   let homeWarning=$state("");
   let epoch=0;
+  let refreshVersion=0;
   let searchTimer:ReturnType<typeof setTimeout>|null=null;
   const tabs:Array<{key:ViewKey;label:string}>= [
     {key:"home",label:"Accueil"},
@@ -42,11 +53,13 @@
     {key:"favorites",label:"Ma liste"},
     {key:"universes",label:"Univers"}
   ];
+  let catalogKind=$derived<CatalogKind|null>(
+    tab==="movies"?"Movie":tab==="series"?"Series":null);
   let shelves=$derived(session?buildShelves(data,session.userId):[]);
   let hero=$derived(featuredMedia(shelves));
   let gridItems=$derived.by(()=>{
-    if(tab==="movies")return data.recent.filter(i=>i.type==="Movie");
-    if(tab==="series")return data.recent.filter(i=>i.type==="Series");
+    if(tab==="movies")return catalogs.Movie.items;
+    if(tab==="series")return catalogs.Series.items;
     if(tab==="anime")return data.recent.filter(i=>
       i.genres.some(g=>/animation|anime/i.test(g)));
     if(tab==="favorites")return data.favorites;
@@ -55,8 +68,35 @@
   });
   let searchActive=$derived(searchText.trim().length>=2);
 
+  async function loadCatalog(kind:CatalogKind){
+    if(!session || catalogs[kind].loading)return;
+    const user=session.userId,generation=epoch;
+    const previous=catalogs[kind],offset=previous.nextOffset;
+    if(offset===null)return;
+    catalogs={...catalogs,[kind]:{...previous,loading:true,error:""}};
+    try{
+      const page=await api.getCatalogPage(kind,offset);
+      if(generation!==epoch || session?.userId!==user)return;
+      const before=catalogs[kind],seen=new Set(before.items.map(item=>item.id));
+      const fresh=page.items.filter(item=>{
+        if(seen.has(item.id))return false;
+        seen.add(item.id);return true;
+      });
+      catalogs={...catalogs,[kind]:{
+        items:[...before.items,...fresh],nextOffset:page.nextOffset,
+        total:page.total,loading:false,loaded:true,error:""
+      }};
+    }catch{
+      if(generation!==epoch || session?.userId!==user)return;
+      const before=catalogs[kind];
+      catalogs={...catalogs,[kind]:{...before,loading:false,
+        error:"Impossible de charger cette page. Réessayez."}};
+    }
+  }
   function selectTab(next:ViewKey){
     tab=next;selected=null;searchText="";searchRows=[];
+    if(next==="movies" && !catalogs.Movie.loaded)void loadCatalog("Movie");
+    if(next==="series" && !catalogs.Series.loaded)void loadCatalog("Series");
     // Save only navigation preference. Never persist JWT or user content.
     if(session){
       try{localStorage.setItem("vyneo.tab."+session.userId,next);}catch{}
@@ -78,17 +118,20 @@
         if(tabs.some(t=>t.key===stored))tab=stored as ViewKey;
       }catch{}
       void refresh(generation);
+      if(tab==="movies")void loadCatalog("Movie");
+      if(tab==="series")void loadCatalog("Series");
     }catch{
       loginError="Connexion impossible. Vérifiez vos identifiants et le serveur.";
     }finally{
       loginBusy=false;
     }
   }
-  async function refresh(generation=++epoch){
+  async function refresh(generation=epoch){
+    const version=++refreshVersion;
     homeWarning="";
     // Fetch the foreground shelves before the optional recommendations.
     const fast=await Promise.allSettled([api.getRecent(),api.getResume()]);
-    if(generation!==epoch || !api.session)return;
+    if(generation!==epoch || version!==refreshVersion || !api.session)return;
     const recent=fast[0].status==="fulfilled"?fast[0].value:[];
     const resume=fast[1].status==="fulfilled"?fast[1].value:[];
     if(fast.every(r=>r.status==="rejected")){
@@ -102,7 +145,7 @@
       api.getNextUp(),api.getFavorites(),api.getWatched(),
       api.getCollections()
     ]);
-    if(generation!==epoch || !api.session)return;
+    if(generation!==epoch || version!==refreshVersion || !api.session)return;
     const names=["nextUp","favorites","watched","collections"] as const;
     for(const [index,name] of names.entries()){
       const result=add[index];
@@ -110,12 +153,13 @@
     }
   }
   function logout(){
-    epoch++;
+    epoch++;refreshVersion++;
     if(searchTimer!==null)clearTimeout(searchTimer);
     api.logout();artwork.clear();
     session=null;selected=null;tab="home";
     loginPassword="";loginName="";loginError="";
-    searchText="";searchRows=[];data=empty();homeWarning="";
+    searchText="";searchRows=[];searchBusy=false;data=empty();homeWarning="";
+    catalogs={Movie:freshCatalog(),Series:freshCatalog()};
   }
   function updateSearch(){
     if(searchTimer!==null)clearTimeout(searchTimer);
@@ -277,7 +321,11 @@
               <span class="vy-kicker">VOTRE BIBLIOTHÈQUE</span>
               <h1>{titleFor(tab)}</h1>
             </div>
-            <span class="vy-shelf-count">{gridItems.length} titres affichés</span>
+            <span class="vy-shelf-count">
+              {gridItems.length}{#if catalogKind && catalogs[catalogKind].total!==null}
+                / {catalogs[catalogKind].total}
+              {/if} titres affichés
+            </span>
           </div>
           <div class="vy-catalog-grid">
             {#each gridItems as item (item.id)}
@@ -286,8 +334,24 @@
                 onclick={(next)=>selected=next} />
             {/each}
           </div>
-          {#if !gridItems.length}
-            <p class="vy-empty">Aucun titre disponible dans ce lot de votre bibliothèque.</p>
+          {#if catalogKind}
+            {#if catalogs[catalogKind].error}
+              <p class="vy-empty" role="alert">{catalogs[catalogKind].error}</p>
+            {/if}
+            {#if catalogs[catalogKind].nextOffset!==null}
+              <div class="vy-pagination">
+                <button type="button"
+                  disabled={catalogs[catalogKind].loading}
+                  onclick={()=>void loadCatalog(catalogKind!)}>
+                  {catalogs[catalogKind].loading?"Chargement…":
+                    catalogs[catalogKind].error?"Réessayer":"Afficher davantage"}
+                </button>
+              </div>
+            {/if}
+          {/if}
+          {#if !gridItems.length && (!catalogKind ||
+            (!catalogs[catalogKind].loading && !catalogs[catalogKind].error))}
+            <p class="vy-empty">Aucun titre disponible dans cette sélection.</p>
           {/if}
         </section>
       {/if}

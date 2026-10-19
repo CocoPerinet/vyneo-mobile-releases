@@ -1,4 +1,4 @@
-import type {MediaItem,MediaType,SessionPublic} from "./types";
+import type {MediaItem,MediaType,SessionPublic,CatalogKind,CatalogPage} from "./types";
 
 export const SERVER_ORIGIN="https://cocojellyfin.duckdns.org:38443";
 const ID=/^[a-f0-9]{32}$/i;
@@ -177,6 +177,28 @@ export class JellyfinApi {
         Object.entries(params).map(([k,v])=>[k,String(v)])
       )
     });
+  }
+  async getCatalogPage(type:CatalogKind,startIndex=0,limit=48):Promise<CatalogPage>{
+    if((type!=="Movie" && type!=="Series") ||
+      !Number.isSafeInteger(startIndex) || startIndex<0 || startIndex>100000 ||
+      !Number.isSafeInteger(limit) || limit<1 || limit>60)
+      throw new Error("PAGE_INVALID");
+    const raw=obj(await this.json(this.userItems({
+      IncludeItemTypes:type,SortBy:"SortName",
+      SortOrder:"Ascending",StartIndex:startIndex,Limit:limit,
+      EnableTotalRecordCount:"true"
+    }),{maxBytes:1048576}));
+    if(!Array.isArray(raw.Items))throw new Error("CATALOG_INVALID");
+    const items=parseItems(raw,limit).filter(item=>item.type===type);
+    // Advance by raw records, not by validated cards: an invalid entry
+    // must never cause a duplicate page or an endless retry.
+    const consumed=Math.min(raw.Items.length,limit);
+    const total=typeof raw.TotalRecordCount==="number" &&
+      Number.isSafeInteger(raw.TotalRecordCount) && raw.TotalRecordCount>=0
+      ?raw.TotalRecordCount:null;
+    const more=consumed>0 && (total===null
+      ?consumed===limit:startIndex+consumed<total);
+    return {items,total,nextOffset:more?startIndex+consumed:null};
   }
   async getRecent():Promise<MediaItem[]>{
     return this.items(this.userItems({

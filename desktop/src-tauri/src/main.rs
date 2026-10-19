@@ -35,8 +35,9 @@ async fn update_before_playback(app: tauri::AppHandle) {
             if update.install(&bytes).is_ok() {
                 #[cfg(not(target_os = "windows"))]
                 app.restart();
-                // Windows updater exits/relaunches after a successful
-                // installer spawn. Never restart Windows a second time.
+                // On Windows the updater exits/relaunches after the
+                // installer spawns. No redundant application restart.
+                #[cfg(target_os = "windows")]
                 return;
             }
         }

@@ -89,3 +89,30 @@ Le workflow Vynéo Desktop sépare maintenant les jobs :
 **Toujours absent :** le secret GitHub Actions de la clé privée
 Desktop. Une PR verte n'entraîne jamais à elle seule une
 publication signée. Le système Android existant reste séparé.
+
+## Première alpha du 19 octobre 2026
+
+Le tag `desktop-v0.1.0` a été créé sur l'ancien commit
+`cf87d53` après vérification locale et présence du secret
+de signature. La prérelease GitHub est créée ; les builds
+signés sont suivis dans [GitHub Actions #39325546958](https://github.com/CocoPerinet/vyneo-mobile-releases/actions/runs/39325546958).
+
+La compilation **macOS Apple Silicon** a produit son DMG, mais
+pas l'archive updater `.app.tar.gz`, car le job demandait
+`--bundles dmg` uniquement. Il a donc échoué lors de la publication
+et aucun manifeste Mac incomplet n'a été diffusé.
+
+Le correctif pour la version suivante `0.1.1` :
+- Bundle `app,dmg` sur les runners macOS, créant l'application
+  signée, son archive updater et le DMG d'installation.
+- Vérification explicite des trois fichiers avant publication ;
+  en leur absence, aucune asset ni manifeste n'est publié.
+- Six tests Rust G6u et quatorze tests Node/configuration
+  sont exécutés sur le code de la prochaine version.
+- La version publiée `desktop-v0.1.0` n'est jamais retaguée.
+  La correction passe exclusivement par une version supérieure
+  dont la signature minisign comporte son numéro de version.
+
+Le lancement, l'installateur Windows signé et une mise à jour
+réelle de 0.1.0 à 0.1.1 restent à valider sur le PC de test ;
+ne pas supposer leur succès avant les preuves correspondantes.

@@ -1,6 +1,6 @@
 # Vynéo Desktop (Windows / macOS)
 
-**Version 0.1.0, socle natif Tauri 2.**
+**Version 0.1.1, socle natif Tauri 2.**
 
 ## Interface et fonctions disponibles
 

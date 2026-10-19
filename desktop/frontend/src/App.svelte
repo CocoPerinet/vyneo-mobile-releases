@@ -37,6 +37,14 @@
   let catalogs=$state<Record<CatalogKind,CatalogState>>({
     Movie:freshCatalog(),Series:freshCatalog(),Anime:freshCatalog()
   });
+  let favoriteCatalogs=$state<Record<CatalogKind,CatalogState>>({
+    Movie:freshCatalog(),Series:freshCatalog(),Anime:freshCatalog()
+  });
+  const favoriteSections:Array<{kind:CatalogKind;label:string}>=[
+    {kind:"Anime",label:"Animés"},
+    {kind:"Movie",label:"Films"},
+    {kind:"Series",label:"Séries"}
+  ];
   let tab=$state<ViewKey>("home");
   let selected=$state<MediaItem|null>(null);
   let searchText=$state("");
@@ -62,36 +70,45 @@
     if(tab==="movies")return catalogs.Movie.items;
     if(tab==="series")return catalogs.Series.items;
     if(tab==="anime")return catalogs.Anime.items;
-    if(tab==="favorites")return data.favorites;
     if(tab==="universes")return data.collections;
     return [];
   });
   let searchActive=$derived(searchText.trim().length>=2);
 
-  async function loadCatalog(kind:CatalogKind){
-    if(!session || catalogs[kind].loading)return;
+  function catalogEntry(kind:CatalogKind,onlyFavorites=false):CatalogState{
+    return onlyFavorites?favoriteCatalogs[kind]:catalogs[kind];
+  }
+  function setCatalogEntry(kind:CatalogKind,value:CatalogState,onlyFavorites=false){
+    if(onlyFavorites)favoriteCatalogs={...favoriteCatalogs,[kind]:value};
+    else catalogs={...catalogs,[kind]:value};
+  }
+  async function loadCatalog(kind:CatalogKind,onlyFavorites=false){
+    if(!session)return;
     const user=session.userId,generation=epoch;
-    const previous=catalogs[kind],offset=previous.nextOffset;
-    if(offset===null)return;
-    catalogs={...catalogs,[kind]:{...previous,loading:true,error:""}};
+    const previous=catalogEntry(kind,onlyFavorites),offset=previous.nextOffset;
+    if(previous.loading || offset===null)return;
+    setCatalogEntry(kind,{...previous,loading:true,error:""},onlyFavorites);
     try{
-      const page=await api.getCatalogPage(kind,offset);
+      const page=onlyFavorites
+        ?await api.getFavoritePage(kind,offset)
+        :await api.getCatalogPage(kind,offset);
       if(generation!==epoch || session?.userId!==user)return;
-      const before=catalogs[kind],seen=new Set(before.items.map(item=>item.id));
+      const before=catalogEntry(kind,onlyFavorites);
+      const seen=new Set(before.items.map(item=>item.id));
       const fresh=page.items.filter(item=>{
         if(seen.has(item.id))return false;
         seen.add(item.id);return true;
       });
-      catalogs={...catalogs,[kind]:{
+      setCatalogEntry(kind,{
         items:[...before.items,...fresh],nextOffset:page.nextOffset,
         total:page.total,libraryAvailable:page.libraryAvailable,
         loading:false,loaded:true,error:""
-      }};
+      },onlyFavorites);
     }catch{
       if(generation!==epoch || session?.userId!==user)return;
-      const before=catalogs[kind];
-      catalogs={...catalogs,[kind]:{...before,loading:false,
-        error:"Impossible de charger cette page. Réessayez."}};
+      setCatalogEntry(kind,{...catalogEntry(kind,onlyFavorites),
+        loading:false,error:"Impossible de charger cette page. Réessayez."},
+        onlyFavorites);
     }
   }
   function selectTab(next:ViewKey){
@@ -99,6 +116,9 @@
     if(next==="movies" && !catalogs.Movie.loaded)void loadCatalog("Movie");
     if(next==="series" && !catalogs.Series.loaded)void loadCatalog("Series");
     if(next==="anime" && !catalogs.Anime.loaded)void loadCatalog("Anime");
+    if(next==="favorites")for(const entry of favoriteSections){
+      if(!favoriteCatalogs[entry.kind].loaded)void loadCatalog(entry.kind,true);
+    }
     // Save only navigation preference. Never persist JWT or user content.
     if(session){
       try{localStorage.setItem("vyneo.tab."+session.userId,next);}catch{}
@@ -123,6 +143,9 @@
       if(tab==="movies")void loadCatalog("Movie");
       if(tab==="series")void loadCatalog("Series");
       if(tab==="anime")void loadCatalog("Anime");
+      if(tab==="favorites")for(const entry of favoriteSections){
+        void loadCatalog(entry.kind,true);
+      }
     }catch{
       loginError="Connexion impossible. Vérifiez vos identifiants et le serveur.";
     }finally{
@@ -163,6 +186,7 @@
     loginPassword="";loginName="";loginError="";
     searchText="";searchRows=[];searchBusy=false;data=empty();homeWarning="";
     catalogs={Movie:freshCatalog(),Series:freshCatalog(),Anime:freshCatalog()};
+    favoriteCatalogs={Movie:freshCatalog(),Series:freshCatalog(),Anime:freshCatalog()};
   }
   function updateSearch(){
     if(searchTimer!==null)clearTimeout(searchTimer);
@@ -317,6 +341,54 @@
           <span>Vynéo · Votre bibliothèque, notre interface</span>
           <button type="button" onclick={()=>void refresh()}>Actualiser</button>
         </footer>
+      {:else if tab==="favorites"}
+        <section class="vy-browser vy-favorites">
+          <div class="vy-browser-heading">
+            <div>
+              <span class="vy-kicker">VOTRE SÉLECTION PERSONNELLE</span>
+              <h1>Ma liste</h1>
+            </div>
+          </div>
+          {#each favoriteSections as entry (entry.kind)}
+            {@const group=favoriteCatalogs[entry.kind]}
+            <section class="vy-shelf vy-favorites-shelf" aria-label={entry.label}>
+              <div class="vy-shelf-heading">
+                <h2>{entry.label}</h2>
+                {#if group.total!==null}
+                  <span class="vy-shelf-count">
+                    {group.items.length} / {group.total} titres
+                  </span>
+                {/if}
+              </div>
+              {#if group.items.length}
+                <div class="vy-rail">
+                  {#each group.items as item (item.id)}
+                    <MediaCard {item} cache={artwork}
+                      onclick={(next)=>selected=next} />
+                  {/each}
+                </div>
+              {:else if group.loading}
+                <p class="vy-empty">Chargement de votre liste…</p>
+              {:else if group.libraryAvailable===false}
+                <p class="vy-empty">Bibliothèque non accessible à votre compte.</p>
+              {:else if group.loaded && !group.error}
+                <p class="vy-empty">Aucun favori dans cette bibliothèque.</p>
+              {/if}
+              {#if group.error}
+                <p class="vy-empty" role="alert">{group.error}</p>
+              {/if}
+              {#if group.nextOffset!==null && group.libraryAvailable!==false}
+                <div class="vy-pagination">
+                  <button type="button" disabled={group.loading}
+                    onclick={()=>void loadCatalog(entry.kind,true)}>
+                    {group.loading?"Chargement…":
+                      group.error?"Réessayer":"Afficher davantage"}
+                  </button>
+                </div>
+              {/if}
+            </section>
+          {/each}
+        </section>
       {:else}
         <section class="vy-browser">
           <div class="vy-browser-heading">

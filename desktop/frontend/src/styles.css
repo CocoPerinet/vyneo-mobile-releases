@@ -105,6 +105,12 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
 .vy-catalog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,270px),1fr));
   gap:25px 16px;align-items:start}
 .vy-catalog-grid .vy-card{width:100%;max-width:none}
+.vy-favorites{padding-top:38px}
+.vy-favorites-shelf{margin-top:26px;border-bottom:1px solid rgba(255,255,255,.05);
+  padding-bottom:13px}
+.vy-favorites .vy-shelf-heading{padding:0 0 6px}
+.vy-favorites .vy-rail{padding:5px 0 22px}
+.vy-favorites .vy-empty{padding:14px 0 25px}
 .vy-pagination{display:flex;justify-content:center;padding:35px 0 10px}
 .vy-pagination button{padding:12px 26px;color:var(--vy-text);
   background:var(--vy-card-hi);border:1px solid rgba(255,255,255,.16);

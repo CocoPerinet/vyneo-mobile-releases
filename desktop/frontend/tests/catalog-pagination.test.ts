@@ -63,6 +63,22 @@ describe("paginated Jellyfin catalog",()=>{
     api.logout();
     await expect(api.getCatalogPage("Movie")).rejects.toThrow("AUTH_REQUIRED");
   });
+  it("paginates favorite-only results inside the chosen library",async()=>{
+    const titles=Array.from({length:93},(_,i)=>item(i+1));
+    const {api,calls}=fixture((offset,limit)=>({
+      Items:titles.slice(offset,offset+limit),TotalRecordCount:titles.length
+    }));
+    await api.login("Alice","test-password");
+    const first=await api.getFavoritePage("Movie");
+    const second=await api.getFavoritePage("Movie",first.nextOffset!);
+    expect(first.items).toHaveLength(48);
+    expect(second.items).toHaveLength(45);
+    expect(second.nextOffset).toBeNull();
+    const requests=calls.filter(call=>new URL(call.url).pathname.endsWith("/Items"));
+    expect(requests.every(call=>
+      new URL(call.url).searchParams.get("Filters")==="IsFavorite"
+    )).toBe(true);
+  });
   it("uses raw consumed offsets even when some media rows are invalid",async()=>{
     const {api}=fixture(offset=>({
       Items:offset===0?[item(1),{Id:"bad-id",Type:"Movie",Name:"Bad"},

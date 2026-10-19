@@ -218,7 +218,11 @@ export class JellyfinApi {
       throw new Error("SESSION_CHANGED");
     return roots;
   }
-  async getCatalogPage(type:CatalogKind,startIndex=0,limit=48):Promise<CatalogPage>{
+  async getFavoritePage(type:CatalogKind,startIndex=0,limit=48):Promise<CatalogPage>{
+    return this.getCatalogPage(type,startIndex,limit,true);
+  }
+  async getCatalogPage(type:CatalogKind,startIndex=0,limit=48,
+                       favorites=false):Promise<CatalogPage>{
     if((type!=="Movie" && type!=="Series" && type!=="Anime") ||
       !Number.isSafeInteger(startIndex) || startIndex<0 || startIndex>100000 ||
       !Number.isSafeInteger(limit) || limit<1 || limit>60)
@@ -226,13 +230,16 @@ export class JellyfinApi {
     const roots=await this.catalogLibraries();
     const parentId=roots[type];
     if(!parentId)return {items:[],nextOffset:null,total:0,libraryAvailable:false};
-    const raw=obj(await this.json(this.userItems({
+    const params:Record<string,string|number>={
       ParentId:parentId,
       IncludeItemTypes:type==="Anime"?"Movie,Series":type,
       SortBy:"SortName",
       SortOrder:"Ascending",StartIndex:startIndex,Limit:limit,
       EnableTotalRecordCount:"true"
-    }),{maxBytes:1048576}));
+    };
+    if(favorites)params.Filters="IsFavorite";
+    const raw=obj(await this.json(this.userItems(params),
+      {maxBytes:1048576}));
     if(!Array.isArray(raw.Items))throw new Error("CATALOG_INVALID");
     const items=parseItems(raw,limit).filter(item=>
       type==="Anime"?item.type==="Movie" || item.type==="Series":item.type===type);

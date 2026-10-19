@@ -73,6 +73,22 @@ describe("Jellyfin library scoped media catalogs",()=>{
     expect(calls.every(u=>u.origin===SERVER_ORIGIN)).toBe(true);
     expect(calls.every(u=>!u.href.includes(TOKEN))).toBe(true);
   });
+  it("queries favorites within each accessible library, never global collections",async()=>{
+    const {api,calls}=fakeApi();
+    await api.login("Alice","password");
+    const anime=await api.getFavoritePage("Anime");
+    const films=await api.getFavoritePage("Movie");
+    const shows=await api.getFavoritePage("Series");
+    expect([anime.items.length,films.items.length,shows.items.length]).toEqual([2,1,1]);
+    const requests=calls.filter(u=>u.pathname.endsWith("/Items"));
+    expect(requests).toHaveLength(3);
+    expect(requests.map(u=>u.searchParams.get("ParentId")))
+      .toEqual([ANIMES,FILMS,SERIES]);
+    expect(requests.every(u=>u.searchParams.get("Filters")==="IsFavorite"))
+      .toBe(true);
+    expect(requests.every(u=>u.searchParams.get("Limit")==="48")).toBe(true);
+    expect(calls.filter(u=>u.pathname.endsWith("/Views"))).toHaveLength(1);
+  });
   it("never guesses Anime from Animation or another user's library",async()=>{
     const {api,calls}=fakeApi(views.filter(v=>v.Id!==ANIMES));
     await api.login("Alice","password");

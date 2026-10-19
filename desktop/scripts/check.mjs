@@ -36,6 +36,8 @@ assert.deepEqual(updater.endpoints, [
   'https://raw.githubusercontent.com/CocoPerinet/vyneo-mobile-releases/main/desktop-{{target}}-{{arch}}.json'
 ]);
 assert.equal(updater.windows.installMode, 'passive');
+assert.equal(updater.requireSignedVersion, true);
+assert.equal(updater.allowDowngrades, false);
 assert.equal(mobile.schemaVersion, 1);
 assert.ok(mobile.platforms.android.url.includes('mobile-v'));
 assert.ok(!originalSkin.includes('http://'));

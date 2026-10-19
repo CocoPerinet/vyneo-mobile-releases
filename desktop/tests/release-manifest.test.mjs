@@ -41,7 +41,12 @@ function attemptPublish(overrides = {}) {
   chmodSync(fakeGh, 0o700);
   const asset = 'Vyneo-Desktop-0.1.1-windows-x64.exe';
   writeFileSync(join(root, asset), Buffer.alloc(150_000, 0x5a));
-  writeFileSync(join(root, asset + '.sig'), 'A'.repeat(140));
+  const envelope = Buffer.from(
+    'untrusted comment: synthetic publisher fixture\nAAAA\n' +
+    'trusted comment: timestamp:1\tfile:artifact\tversion:' +
+    (overrides.TEST_SIGNED_VERSION || '0.1.1') + '\nAAAA\n'
+  ).toString('base64');
+  writeFileSync(join(root, asset + '.sig'), envelope);
   const environment = {
     ...process.env,
     PATH: bin + ':' + process.env.PATH,
@@ -89,6 +94,15 @@ test('old tagged release cannot downgrade an installed client', () => {
   });
   assert.notEqual(run.status, 0);
   assert.match(run.stderr, /UPDATE_DOWNGRADE_REFUSED/);
+  assert.equal(put, null);
+});
+
+test('publisher refuses an artifact signed for a different app version', () => {
+  const { run, put } = attemptPublish({
+    TEST_SIGNED_VERSION: '0.1.2'
+  });
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /SIGNED_VERSION_MISMATCH/);
   assert.equal(put, null);
 });
 

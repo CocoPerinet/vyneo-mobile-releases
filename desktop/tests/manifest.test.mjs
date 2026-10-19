@@ -1,12 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createManifest, compareVersions } from '../scripts/manifest-lib.mjs';
+import { createManifest, compareVersions, ensureBoundSignedVersion } from '../scripts/manifest-lib.mjs';
+
+function syntheticSignature(version) {
+  // Deliberately NOT a cryptographic signature: tests only the publisher's
+  // version-binding metadata preflight, never the updater's Ed25519 verifier.
+  return Buffer.from('untrusted comment: test fixture\nAAAA\n' +
+    'trusted comment: timestamp:123\tfile:fixture.exe\tversion:' + version +
+    '\nAAAA\n').toString('base64');
+}
 
 const sample = {
   version: '0.1.1',
   platform: 'windows-x86_64',
   asset: 'Vyneo-Desktop-0.1.1-windows-x64.exe',
-  signature: 'A'.repeat(140)
+  signature: syntheticSignature('0.1.1')
 };
 
 test('signed URL and platform are exact and public', () => {
@@ -52,6 +60,22 @@ test('large semver components cannot be rounded by JavaScript Number', () => {
   assert.equal(compareVersions(first, second), 1);
   assert.equal(compareVersions(second, first), -1);
   assert.equal(compareVersions(first, first), 0);
+});
+
+test('manifest rejects version spoofing and unbound signatures', () => {
+  assert.equal(ensureBoundSignedVersion(syntheticSignature('0.1.1'), '0.1.1'), true);
+  assert.throws(() => createManifest({
+    ...sample,
+    version: '0.1.2'
+  }), /SIGNED_VERSION_MISMATCH/);
+  assert.throws(() => createManifest({
+    ...sample,
+    signature: syntheticSignature('0.1.0')
+  }), /SIGNED_VERSION_MISMATCH/);
+  assert.throws(() => createManifest({
+    ...sample,
+    signature: Buffer.from('untrusted comment: broken').toString('base64')
+  }));
 });
 
 test('bad semver and unbounded input must be rejected', () => {

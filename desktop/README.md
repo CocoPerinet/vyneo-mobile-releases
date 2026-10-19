@@ -38,10 +38,19 @@ Ne pas assimiler une fenêtre Tauri à ces fonctionnalités.
 
 Le moteur Tauri Updater fonctionne **côté Rust**, sans permission
 JS accordée à Jellyfin ou au portail IA. À chaque lancement,
-il recherche brièvement une version nouvelle sur des manifestes
-publics strictement HTTPS, puis vérifie la **signature minisign**
-avant installation. Les vérifications ont lieu avant l'ouverture
-du lecteur, afin de ne pas interrompre une vidéo en cours.
+il vérifie rapidement un manifeste HTTPS (3 secondes au maximum).
+Un téléchargement de mise à jour ne bloque pas l'ouverture plus de
+30 secondes. La signature **minisign** est vérifiée AVANT toute
+installation, jamais interrompue une fois commencée. Si la recherche
+ou le téléchargement échoue, la version installée continue de démarrer.
+
+**Sécurité renforcée :** `requireSignedVersion: true` lie la
+version annoncée dans le manifeste à la version inscrite dans la
+signature de l'exécutable. `allowDowngrades: false` refuse les
+retours vers des versions précédentes. Le CLI Tauri v2.12.3
+renseigne automatiquement la version dans les signatures de builds.
+Un test local a confirmé la présence d'un commentaire de version
+dans une signature créée sur un fichier factice, sans publier la clé.
 
 Manifestes par plateforme, séparés de l'application Android :
 

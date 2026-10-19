@@ -24,6 +24,31 @@ export function compareVersions(left, right) {
   return 0;
 }
 
+export function ensureBoundSignedVersion(signature, version) {
+  // Preflight ONLY: the updater itself cryptographically verifies minisign
+  // signatures against its embedded pubkey. This checks that the release
+  // builder wrote the exact tagged version in the *signed* comment.
+  compareVersions(version, '0.0.0');
+  if (typeof signature !== 'string' || signature.length > 8192 ||
+      !/^[A-Za-z0-9+/=]{80,}$/.test(signature)) {
+    throw Error('INVALID_MINISIGN_SIGNATURE');
+  }
+  const decoded = Buffer.from(signature, 'base64').toString('utf8');
+  const lines = decoded.split(/\r?\n/);
+  if (!lines.some(line => line.startsWith('untrusted comment: '))) {
+    throw Error('INVALID_MINISIGN_ENVELOPE');
+  }
+  const trusted = lines.filter(line => line.startsWith('trusted comment: '));
+  if (trusted.length !== 1) throw Error('INVALID_MINISIGN_ENVELOPE');
+  const match = /(?:^|\t)version:([^\t ]+)/.exec(
+    trusted[0].slice('trusted comment: '.length)
+  );
+  if (!match || match[1] !== version) {
+    throw Error('SIGNED_VERSION_MISMATCH');
+  }
+  return true;
+}
+
 export function createManifest({ version, platform, asset, signature }) {
   compareVersions(version, '0.0.0');
   if (!PLATFORMS.has(platform)) throw Error('INVALID_PLATFORM');
@@ -31,10 +56,7 @@ export function createManifest({ version, platform, asset, signature }) {
       basename(asset) !== asset) throw Error('INVALID_ASSET_NAME');
   const expected = platform.startsWith('windows-') ? '.exe' : '.app.tar.gz';
   if (!asset.endsWith(expected)) throw Error('INVALID_ASSET_TYPE');
-  if (typeof signature !== 'string' ||
-      !/^[A-Za-z0-9+/=]{80,}$/.test(signature)) {
-    throw Error('INVALID_MINISIGN_SIGNATURE');
-  }
+  ensureBoundSignedVersion(signature, version);
   return {
     version,
     notes: 'Mise à jour Vynéo Desktop signée et vérifiée.',

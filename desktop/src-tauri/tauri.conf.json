@@ -47,7 +47,9 @@
       ],
       "windows": {
         "installMode": "passive"
-      }
+      },
+      "requireSignedVersion": true,
+      "allowDowngrades": false
     }
   }
 }

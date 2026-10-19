@@ -1,102 +1,93 @@
-# Vynéo Desktop (Windows / macOS)
+# Vynéo Desktop 0.1.2 (alpha, en validation)
 
-**Version 0.1.1, socle natif Tauri 2.**
+Le client conserve **l'interface Jellyfin personnalisée d'origine** depuis
+`https://cocojellyfin.duckdns.org:38443/web/index.html`. Les sections,
+le classement, les univers et « Pour vous » issus de Jellyfin utilisent le
+**cache existant par utilisateur** de `vyneo/inject.js` (localStorage,
+IndexedDB et mémoire de la WebView2). Aucune copie non chiffrée de
+l'historique ou du catalogue personnel n'est créée par Tauri.
 
-## Interface et fonctions disponibles
+## Fenêtre native et démarrage
 
-La fenêtre principale ouvre **le véritable Jellyfin personnalisé** :
-`https://cocojellyfin.duckdns.org:38443/web/index.html`.
-La page réellement utilisée sur le N100 est celle qui charge
-`vyneo/skin.css` et `vyneo/inject.js`, avec le design, les
-fonctionnalités Jellyfin et le lecteur actuel de Vynéo.
+- Plus de menu Windows « Bibliothèque Jellyfin / Découvrir avec l'IA » au-dessus
+  du site. Un lien « ✦ Découvrir avec l'IA » discret est inséré **dans** le
+  frontend Jellyfin après connexion, en dehors de la lecture. Il ouvre la
+  fenêtre distincte G7y/Top 10 sous Cloudflare Access, sans divulguer
+  la session Jellyfin.
+- Tauri fournit un unique cadre Windows/macOS avec deux WebViews internes.
+  Une **coquille locale** sans réseau, CSS/HTML empaquetés dans l'application,
+  apparaît immédiatement. La véritable WebView Jellyfin démarre en parallèle
+  mais reste invisible tant que le document de connexion ou d'accueil
+  n'est pas prêt **et** que l'updater n'a pas terminé sa vérification.
+  Le changement se fait à l'intérieur du même cadre : aucun spinner ou
+  écran blanc du chargement réseau n'est montré à l'utilisateur.
+- En fermant Vynéo par la croix, l'application est masquée dans la zone de
+  notification et sa WebView **reste entièrement en mémoire**, DOM et
+  défilement compris. Une nouvelle ouverture du raccourci Vynéo réactive
+  cette fenêtre via le plugin Tauri single-instance, sans recharger Jellyfin.
+  La lecture HTML5 est mise en pause lorsque la fenêtre est masquée.
+  Menu de l'icône : **Ouvrir Vynéo / Découvrir avec l'IA / Quitter complètement**.
+- Une sortie explicite ou un redémarrage Windows termine la session mémoire.
+  Au prochain démarrage à froid, l'utilisateur voit l'habillage local sécurisé,
+  puis Jellyfin exploite son cache disque WebView2/IndexedDB existant.
+  Aucun programme ne peut garantir un *catalogue fonctionnel en ligne*
+  immédiatement sans réseau ni authentification. La coquille locale
+  n'affiche donc pas de titres personnels avant validation du compte.
+- Hors ligne, la coquille conserve un accès à une tentative de reconnexion.
+  Elle ne remplace jamais un échec réseau par une page WebView2 blanche.
 
-Le **menu natif** « Découvrir avec l'IA · Top 10 » ouvre
-une fenêtre distincte sur la préproduction privée
-`https://vyneo-preview.visyren.fr/app/secure.html`, pour accéder
-aux 46+ sections, au Top 10, aux univers et aux recommandations
-locales G7y déjà créées. Les deux interfaces ne partagent **pas**
-leurs cookies ni leurs authentifications. Cette séparation évite
-d'exposer les jetons Jellyfin à l'interface distante et préserve
-le Jellyfin de production.
+## Authentification et isolation
 
-**Limitations :** G7y apparaît actuellement dans une fenêtre
-distincte, pas dans les rayons de l'accueil Jellyfin. La fusion
-visuelle nécessite un adaptateur serveur sécurisé et des tests.
-Le changement automatique de qualité G6u a désormais un
-**moteur de décision Rust indépendant et testable**
-(`src-tauri/src/quality_policy.rs`). Il conserve la priorité
-aux choix manuels, l'anti-oscillation, le changement d'une
-qualité à la fois, les profils du même master alignés, et le
-refus de deux transitions consécutives non confirmées.
-Il ne reçoit **aucun flux réel** et ne change aucun décodeur :
-le lecteur actuel n'est pas connecté à cette politique.
-MPV natif, commutation effective des qualités,
-HDR natif, audio passthrough et TV/manette restent **non intégrés**.
-Ne pas assimiler une fenêtre Tauri à ces fonctionnalités.
+La WebView Jellyfin conserve le profil WebView2 existant, propre à
+l'identifiant `fr.visyren.vyneo.desktop`. L'application ne lit,
+n'exporte ni ne réutilise directement ses cookies/JWT, ne copie pas le
+mot de passe, et ne transforme pas une page publique en contenu privé.
+La reconnexion n'est automatique que si la session Jellyfin sauvegardée
+par Jellyfin reste valide.
 
-## Mises à jour Windows / macOS
+Un script Rust-owned injecte le bouton IA seulement si l'origine de
+la page est exactement
+`https://cocojellyfin.duckdns.org:38443`. Les navigations vers
+G7y déclenchent l'ouverture de la **fenêtre séparée** :
+`https://vyneo-preview.visyren.fr/app/secure.html`. L'authentification
+Cloudflare Access se déroule normalement, sans bypass ni token transféré.
 
-Le moteur Tauri Updater fonctionne **côté Rust**, sans permission
-JS accordée à Jellyfin ou au portail IA. À chaque lancement,
-il vérifie rapidement un manifeste HTTPS (3 secondes au maximum).
-Un téléchargement de mise à jour ne bloque pas l'ouverture plus de
-30 secondes. La signature **minisign** est vérifiée AVANT toute
-installation, jamais interrompue une fois commencée. Si la recherche
-ou le téléchargement échoue, la version installée continue de démarrer.
+La configuration Tauri conserve `withGlobalTauri:false` et
+`capabilities:[]`. Les pages externes n'ont aucun droit IPC Tauri.
+Le bootstrap local utilise une CSP restrictive (pas de JavaScript
+local, pas de réseau/fetch, pas d'iframe).
 
-**Sécurité renforcée :** `requireSignedVersion: true` lie la
-version annoncée dans le manifeste à la version inscrite dans la
-signature de l'exécutable. `allowDowngrades: false` refuse les
-retours vers des versions précédentes. Le CLI Tauri v2.12.3
-renseigne automatiquement la version dans les signatures de builds.
-Un test local a confirmé la présence d'un commentaire de version
-dans une signature créée sur un fichier factice, sans publier la clé.
+## Mises à jour
 
-Manifestes par plateforme, séparés de l'application Android :
+L'updater Rust garde les signatures minisign et son contrôle
+`requireSignedVersion`, avec refus des downgrades. Au premier
+démarrage, l'interface locale s'affiche **pendant** le contrôle
+(timeout 3 s), puis pendant un éventuel téléchargement vérifié
+(timeout 30 s). L'utilisateur ne commence pas la lecture avant
+qu'une installation de nouvelle version ait été traitée.
 
-- `desktop-windows-x86_64.json`
-- `desktop-darwin-aarch64.json`
-- `desktop-darwin-x86_64.json`
+Les fichiers Windows et macOS sont publiés séparément sous les tags
+`desktop-vX.Y.Z`, avec manifestes propres à chaque système.
+Android 0.3.4, `update-manifest.json`, Jellyfin sur le N100 et G7y
+ne sont pas modifiés par cette refonte Desktop.
 
-Ils sont hébergés dans le dépôt public
-`CocoPerinet/vyneo-mobile-releases` et pointent vers les
-installateurs de ses GitHub Releases `desktop-vX.Y.Z`.
-Les exécutables NSIS Windows sont accompagnés de leur signature ;
-macOS utilise une archive signée `.app.tar.gz` pour la mise à
-jour et un DMG pour l'installation initiale.
+Les builds GitHub sont nécessaires pour valider Tauri Windows/macOS,
+le multiwebview, single-instance et la zone de notification. **Aucune
+release 0.1.2 n'est annoncée utilisable sans compilation CI verte et
+vérification interactive de la page et du comportement de fermeture.**
 
-**Condition de mise en production :** la clé de signature privée
-doit être configurée dans le secret GitHub Actions
-`TAURI_SIGNING_PRIVATE_KEY` de CE dépôt public. Elle n'est
-jamais enregistrée en Git ni remise au navigateur. Si absente,
-le build de Release échoue avant de publier un binaire non signé.
-La première installation se fait depuis GitHub ; les suivantes
-s'installent au lancement de l'app, sans nouvelle installation
-manuelle. Les builds PR peuvent compiler sans signer ni publier.
+## Fonctions non encore livrées
 
-La signature Tauri ne remplace pas la réputation SmartScreen
-ni la signature/notarisation Apple : les premières versions peuvent
-donc déclencher un avertissement Windows/macOS.
+- Fusion DOM des sections G7y/LLM directement dans l'accueil Jellyfin.
+  Le bouton IA ouvre toujours une seconde fenêtre sécurisée.
+- Lecteur libmpv/CEF, HDR matériel et qualité automatique réelle.
+  Les politiques G6u Rust sont isolées et testées sans flux vidéo réel.
+- Mode bibliothèque totalement hors ligne : ce n'est pas un cache
+  réutilisable sans contrôle des droits des comptes.
+- Une capture fidèle de la dernière page après **extinction complète** de
+  l'application. Seule la fenêtre maintenue en mémoire dans la zone de
+  notification conserve réellement l'écran précédent et son état interactif.
 
-## Développement
-
-Depuis `desktop/` :
-
-```bash
-npm ci
-npm run check
-npm test
-npm run tauri -- icon ../assets/icon.png
-npm run tauri -- build --bundles nsis
-```
-
-Le build est prévu sur GitHub Actions, Windows/MSVC et macOS.
-Sans Rust, le SDK de développement Tauri et MSVC/Xcode,
-les tests Node ne valident **pas** le binaire. Ne pas activer
-de capacités Tauri `remote` : elles donneraient au code serveur
-un accès local qu'il n'a pas aujourd'hui.
-
-Le sous-dossier `desktop/` est maintenu dans ce dépôt public
-de distribution ; l'application Mobile reste développée dans
-le dépôt privé `CocoPerinet/vyneo-mobile`. Son manifeste de
-mise à jour 0.3.4 et sa signature Android ne sont pas modifiés.
+Depuis `desktop/`, exécuter `npm ci && npm run check && npm test`
+pour les validations de configuration/JS. Les compilations natives sont
+faites par la CI GitHub Windows/macOS.

@@ -114,6 +114,7 @@ const LIVE_READY_PROBE: &str = r#"(() => {
 async fn probe_remote(app: AppHandle, state: Arc<StartupGate>) {
     // Wait for a real login/home document, not the WebView2 error page or a
     // page-load event fired before the Jellyfin SPA has actually rendered.
+    let (ready_tx, mut ready_rx) = tokio::sync::mpsc::unbounded_channel::<bool>();
     for _ in 0..44 {
         if state.remote_ready.load(Ordering::Acquire) {
             return;
@@ -121,15 +122,23 @@ async fn probe_remote(app: AppHandle, state: Arc<StartupGate>) {
         let Some(remote) = app.get_webview("jellyfin") else {
             return;
         };
-        let ready = Arc::new(AtomicBool::new(false));
-        let ready_callback = ready.clone();
+        let tx = ready_tx.clone();
+        // Keep a single queue for late WebView2 callbacks. A response taking
+        // 500 ms must not be lost because an earlier 250 ms sleep expired.
         let _ = remote.eval_with_callback(LIVE_READY_PROBE, move |result| {
-            if result.trim() == "true" {
-                ready_callback.store(true, Ordering::Release);
-            }
+            let _ = tx.send(result.trim() == "true");
         });
-        tokio::time::sleep(Duration::from_millis(250)).await;
-        if ready.load(Ordering::Acquire) {
+        let answer = tokio::time::timeout(Duration::from_millis(350), async {
+            loop {
+                match ready_rx.recv().await {
+                    Some(true) => return true,
+                    Some(false) => continue,
+                    None => return false,
+                }
+            }
+        })
+        .await;
+        if matches!(answer, Ok(true)) {
             state.remote_ready.store(true, Ordering::Release);
             present_remote_if_ready(&app, &state);
             return;

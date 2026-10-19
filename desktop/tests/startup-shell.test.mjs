@@ -30,6 +30,8 @@ test('startup reveals Jellyfin only after login/home DOM is ready and update che
   assert.match(rust, /updates_ready\.load\(Ordering::Acquire\)/);
   assert.match(rust, /live_presented\.swap\(true, Ordering::AcqRel\)/);
   assert.match(rust, /eval_with_callback\(LIVE_READY_PROBE/);
+  assert.match(rust, /tokio::sync::mpsc::unbounded_channel/);
+  assert.match(rust, /Duration::from_millis\(350\)/);
   assert.match(rust, /input\[type="password"\]/);
   assert.match(rust, /document\.querySelector\('\.homePage'\)/);
   assert.match(rust, /UPDATE_CHECK_TIMEOUT/);

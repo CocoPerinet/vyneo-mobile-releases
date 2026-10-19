@@ -26,8 +26,8 @@ Elle n'importe AUCUN runtime, CSS injecté ou fichier Web Jellyfin.
   Users/Me, token en mémoire, endpoints bornés et credentials omit.
 - artwork.ts : images avec Authorization HTTP et Blob URL ; cache mémoire
   borné, purge en cas de déconnexion.
-- discover.ts : premiers rayons personnels déterministes, rotation
-  hebdomadaire et Top 10 basé sur CommunityRating (pas un classement LLM).
+- discover.ts : premiers rayons personnels déterministes, Top 10 basé sur
+  CommunityRating et recettes éditoriales quotidiennes (pas du LLM).
 - src-tauri/ : uniquement le cadre natif, tray et updater cryptographiquement
   signé, sans charger Jellyfin Web par URL externe.
 
@@ -49,3 +49,26 @@ La branche 0.2.0 n'a aucun tag public et ne remplace aucun client.
 Les manifestes d'auto-update Windows/Mac restent en 0.1.1, et le
 manifeste Mobile Android 0.3.4 est inchangé. Les services du serveur
 Jellyfin et du BFF Vynéo ne sont pas modifiés.
+
+## Bibliothèque locale de recettes éditoriales G7x
+
+Le client 0.2.0 reprend **45 recettes publiques** de la taxonomie
+G7x (21 genres, 14 croisements, formats, décennies, nouveautés,
+classiques, notes et favoris non commencés). Une recette supplémentaire
+« saga » est volontairement exclue : le schéma actuel n'a pas les
+identifiants de collection nécessaires à une classification fiable.
+Les recettes studios/univers/« thème IA » exigent des preuves serveur
+supplémentaires et ne sont pas inventées localement.
+
+Jusqu'à **10 sections éditoriales par jour**, avec 3 à 5 œuvres
+chacune et sans réutilisation d'un même titre entre ces rayons,
+peuvent être proposées **si le catalogue actuellement chargé le
+permet**. Le score est stable pour un utilisateur et un jour UTC,
+mais change lorsque la fenêtre quotidienne change ; les droits et
+genres proviennent de la réponse authentifiée Jellyfin.
+
+**Limite réelle :** ces rayons se fondent encore sur le lot
+récent (96 titres maximum) et ne prétendent pas parcourir les
+800+ animés, séries ou films du serveur. L'algorithme serveur G7y,
+qui explore 512 œuvres et consulte le cache Qwen3, sera raccordé
+seulement après conception de l'authentification native sécurisée.

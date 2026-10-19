@@ -12,7 +12,9 @@ N100 fournit seulement ses API médias, comptes et métadonnées.
 - Authentification directe par l'API HTTPS Jellyfin, identité revérifiée.
 - Catalogue, recherche, favoris, reprises, épisodes à suivre et collections.
 - Hero cinématique, sections 16:9, fiches, Top 10 des œuvres les mieux
-  notées et rotation hebdomadaire des genres visibles dans la bibliothèque.
+  notées et jusqu’à dix rayons éditoriaux quotidiens fondés sur 45 recettes
+  documentées. Ces rayons exploitent au maximum les 96 titres récents
+  récupérés, et non l’intégralité du catalogue Jellyfin.
 - Première version locale de Pour vous, basée sur les genres vus/favoris.
   Ce n'est PAS encore le moteur LLM G7y.
 - Affiches obtenues avec un en-tête Authorization. Aucun jeton dans leur

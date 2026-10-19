@@ -1,4 +1,5 @@
 import type {LibrarySnapshot,MediaItem,Shelf} from "./types";
+import {rotatingEditorial} from "./editorial-recipes";
 
 const unique=(items:MediaItem[],limit=30):MediaItem[]=>{
   const used=new Set<string>();
@@ -7,15 +8,6 @@ const unique=(items:MediaItem[],limit=30):MediaItem[]=>{
     used.add(item.id);return true;
   }).slice(0,limit);
 };
-function weekNumber(now:Date):number{
-  // Week index changes only once per seven days (UTC, deterministic).
-  return Math.floor(now.getTime()/604800000);
-}
-function hash(seed:string):number{
-  let h=2166136261;
-  for(const ch of seed){h^=ch.charCodeAt(0);h=Math.imul(h,16777619);}
-  return h>>>0;
-}
 export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):Shelf[]{
   const recent=unique(data.recent,96);
   const resume=unique(data.resume,16);
@@ -45,16 +37,13 @@ export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):She
     .sort((a,b)=>weights(b)-weights(a) || a.id.localeCompare(b.id));
   const withReasons=freq.size>0 && recommended.some(item=>weights(item)>0);
   const rated=recent
-    .filter(item=>item.communityRating!==null)
+    .filter(item=>item.communityRating!==null && !item.played)
     .sort((a,b)=>(b.communityRating??0)-(a.communityRating??0) ||
       a.title.localeCompare(b.title)).slice(0,10);
-  const availableGenres=[...new Set(recent.flatMap(item=>item.genres))]
-    .filter(g=>recent.filter(i=>i.genres.includes(g)).length>=3)
-    .sort();
-  const offset=hash(uid+":"+weekNumber(now))%
-    Math.max(1,availableGenres.length);
-  const rotated=availableGenres.slice(offset)
-    .concat(availableGenres.slice(0,offset)).slice(0,4);
+  // The publicly documented G7x recipe taxonomy can run locally on
+  // per-user metadata. Model-assisted G7y classification is NOT claimed.
+  // These recipes rotate daily; each row needs >=3 evidence-backed titles.
+  const editorial=rotatingEditorial(recent,uid,now,10,5);
   const rows:Shelf[]=[];
   const put=(id:string,title:string,items:MediaItem[],
     kind:Shelf["kind"]="standard")=>{
@@ -67,13 +56,9 @@ export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):She
   put("movies","Films récemment ajoutés",movie);
   put("series","Séries récemment ajoutées",series);
   put("favorites","Dans votre liste",favorites);
-  put("top-ten","Top 10 les mieux notés de votre bibliothèque",
+  put("top-ten","Top 10 les mieux notés parmi vos nouveautés",
     rated,"top10");
-  for(const [i,genre] of rotated.entries()){
-    put("genre-"+i,
-      "Cette semaine · "+genre,
-      recent.filter(item=>item.genres.includes(genre)).slice(0,20));
-  }
+  rows.push(...editorial);
   put("universes","Sagas et collections",collections,"universe");
   return rows;
 }

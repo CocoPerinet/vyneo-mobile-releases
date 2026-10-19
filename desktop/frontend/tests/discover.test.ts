@@ -30,15 +30,16 @@ describe("Vynéo native shelves are metadata-driven and deterministic",()=>{
     expect(names.some(n=>n.startsWith("Pour vous"))).toBe(true);
     expect(names.some(n=>n.startsWith("Top 10"))).toBe(true);
     expect(names).toContain("Sagas et collections");
-    expect(names.some(n=>n.startsWith("Cette semaine"))).toBe(true);
+    expect(names.some(n=>n.includes("science-fiction") || n.includes("Action") || n.includes("Bien notés"))).toBe(true);
+    expect(rows.some(r=>r.id.startsWith("editorial-"))).toBe(true);
     expect(rows.find(r=>r.kind==="top10")?.items).toHaveLength(10);
     expect(featuredMedia(rows)?.id).toMatch(/^[a-f0-9]{32}$/);
     expect(names.join("|")).not.toMatch(/IA locale|LLM|ChatGPT/);
   });
-  it("is stable within a week and never incorporates unrelated items",()=>{
+  it("is stable within a day and never incorporates unrelated items",()=>{
     const data=sample(),user="b".repeat(32);
-    const first=buildShelves(data,user,new Date("2026-10-20"));
-    const second=buildShelves(data,user,new Date("2026-10-21"));
+    const first=buildShelves(data,user,new Date("2026-10-20T08:00:00Z"));
+    const second=buildShelves(data,user,new Date("2026-10-20T21:00:00Z"));
     expect(first.map(r=>r.id)).toEqual(second.map(r=>r.id));
     const valid=new Set([...data.recent,...data.resume,...data.watched,
       ...data.nextUp,...data.favorites,...data.collections].map(x=>x.id));

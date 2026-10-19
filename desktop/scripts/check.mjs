@@ -25,6 +25,11 @@ assert.equal(config.bundle.createUpdaterArtifacts, false);
 assert.equal(release.bundle.createUpdaterArtifacts, true);
 assert.ok(originalSkin.includes('vyneo-preview.visyren.fr/app/secure.html'));
 assert.ok(originalSkin.includes('tauri_plugin_updater'));
+assert.ok(originalSkin.includes('UPDATE_CHECK_TIMEOUT'));
+assert.ok(originalSkin.includes('UPDATE_DOWNLOAD_TIMEOUT'));
+assert.ok(originalSkin.includes('update.download('));
+assert.ok(originalSkin.includes('update.install(&bytes)'));
+assert.ok(!originalSkin.includes('update.download_and_install('));
 const updater = config.plugins.updater;
 assert.match(updater.pubkey, /^[A-Za-z0-9+/=]{80,}$/);
 assert.deepEqual(updater.endpoints, [

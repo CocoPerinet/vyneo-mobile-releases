@@ -6,13 +6,20 @@ export const PLATFORMS = new Set([
 const REPOSITORY = 'CocoPerinet/vyneo-mobile-releases';
 
 export function compareVersions(left, right) {
-  const pattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+  // Bound each component: avoid Number precision loss, Infinity and an
+  // unreasonably large (attacker-controlled) semver component.
+  const pattern = /^(0|[1-9]\d{0,14})\.(0|[1-9]\d{0,14})\.(0|[1-9]\d{0,14})$/;
+  if (typeof left !== 'string' || typeof right !== 'string') {
+    throw Error('INVALID_DESKTOP_VERSION');
+  }
   const a = pattern.exec(left);
   const b = pattern.exec(right);
   if (!a || !b) throw Error('INVALID_DESKTOP_VERSION');
   for (let i = 1; i <= 3; i++) {
-    const diff = Number(a[i]) - Number(b[i]);
-    if (diff !== 0) return Math.sign(diff);
+    const x = BigInt(a[i]);
+    const y = BigInt(b[i]);
+    if (x < y) return -1;
+    if (x > y) return 1;
   }
   return 0;
 }

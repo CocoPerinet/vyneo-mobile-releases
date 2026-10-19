@@ -9,28 +9,41 @@ use tauri_plugin_updater::UpdaterExt;
 const DISCOVERY_URL: &str =
     "https://vyneo-preview.visyren.fr/app/secure.html";
 
-/// Checks before showing the player: never restart during a movie.
+const UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(3);
+const UPDATE_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The check/download happen BEFORE the Jellyfin player becomes interactive.
+/// Bound both network phases, so a stalled release server cannot leave a
+/// permanently invisible application. Never cancel an installation mid-write.
 async fn update_before_playback(app: tauri::AppHandle) {
-    let check = tokio::time::timeout(Duration::from_secs(3), async {
+    let check = tokio::time::timeout(UPDATE_CHECK_TIMEOUT, async {
         let updater = app.updater()?;
         updater.check().await
-    })
-    .await;
+    }).await;
 
     if let Ok(Ok(Some(update))) = check {
-        // Tauri validates the minisign signature against the embedded
-        // public key before executing or installing any downloaded code.
-        if update.download_and_install(|_, _| {}, || {}).await.is_ok() {
-            #[cfg(not(target_os = "windows"))]
-            app.restart();
-            // On Windows the updater itself exits, runs the installer,
-            // then relaunches the application (no second restart).
-            return;
+        // Downloads and verifies the minisign signature; cancellation during
+        // this phase cannot interrupt installation of the old binary.
+        let verified_download = tokio::time::timeout(
+            UPDATE_DOWNLOAD_TIMEOUT,
+            update.download(|_, _| {}, || {}),
+        ).await;
+
+        if let Ok(Ok(bytes)) = verified_download {
+            // Install is synchronous and invoked only after a FULL verified
+            // download. Do NOT timeout/cancel installation mid-write.
+            if update.install(&bytes).is_ok() {
+                #[cfg(not(target_os = "windows"))]
+                app.restart();
+                // Windows updater exits/relaunches after a successful
+                // installer spawn. Never restart Windows a second time.
+                return;
+            }
         }
     }
 
-    // Offline, no update, invalid response or failed installation:
-    // always restore the normal Jellyfin UI without logging the user out.
+    // Offline, slow download, corrupt signature or install failure:
+    // preserve the old working version and show the normal Jellyfin UI.
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.show();
         let _ = main.set_focus();

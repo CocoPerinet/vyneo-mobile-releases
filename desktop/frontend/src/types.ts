@@ -1,9 +1,11 @@
 export type MediaType="Movie"|"Series"|"Episode"|"BoxSet";
-export type CatalogKind="Movie"|"Series";
+export type CatalogKind="Movie"|"Series"|"Anime";
+export type CatalogLibraryIds=Record<CatalogKind,string|null>;
 export interface CatalogPage {
   items:MediaItem[];
   nextOffset:number|null;
   total:number|null;
+  libraryAvailable:boolean;
 }
 export type ViewKey="home"|"movies"|"series"|"anime"|"favorites"|"universes";
 export interface MediaItem {

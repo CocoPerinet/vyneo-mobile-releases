@@ -1,4 +1,4 @@
-import type {MediaItem,MediaType,SessionPublic,CatalogKind,CatalogPage} from "./types";
+import type {MediaItem,MediaType,SessionPublic,CatalogKind,CatalogPage,CatalogLibraryIds} from "./types";
 
 export const SERVER_ORIGIN="https://cocojellyfin.duckdns.org:38443";
 const ID=/^[a-f0-9]{32}$/i;
@@ -55,6 +55,28 @@ export function parseItems(payload:unknown,limit:number):MediaItem[]{
   }
   return items;
 }
+// Use the library folders the signed-in Jellyfin user can actually access.
+// "Anime" and "Animation" are NOT interchangeable categories.
+export function resolveCatalogLibraryIds(payload:unknown):CatalogLibraryIds {
+  const views=obj(payload).Items;
+  if(!Array.isArray(views))throw new Error("LIBRARIES_INVALID");
+  const ids:CatalogLibraryIds={Movie:null,Series:null,Anime:null};
+  for(const view of views.slice(0,100)){
+    const row=obj(view);
+    if(!validId(row.Id) || typeof row.Name!=="string" ||
+       !["movies","tvshows"].includes(String(row.CollectionType)))continue;
+    const label=row.Name.normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+      .trim().toLowerCase().replace(/\s+/g," ");
+    let kind:CatalogKind|null=null;
+    if(/^(?:anime|animes)$/.test(label))kind="Anime";
+    else if(row.CollectionType==="movies" && /^(?:films?|movies?)$/.test(label))
+      kind="Movie";
+    else if(row.CollectionType==="tvshows" && /^(?:series?|tv shows?)$/.test(label))
+      kind="Series";
+    if(kind && !ids[kind])ids[kind]=row.Id;
+  }
+  return ids;
+}
 function identityHeaders(token:string|null,deviceId:string):
     Record<string,string>{
   const auth='MediaBrowser Client="Vyneo", Device="Vyneo Desktop", '+
@@ -71,6 +93,7 @@ export interface ApiOptions{
 }
 export class JellyfinApi {
   private authGeneration=0;
+  private libraryRoots:Promise<CatalogLibraryIds>|null=null;
   private token:string|null=null;
   private userId:string|null=null;
   private username:string|null=null;
@@ -94,6 +117,7 @@ export class JellyfinApi {
   }
   logout(){
     this.authGeneration++;
+    this.libraryRoots=null;
     this.token=null;this.userId=null;this.username=null;
   }
   private async json(path:string,options:{
@@ -178,18 +202,40 @@ export class JellyfinApi {
       )
     });
   }
+  private async catalogLibraries():Promise<CatalogLibraryIds>{
+    const uid=this.requireUser(),epoch=this.authGeneration;
+    if(!this.libraryRoots){
+      const pending=this.json("/Users/"+uid+"/Views",{maxBytes:262144})
+        .then(resolveCatalogLibraryIds);
+      this.libraryRoots=pending;
+      // A transient failure must be retryable without re-using old results.
+      void pending.catch(()=>{
+        if(this.libraryRoots===pending)this.libraryRoots=null;
+      });
+    }
+    const roots=await this.libraryRoots;
+    if(epoch!==this.authGeneration || this.userId!==uid)
+      throw new Error("SESSION_CHANGED");
+    return roots;
+  }
   async getCatalogPage(type:CatalogKind,startIndex=0,limit=48):Promise<CatalogPage>{
-    if((type!=="Movie" && type!=="Series") ||
+    if((type!=="Movie" && type!=="Series" && type!=="Anime") ||
       !Number.isSafeInteger(startIndex) || startIndex<0 || startIndex>100000 ||
       !Number.isSafeInteger(limit) || limit<1 || limit>60)
       throw new Error("PAGE_INVALID");
+    const roots=await this.catalogLibraries();
+    const parentId=roots[type];
+    if(!parentId)return {items:[],nextOffset:null,total:0,libraryAvailable:false};
     const raw=obj(await this.json(this.userItems({
-      IncludeItemTypes:type,SortBy:"SortName",
+      ParentId:parentId,
+      IncludeItemTypes:type==="Anime"?"Movie,Series":type,
+      SortBy:"SortName",
       SortOrder:"Ascending",StartIndex:startIndex,Limit:limit,
       EnableTotalRecordCount:"true"
     }),{maxBytes:1048576}));
     if(!Array.isArray(raw.Items))throw new Error("CATALOG_INVALID");
-    const items=parseItems(raw,limit).filter(item=>item.type===type);
+    const items=parseItems(raw,limit).filter(item=>
+      type==="Anime"?item.type==="Movie" || item.type==="Series":item.type===type);
     // Advance by raw records, not by validated cards: an invalid entry
     // must never cause a duplicate page or an endless retry.
     const consumed=Math.min(raw.Items.length,limit);
@@ -198,7 +244,7 @@ export class JellyfinApi {
       ?raw.TotalRecordCount:null;
     const more=consumed>0 && (total===null
       ?consumed===limit:startIndex+consumed<total);
-    return {items,total,nextOffset:more?startIndex+consumed:null};
+    return {items,total,nextOffset:more?startIndex+consumed:null,libraryAvailable:true};
   }
   async getRecent():Promise<MediaItem[]>{
     return this.items(this.userItems({

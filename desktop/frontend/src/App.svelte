@@ -22,10 +22,11 @@
   });
   type CatalogState={
     items:MediaItem[];nextOffset:number|null;total:number|null;
-    loading:boolean;loaded:boolean;error:string;
+    loading:boolean;loaded:boolean;error:string;libraryAvailable:boolean|null;
   };
   const freshCatalog=():CatalogState=>({
-    items:[],nextOffset:0,total:null,loading:false,loaded:false,error:""
+    items:[],nextOffset:0,total:null,loading:false,loaded:false,
+    error:"",libraryAvailable:null
   });
   let loginName=$state("");
   let loginPassword=$state("");
@@ -34,7 +35,7 @@
   let session=$state<SessionPublic|null>(null);
   let data=$state<LibrarySnapshot>(empty());
   let catalogs=$state<Record<CatalogKind,CatalogState>>({
-    Movie:freshCatalog(),Series:freshCatalog()
+    Movie:freshCatalog(),Series:freshCatalog(),Anime:freshCatalog()
   });
   let tab=$state<ViewKey>("home");
   let selected=$state<MediaItem|null>(null);
@@ -54,14 +55,13 @@
     {key:"universes",label:"Univers"}
   ];
   let catalogKind=$derived<CatalogKind|null>(
-    tab==="movies"?"Movie":tab==="series"?"Series":null);
+    tab==="movies"?"Movie":tab==="series"?"Series":tab==="anime"?"Anime":null);
   let shelves=$derived(session?buildShelves(data,session.userId):[]);
   let hero=$derived(featuredMedia(shelves));
   let gridItems=$derived.by(()=>{
     if(tab==="movies")return catalogs.Movie.items;
     if(tab==="series")return catalogs.Series.items;
-    if(tab==="anime")return data.recent.filter(i=>
-      i.genres.some(g=>/animation|anime/i.test(g)));
+    if(tab==="anime")return catalogs.Anime.items;
     if(tab==="favorites")return data.favorites;
     if(tab==="universes")return data.collections;
     return [];
@@ -84,7 +84,8 @@
       });
       catalogs={...catalogs,[kind]:{
         items:[...before.items,...fresh],nextOffset:page.nextOffset,
-        total:page.total,loading:false,loaded:true,error:""
+        total:page.total,libraryAvailable:page.libraryAvailable,
+        loading:false,loaded:true,error:""
       }};
     }catch{
       if(generation!==epoch || session?.userId!==user)return;
@@ -97,6 +98,7 @@
     tab=next;selected=null;searchText="";searchRows=[];
     if(next==="movies" && !catalogs.Movie.loaded)void loadCatalog("Movie");
     if(next==="series" && !catalogs.Series.loaded)void loadCatalog("Series");
+    if(next==="anime" && !catalogs.Anime.loaded)void loadCatalog("Anime");
     // Save only navigation preference. Never persist JWT or user content.
     if(session){
       try{localStorage.setItem("vyneo.tab."+session.userId,next);}catch{}
@@ -120,6 +122,7 @@
       void refresh(generation);
       if(tab==="movies")void loadCatalog("Movie");
       if(tab==="series")void loadCatalog("Series");
+      if(tab==="anime")void loadCatalog("Anime");
     }catch{
       loginError="Connexion impossible. Vérifiez vos identifiants et le serveur.";
     }finally{
@@ -159,7 +162,7 @@
     session=null;selected=null;tab="home";
     loginPassword="";loginName="";loginError="";
     searchText="";searchRows=[];searchBusy=false;data=empty();homeWarning="";
-    catalogs={Movie:freshCatalog(),Series:freshCatalog()};
+    catalogs={Movie:freshCatalog(),Series:freshCatalog(),Anime:freshCatalog()};
   }
   function updateSearch(){
     if(searchTimer!==null)clearTimeout(searchTimer);
@@ -349,7 +352,11 @@
               </div>
             {/if}
           {/if}
-          {#if !gridItems.length && (!catalogKind ||
+          {#if catalogKind && catalogs[catalogKind].libraryAvailable===false}
+            <p class="vy-empty" role="status">
+              La bibliothèque {titleFor(tab)} n'est pas accessible à ce compte Jellyfin.
+            </p>
+          {:else if !gridItems.length && (!catalogKind ||
             (!catalogs[catalogKind].loading && !catalogs[catalogKind].error))}
             <p class="vy-empty">Aucun titre disponible dans cette sélection.</p>
           {/if}

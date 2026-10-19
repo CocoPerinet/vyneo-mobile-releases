@@ -1,7 +1,7 @@
 import {describe,it,expect,vi} from "vitest";
 import {JellyfinApi,SERVER_ORIGIN} from "../src/api";
 
-const USER="a".repeat(32),TOKEN="t".repeat(52);
+const USER="a".repeat(32),TOKEN="t".repeat(52),MOVIES="1".repeat(32);
 const respond=(value:unknown)=>new Response(JSON.stringify(value),{
   headers:{"Content-Type":"application/json"}
 });
@@ -18,8 +18,15 @@ function fixture(provider:(offset:number,limit:number)=>unknown){
       return respond({User:{Id:USER,Name:"Alice"},AccessToken:TOKEN});
     if(parsed.pathname==="/Users/Me")
       return respond({Id:USER,Name:"Alice",Policy:{IsDisabled:false}});
+    if(parsed.pathname==="/Users/"+USER+"/Views")
+      return respond({Items:[
+        {Id:MOVIES,Name:"Films",CollectionType:"movies"},
+        {Id:"2".repeat(32),Name:"Animes",CollectionType:"tvshows"},
+        {Id:"3".repeat(32),Name:"Séries",CollectionType:"tvshows"}
+      ]});
     if(parsed.pathname==="/Users/"+USER+"/Items"){
       expect(parsed.searchParams.get("Recursive")).toBe("true");
+      expect(parsed.searchParams.get("ParentId")).toBe(MOVIES);
       expect(parsed.searchParams.get("IncludeItemTypes")).toBe("Movie");
       expect(parsed.searchParams.get("SortBy")).toBe("SortName");
       const offset=Number(parsed.searchParams.get("StartIndex"));
@@ -46,6 +53,8 @@ describe("paginated Jellyfin catalog",()=>{
     expect([first.nextOffset,second.nextOffset,third.nextOffset])
       .toEqual([48,96,null]);
     expect(first.total).toBe(105);
+    expect(first.libraryAvailable).toBe(true);
+    expect(calls.filter(x=>new URL(x.url).pathname==="/Users/"+USER+"/Views")).toHaveLength(1);
     expect(new Set([...first.items,...second.items,...third.items].map(x=>x.id)).size)
       .toBe(105);
     expect(calls.every(x=>x.url.startsWith(SERVER_ORIGIN))).toBe(true);
@@ -72,7 +81,7 @@ describe("paginated Jellyfin catalog",()=>{
     const {api}=fixture(()=>({Items:[],TotalRecordCount:100}));
     await api.login("Alice","test-password");
     const page=await api.getCatalogPage("Movie",0);
-    expect(page).toEqual({items:[],nextOffset:null,total:100});
+    expect(page).toEqual({items:[],nextOffset:null,total:100,libraryAvailable:true});
   });
   it("validates limits and rejects malformed catalog payloads",async()=>{
     const {api}=fixture(()=>({wrong:"shape"}));

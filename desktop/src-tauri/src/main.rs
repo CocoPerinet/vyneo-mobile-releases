@@ -102,13 +102,21 @@ const LIVE_READY_PROBE: &str = r#"(() => {
     if (!document.body || document.readyState === 'loading') {
         return false;
     }
-    return Boolean(
-        document.querySelector('input[type="password"]') ||
-        document.querySelector('.homePage') ||
-        document.querySelector('.mainDrawer') ||
-        document.querySelector('.skinHeader') ||
-        document.querySelector('.loginPage')
+    // The navigation bar appears long before personalized rows are ready.
+    // Reveal a cold home ONLY when at least one real row/card/hero is painted.
+    // The login screen is safe to reveal as soon as its controls exist.
+    const loginReady = Boolean(
+        document.querySelector('.loginPage input[type="password"]') ||
+        document.querySelector('input[type="password"]')
     );
+    const libraryReady = Boolean(
+        document.querySelector('#vy-rows .vy-row') ||
+        document.querySelector('#vy-hero .vy-hero-slide') ||
+        document.querySelector('.homePage .card') ||
+        document.querySelector('.itemsContainer .card') ||
+        document.querySelector('.itemDetailPage .detailPageContent')
+    );
+    return loginReady || libraryReady;
 })()"#;
 
 async fn probe_remote(app: AppHandle, state: Arc<StartupGate>) {

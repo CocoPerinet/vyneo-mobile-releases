@@ -36,7 +36,9 @@ test('startup reveals Jellyfin only after login/home DOM is ready and update che
   assert.match(rust, /tokio::sync::mpsc::unbounded_channel/);
   assert.match(rust, /Duration::from_millis\(350\)/);
   assert.match(rust, /input\[type="password"\]/);
-  assert.match(rust, /document\.querySelector\('\.homePage'\)/);
+  assert.match(rust, /#vy-rows \.vy-row/);
+  assert.match(rust, /#vy-hero \.vy-hero-slide/);
+  assert.ok(!rust.includes("document.querySelector('.skinHeader')"));
   assert.match(rust, /UPDATE_CHECK_TIMEOUT/);
   assert.match(rust, /UPDATE_DOWNLOAD_TIMEOUT/);
 });

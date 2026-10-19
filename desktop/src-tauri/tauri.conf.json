@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Vynéo",
+  "version": "0.1.0",
+  "identifier": "fr.visyren.vyneo.desktop",
+  "build": {
+    "frontendDist": "https://cocojellyfin.duckdns.org:38443/web/index.html"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Vynéo",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 860,
+        "minHeight": 560,
+        "resizable": true,
+        "center": true,
+        "backgroundColor": "#090B10",
+        "visible": false
+      }
+    ],
+    "security": {
+      "capabilities": []
+    },
+    "withGlobalTauri": false
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Entertainment",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg0OTU5MzZEMTA0QTM2RUQKUldUdE5rb1FiWk9WaE43WU9KT0lVN2VJNTBlcU8wYkpXRG9WNXgzaEtFU2liT2NFdUIzczVGckYK",
+      "endpoints": [
+        "https://raw.githubusercontent.com/CocoPerinet/vyneo-mobile-releases/main/desktop-{{target}}-{{arch}}.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { resolve, dirname } from 'node:path';
 
 const base = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const workflow = readFileSync(resolve(base, '.github/workflows/desktop.yml'), 'utf8');
+const workflow = readFileSync(resolve(base, '.github/workflows/desktop.yml'), 'utf8')
+  .replace(/\r\n/g, '\n');
 const releaseConfig = JSON.parse(readFileSync(
   resolve(base, 'desktop/src-tauri/tauri.release.conf.json'), 'utf8'));
 

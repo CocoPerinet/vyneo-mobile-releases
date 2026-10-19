@@ -272,8 +272,12 @@ fn main() {
                         route_discover(&shell_nav_app);
                         return false;
                     }
-                    matches!(url.scheme(), "tauri" | "http" | "https")
-                        && url.host_str() == Some("tauri.localhost")
+                    // Native Tauri origins differ by OS:
+                    // Windows: http://tauri.localhost
+                    // macOS:   tauri://localhost
+                    (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
+                        || (url.scheme() == "http"
+                            && url.host_str() == Some("tauri.localhost"))
                 }),
                 LogicalPosition::new(0.0, 0.0),
                 inner,

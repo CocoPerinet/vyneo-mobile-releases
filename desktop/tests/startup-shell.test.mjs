@@ -23,6 +23,9 @@ test('Windows menu bar is removed and the right webview is preloaded', () => {
   assert.match(rust, /shell\.hide\(\)/);
   assert.equal(config.build.frontendDist, '../ui');
   assert.deepEqual(config.app.windows, []);
+  assert.match(rust, /url\.scheme\(\) == "tauri" && url\.host_str\(\) == Some\("localhost"\)/);
+  assert.match(rust, /url\.scheme\(\) == "http"/);
+  assert.match(rust, /url\.host_str\(\) == Some\("tauri\.localhost"\)/);
 });
 
 test('startup reveals Jellyfin only after login/home DOM is ready and update checked', () => {

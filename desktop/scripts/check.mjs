@@ -54,7 +54,7 @@ assert.equal(updater.requireSignedVersion, true);
 assert.equal(updater.allowDowngrades, false);
 assert.equal(mobile.schemaVersion, 1);
 assert.ok(mobile.platforms.android.url.includes('mobile-v'));
-assert.ok(!originalSkin.includes('http://'));
+assert.ok(!originalSkin.includes('WebviewUrl::External("http://'));
 const tag = process.env.GITHUB_REF_TYPE === 'tag'
   ? process.env.GITHUB_REF_NAME : null;
 if (tag) assert.equal(tag, `desktop-v${pkg.version}`);

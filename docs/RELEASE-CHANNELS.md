@@ -65,3 +65,27 @@ puis lecteur libmpv/GPU avec autorisation et bascules mesurées.
 
 **Les services actifs Jellyfin, Vynéo Next et G7v sur le N100
 ne doivent pas être modifiés par ces workflows de distribution.**
+
+## Séparation de confiance GitHub Actions (19/10/2026)
+
+Le workflow Vynéo Desktop sépare maintenant les jobs :
+
+- `verify`, `windows_preview` et `macos_preview` :
+  accès GitHub **`contents: read`**, aucun secret de signature,
+  aucune création de release. L'exécution d'une PR ne peut
+  donc pas disposer de la permission de publication.
+- `prepare`, `windows_release`, `macos_release` :
+  uniquement après un tag `desktop-vX.Y.Z`, avec
+  `contents: write` pour publier la release et ses manifestes.
+- Les appels `actions/checkout` désactivent
+  `persist-credentials` pour ne pas laisser le token GitHub
+  en clair dans la configuration Git des builds.
+- Les dépendances critiques sont alignées sur la CI validée :
+  CLI Tauri **2.12.3**, crate Tauri **2.12.4**,
+  plugin Updater **2.14.0**, tauri-build **2.7.3**.
+  Un verrouillage complet des dépendances transitives Rust
+  par `Cargo.lock` reste souhaitable avant une distribution stable.
+
+**Toujours absent :** le secret GitHub Actions de la clé privée
+Desktop. Une PR verte n'entraîne jamais à elle seule une
+publication signée. Le système Android existant reste séparé.

@@ -16,13 +16,15 @@ permissions:
 
 concurrency:
   group: desktop-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -57,15 +59,17 @@ jobs:
               --notes "Bêta Desktop : interface Jellyfin Vynéo d'origine, accès aux recommandations G7y et mise à jour signée à l'ouverture. La lecture MPV/ABR native reste à développer."
           fi
 
-  windows:
-    name: Windows x64 / NSIS
-    needs: [verify, prepare]
-    if: ${{ always() && needs.verify.result == 'success' && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped') }}
+  windows_preview:
+    name: Windows x64 / lecture seule / NSIS
+    needs: verify
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && needs.verify.result == 'success' }}
     runs-on: windows-latest
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -93,6 +97,41 @@ jobs:
         if: github.ref_type != 'tag'
         working-directory: desktop
         run: npm run tauri -- build --bundles nsis
+
+  windows_release:
+    name: Windows x64 / release signée
+    needs: [verify, prepare]
+    if: ${{ startsWith(github.ref, 'refs/tags/desktop-v') && needs.verify.result == 'success' && needs.prepare.result == 'success' }}
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+      - name: Install pinned dependencies
+        working-directory: desktop
+        run: npm ci --no-audit --no-fund
+      - name: Verify and generate Vynéo icons
+        working-directory: desktop
+        run: |
+          npm run check
+          npm run tauri -- icon ../assets/icon.png
+      - name: Verify isolated G6u quality-selection safety policy
+        working-directory: desktop
+        shell: bash
+        run: |
+          rustc --edition=2021 --test src-tauri/src/quality_policy.rs -o ./vyneo-quality-tests.exe
+          ./vyneo-quality-tests.exe
       - name: Build signed Windows updater and NSIS installer
         if: github.ref_type == 'tag'
         working-directory: desktop
@@ -126,10 +165,11 @@ jobs:
           $env:VYNEO_RELEASE_SIG = "$asset.sig"
           node scripts/release-manifest.mjs
 
-  macos:
-    name: macOS / ${{ matrix.platform }}
-    needs: [verify, prepare]
-    if: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/desktop-v')) && needs.verify.result == 'success' && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped') }}
+
+  macos_preview:
+    name: macOS QA / ${{ matrix.platform }}
+    needs: verify
+    if: ${{ github.event_name == 'workflow_dispatch' && needs.verify.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -142,11 +182,13 @@ jobs:
             platform: darwin-x86_64
             suffix: macos-x64
     permissions:
-      contents: write
+      contents: read
     env:
       APPLE_SIGNING_IDENTITY: "-"
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -174,6 +216,53 @@ jobs:
         if: github.ref_type != 'tag'
         working-directory: desktop
         run: npm run tauri -- build --bundles dmg
+
+  macos_release:
+    name: macOS Release / ${{ matrix.platform }}
+    needs: [verify, prepare]
+    if: ${{ startsWith(github.ref, 'refs/tags/desktop-v') && needs.verify.result == 'success' && needs.prepare.result == 'success' }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            platform: darwin-aarch64
+            suffix: macos-arm64
+          - runner: macos-15-intel
+            platform: darwin-x86_64
+            suffix: macos-x64
+    permissions:
+      contents: write
+    env:
+      APPLE_SIGNING_IDENTITY: "-"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+      - name: Install pinned dependencies
+        working-directory: desktop
+        run: npm ci --no-audit --no-fund
+      - name: Verify and generate Vynéo icons
+        working-directory: desktop
+        run: |
+          npm run check
+          npm run tauri -- icon ../assets/icon.png
+      - name: Verify isolated G6u quality-selection safety policy
+        working-directory: desktop
+        shell: bash
+        run: |
+          rustc --edition=2021 --test src-tauri/src/quality_policy.rs -o ./vyneo-quality-tests.exe
+          ./vyneo-quality-tests.exe
       - name: Build signed macOS updater and DMG
         if: github.ref_type == 'tag'
         working-directory: desktop

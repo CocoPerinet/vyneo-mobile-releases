@@ -1,0 +1,243 @@
+import type {MediaItem,MediaType,SessionPublic} from "./types";
+
+export const SERVER_ORIGIN="https://cocojellyfin.duckdns.org:38443";
+const ID=/^[a-f0-9]{32}$/i;
+const TOKEN=/^[a-z0-9._\-]{12,2048}$/i;
+const TYPES=new Set<MediaType>(["Movie","Series","Episode","BoxSet"]);
+const FIELDS="Overview,Genres,CommunityRating,DateCreated,PremiereDate,UserData,ImageTags,BackdropImageTags";
+const obj=(v:unknown):Record<string,unknown>=>
+  v && typeof v==="object" && !Array.isArray(v)
+    ?v as Record<string,unknown>:{};
+const string=(v:unknown,max=500):string=>
+  typeof v==="string"?v.slice(0,max):"";
+const validId=(v:unknown):v is string=>
+  typeof v==="string" && ID.test(v);
+
+export function normalizeItem(v:unknown):MediaItem|null {
+  const row=obj(v),id=row.Id,type=row.Type;
+  if(!validId(id) || !TYPES.has(type as MediaType) ||
+     typeof row.Name!=="string" || !row.Name.trim())return null;
+  const ud=obj(row.UserData),imageTags=obj(row.ImageTags);
+  const duration=typeof row.RunTimeTicks==="number"?row.RunTimeTicks:0;
+  const position=typeof ud.PlaybackPositionTicks==="number"
+    ?ud.PlaybackPositionTicks:0;
+  const score=typeof row.CommunityRating==="number" &&
+    row.CommunityRating>=0 && row.CommunityRating<=10
+    ?row.CommunityRating:null;
+  return {
+    id,title:string(row.Name,180),type:type as MediaType,
+    year:typeof row.ProductionYear==="number" &&
+      row.ProductionYear>1880 && row.ProductionYear<2200
+      ?Math.floor(row.ProductionYear):null,
+    overview:string(row.Overview,1600),
+    genres:Array.isArray(row.Genres)
+      ?row.Genres.filter((g):g is string=>typeof g==="string")
+        .slice(0,12).map(g=>g.slice(0,70)):[],
+    communityRating:score,
+    isFavorite:ud.IsFavorite===true,
+    played:ud.Played===true,
+    progress:duration>0 && position>0
+      ?Math.max(0,Math.min(100,Math.round(position/duration*100))):null,
+    premiereDate:string(row.PremiereDate || row.DateCreated,32),
+    hasPrimary:typeof imageTags.Primary==="string",
+    hasBackdrop:Array.isArray(row.BackdropImageTags) &&
+      row.BackdropImageTags.length>0,
+    seriesName:string(row.SeriesName,120)
+  };
+}
+export function parseItems(payload:unknown,limit:number):MediaItem[]{
+  const data=obj(payload);
+  if(!Array.isArray(data.Items))throw new Error("CATALOG_INVALID");
+  const seen=new Set<string>(),items:MediaItem[]=[];
+  for(const row of data.Items.slice(0,Math.min(limit,200))){
+    const item=normalizeItem(row);
+    if(item && !seen.has(item.id)){seen.add(item.id);items.push(item);}
+  }
+  return items;
+}
+function identityHeaders(token:string|null,deviceId:string):
+    Record<string,string>{
+  const auth='MediaBrowser Client="Vyneo", Device="Vyneo Desktop", '+
+    'DeviceId="'+deviceId+'", Version="0.2.0"';
+  return {
+    Accept:"application/json",
+    Authorization:token?auth+', Token="'+token+'"':auth
+  };
+}
+export interface ApiOptions{
+  fetcher?:typeof fetch;
+  deviceId?:string;
+  origin?:string;
+}
+export class JellyfinApi {
+  private token:string|null=null;
+  private userId:string|null=null;
+  private username:string|null=null;
+  private readonly fetcher:typeof fetch;
+  private readonly deviceId:string;
+  private readonly origin:string;
+  constructor(opts:ApiOptions={}){
+    // Never connect to an arbitrary host (or copy auth tokens into a URL).
+    if(opts.origin && opts.origin!==SERVER_ORIGIN)
+      throw new Error("SERVER_ORIGIN_DENIED");
+    this.origin=SERVER_ORIGIN;
+    this.fetcher=opts.fetcher??fetch.bind(globalThis);
+    const deviceId=opts.deviceId??"vyneo-desktop-local";
+    if(!/^[a-z0-9-]{5,80}$/i.test(deviceId))
+      throw new Error("DEVICE_ID_INVALID");
+    this.deviceId=deviceId;
+  }
+  get session():SessionPublic|null {
+    return this.userId && this.username
+      ?{userId:this.userId,username:this.username}:null;
+  }
+  logout(){
+    this.token=null;this.userId=null;this.username=null;
+  }
+  private async json(path:string,options:{
+    method?:"GET"|"POST";
+    body?:unknown;
+    token?:string|null;
+    maxBytes?:number;
+  }={}):Promise<unknown>{
+    if(!path.startsWith("/") || path.startsWith("//"))
+      throw new Error("PATH_DENIED");
+    const url=new URL(path,this.origin);
+    if(url.origin!==this.origin || url.username || url.password ||
+       url.hash)throw new Error("URL_DENIED");
+    const headers=identityHeaders(
+      options.token===undefined?this.token:options.token,
+      this.deviceId
+    );
+    if(options.method==="POST")headers["Content-Type"]="application/json";
+    let response:Response;
+    try{
+      response=await this.fetcher(url,{
+        method:options.method??"GET",headers,mode:"cors",
+        credentials:"omit",cache:"no-store",redirect:"error",
+        referrerPolicy:"no-referrer",
+        signal:AbortSignal.timeout(12000),
+        ...(options.method==="POST"?{body:JSON.stringify(options.body)}:{})
+      });
+    }catch{throw new Error("NETWORK_UNAVAILABLE");}
+    if(!response.ok || response.redirected ||
+       !(response.headers.get("Content-Type")??"")
+         .toLowerCase().startsWith("application/json"))
+      throw new Error(response.status===401?"SESSION_EXPIRED":"REQUEST_DENIED");
+    const maxBytes=options.maxBytes??786432;
+    const length=response.headers.get("Content-Length");
+    if(length && Number(length)>maxBytes)throw new Error("RESPONSE_TOO_LARGE");
+    const raw=await response.text();
+    if(raw.length>maxBytes)throw new Error("RESPONSE_TOO_LARGE");
+    try{return JSON.parse(raw);}catch{throw new Error("RESPONSE_INVALID");}
+  }
+  private requireUser():string{
+    if(!this.token || !this.userId)throw new Error("AUTH_REQUIRED");
+    return this.userId;
+  }
+  async login(username:string,password:string):Promise<SessionPublic>{
+    this.logout();
+    if(typeof username!=="string" || username.trim().length<1 ||
+       username.length>96 || typeof password!=="string" ||
+       password.length<1 || password.length>256)
+      throw new Error("LOGIN_INVALID");
+    const payload=obj(await this.json("/Users/AuthenticateByName",{
+      method:"POST",body:{Username:username.trim(),Pw:password},
+      token:null,maxBytes:98304
+    }));
+    const user=obj(payload.User);
+    if(!validId(user.Id) || typeof payload.AccessToken!=="string" ||
+       !TOKEN.test(payload.AccessToken))
+      throw new Error("LOGIN_INVALID");
+    const accessToken=payload.AccessToken;
+    // The self endpoint validates the authenticated identity independently.
+    const me=obj(await this.json("/Users/Me",{
+      token:accessToken,maxBytes:98304
+    }));
+    if(me.Id!==user.Id || obj(me.Policy).IsDisabled===true)
+      throw new Error("LOGIN_INVALID");
+    this.userId=user.Id;this.token=accessToken;
+    this.username=string(me.Name,96)||username.trim();
+    return this.session!;
+  }
+  private async items(path:string,limit:number):Promise<MediaItem[]>{
+    this.requireUser();
+    return parseItems(await this.json(path,{maxBytes:1048576}),limit);
+  }
+  private userItems(params:Record<string,string|number>):string{
+    const uid=this.requireUser();
+    return "/Users/"+uid+"/Items?"+new URLSearchParams({
+      Recursive:"true",EnableUserData:"true",Fields:FIELDS,
+      StartIndex:"0",...Object.fromEntries(
+        Object.entries(params).map(([k,v])=>[k,String(v)])
+      )
+    });
+  }
+  async getRecent():Promise<MediaItem[]>{
+    return this.items(this.userItems({
+      IncludeItemTypes:"Movie,Series",SortBy:"DateCreated",
+      SortOrder:"Descending",Limit:96
+    }),96);
+  }
+  async getResume():Promise<MediaItem[]>{
+    const uid=this.requireUser();
+    return this.items("/UserItems/Resume?"+new URLSearchParams({
+      userId:uid,StartIndex:"0",Limit:"24",
+      IncludeItemTypes:"Movie,Episode",EnableUserData:"true"
+    }),24);
+  }
+  async getNextUp():Promise<MediaItem[]>{
+    const uid=this.requireUser();
+    return this.items("/Shows/NextUp?"+new URLSearchParams({
+      userId:uid,StartIndex:"0",Limit:"24",
+      Fields:"DateCreated,PremiereDate"
+    }),24);
+  }
+  async getFavorites():Promise<MediaItem[]>{
+    return this.items(this.userItems({
+      IncludeItemTypes:"Movie,Series",Filters:"IsFavorite",
+      SortBy:"DateCreated",SortOrder:"Descending",Limit:40
+    }),40);
+  }
+  async getWatched():Promise<MediaItem[]>{
+    return this.items(this.userItems({
+      IncludeItemTypes:"Movie,Series",Filters:"IsPlayed",
+      SortBy:"DatePlayed",SortOrder:"Descending",Limit:96
+    }),96);
+  }
+  async getCollections():Promise<MediaItem[]>{
+    return this.items(this.userItems({
+      IncludeItemTypes:"BoxSet",SortBy:"SortName",
+      SortOrder:"Ascending",Limit:48
+    }),48);
+  }
+  async search(text:string):Promise<MediaItem[]>{
+    const query=text.trim().slice(0,90);
+    if(query.length<2)return [];
+    return this.items(this.userItems({
+      IncludeItemTypes:"Movie,Series",
+      SearchTerm:query,SortBy:"SortName",Limit:40
+    }),40);
+  }
+  async image(item:MediaItem,kind:"Primary"|"Backdrop"):Promise<Blob|null>{
+    this.requireUser();
+    if(!validId(item.id) || (kind==="Primary" && !item.hasPrimary) ||
+       (kind==="Backdrop" && !item.hasBackdrop))return null;
+    const path="/Items/"+item.id+"/Images/"+kind+
+      (kind==="Backdrop"?"/0?maxWidth=1280&quality=70":"?maxHeight=560&quality=72");
+    const response=await this.fetcher(new URL(path,this.origin),{
+      method:"GET",headers:identityHeaders(this.token,this.deviceId),
+      mode:"cors",credentials:"omit",cache:"no-store",redirect:"error",
+      referrerPolicy:"no-referrer",signal:AbortSignal.timeout(10000)
+    });
+    const mime=(response.headers.get("Content-Type")??"").split(";")[0].trim().toLowerCase();
+    if(!response.ok || response.redirected ||
+       !["image/jpeg","image/png","image/webp"].includes(mime))
+      return null;
+    const max=1_572_864;
+    const length=response.headers.get("Content-Length");
+    if(length && Number(length)>max)return null;
+    const blob=await response.blob();
+    return blob.size>0 && blob.size<=max?blob:null;
+  }
+}

@@ -1,14 +1,26 @@
 {
   "name": "vyneo-desktop",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": true,
-  "description": "Vynéo Desktop Tauri shell (Windows/macOS)",
+  "description": "Vynéo Desktop : independent Svelte media client",
   "scripts": {
     "tauri": "tauri",
-    "check": "node scripts/check.mjs",
-    "test": "node --test tests/*.test.mjs"
+    "dev:ui": "vite --config frontend/vite.config.ts",
+    "build:ui": "vite build --config frontend/vite.config.ts",
+    "typecheck:ui": "svelte-check --tsconfig frontend/tsconfig.json",
+    "check": "node scripts/check.mjs && npm run typecheck:ui && npm run build:ui",
+    "test": "node --test tests/*.test.mjs && npm run test:ui",
+    "test:ui": "vitest run --config frontend/vite.config.ts"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.12.3"
-  }
+    "@tauri-apps/cli": "2.12.3",
+    "@sveltejs/vite-plugin-svelte": "7.3.0",
+    "@types/node": "22.20.1",
+    "svelte": "5.57.0",
+    "svelte-check": "4.4.5",
+    "typescript": "6.0.3",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  },
+  "type": "module"
 }

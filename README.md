@@ -30,9 +30,12 @@ Le code source et les secrets de signature ne sont pas stockés dans ce dépôt.
 ## Windows et macOS : Vynéo Desktop (en préparation)
 
 Le projet natif Tauri se trouve dans [`desktop/`](desktop/).
-L'application démarrera avec notre **véritable interface Jellyfin
-personnalisée** et disposera d'une fenêtre de découverte G7y/LLM,
-accessible depuis le menu.
+**Changement d'architecture :** Vynéo 0.2.0 possède maintenant son
+**propre frontend Svelte local**, inspiré visuellement de notre Jellyfin
+personnalisé. Jellyfin sert uniquement les médias et leurs métadonnées
+via son API. Plus de chargement de Jellyfin Web ni de fenêtre IA annexe
+comme fondement de l'interface. Les moteurs G7y/LLM restent à raccorder
+à une API native authentifiée avant une publication utilisable.
 
 Les releases `desktop-vX.Y.Z` doivent contenir les installateurs
 Windows et macOS accompagnés de **signatures vérifiées**. Le client

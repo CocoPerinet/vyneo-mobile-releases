@@ -70,6 +70,7 @@ export interface ApiOptions{
   origin?:string;
 }
 export class JellyfinApi {
+  private authGeneration=0;
   private token:string|null=null;
   private userId:string|null=null;
   private username:string|null=null;
@@ -92,6 +93,7 @@ export class JellyfinApi {
       ?{userId:this.userId,username:this.username}:null;
   }
   logout(){
+    this.authGeneration++;
     this.token=null;this.userId=null;this.username=null;
   }
   private async json(path:string,options:{
@@ -137,6 +139,7 @@ export class JellyfinApi {
   }
   async login(username:string,password:string):Promise<SessionPublic>{
     this.logout();
+    const generation=this.authGeneration;
     if(typeof username!=="string" || username.trim().length<1 ||
        username.length>96 || typeof password!=="string" ||
        password.length<1 || password.length>256)
@@ -145,6 +148,7 @@ export class JellyfinApi {
       method:"POST",body:{Username:username.trim(),Pw:password},
       token:null,maxBytes:98304
     }));
+    if(generation!==this.authGeneration)throw new Error("LOGIN_CANCELLED");
     const user=obj(payload.User);
     if(!validId(user.Id) || typeof payload.AccessToken!=="string" ||
        !TOKEN.test(payload.AccessToken))
@@ -154,6 +158,7 @@ export class JellyfinApi {
     const me=obj(await this.json("/Users/Me",{
       token:accessToken,maxBytes:98304
     }));
+    if(generation!==this.authGeneration)throw new Error("LOGIN_CANCELLED");
     if(me.Id!==user.Id || obj(me.Policy).IsDisabled===true)
       throw new Error("LOGIN_INVALID");
     this.userId=user.Id;this.token=accessToken;

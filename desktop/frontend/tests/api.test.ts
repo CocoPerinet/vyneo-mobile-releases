@@ -49,6 +49,23 @@ describe("Jellyfin native metadata client",()=>{
     expect(api.session).toBeNull();
     await expect(api.getResume()).rejects.toThrow("AUTH_REQUIRED");
   });
+  it("cannot restore a logged-out session after a late identity reply",async()=>{
+    let finish:((response:Response)=>void)|undefined;
+    const {fetcher}=fixture();
+    const delayed=vi.fn((url:RequestInfo|URL,opts?:RequestInit)=>{
+      if(new URL(String(url)).pathname==="/Users/Me")
+        return new Promise<Response>(resolve=>{finish=resolve;});
+      return fetcher(url,opts);
+    }) as typeof fetch;
+    const api=new JellyfinApi({fetcher:delayed});
+    const pending=api.login("Alice","secret");
+    await vi.waitFor(()=>expect(finish).toBeTypeOf("function"));
+    api.logout();
+    finish!(respond({Id:USER,Name:"Alice"}));
+    await expect(pending).rejects.toThrow("LOGIN_CANCELLED");
+    expect(api.session).toBeNull();
+    await expect(api.getRecent()).rejects.toThrow("AUTH_REQUIRED");
+  });
   it("does not accept forged user ids from the login reply",async()=>{
     const {fetcher}=fixture();
     const forged=vi.fn(async (url:RequestInfo|URL,opts?:RequestInit)=>{

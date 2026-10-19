@@ -22,8 +22,15 @@ le Jellyfin de production.
 **Limitations :** G7y apparaît actuellement dans une fenêtre
 distincte, pas dans les rayons de l'accueil Jellyfin. La fusion
 visuelle nécessite un adaptateur serveur sécurisé et des tests.
-Le changement automatique de qualité G6u est un laboratoire
-sur médias synthétiques. MPV natif, commutation réelle des qualités,
+Le changement automatique de qualité G6u a désormais un
+**moteur de décision Rust indépendant et testable**
+(`src-tauri/src/quality_policy.rs`). Il conserve la priorité
+aux choix manuels, l'anti-oscillation, le changement d'une
+qualité à la fois, les profils du même master alignés, et le
+refus de deux transitions consécutives non confirmées.
+Il ne reçoit **aucun flux réel** et ne change aucun décodeur :
+le lecteur actuel n'est pas connecté à cette politique.
+MPV natif, commutation effective des qualités,
 HDR natif, audio passthrough et TV/manette restent **non intégrés**.
 Ne pas assimiler une fenêtre Tauri à ces fonctionnalités.
 

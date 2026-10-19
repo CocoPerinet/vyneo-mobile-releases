@@ -53,9 +53,13 @@ via Cloudflare Access, avec session distincte. Cela rend les
 recommandations disponibles dans Vynéo, mais pas encore
 incrustées dans l'accueil Jellyfin.
 
-Le changement automatique de qualité G6u repose encore sur des
-fichiers HLS de laboratoire : il n'est ni activé, ni présenté
-comme un flux 1080p/4K réel. Prochaines étapes : preuve
+La **politique de bascule G6u** est portée comme module Rust
+pur, testable indépendamment des flux, avec délai de sécurité,
+preuves de même master aligné, trois observations avant montée,
+priorité au mode manuel et arrêt après deux candidatures refusées.
+Elle n'est **pas reliée au lecteur réel**. Le G6u original
+repose encore sur des fichiers HLS de laboratoire : ni lecture
+adaptative réelle 1080p/4K ni preuve de bascule en production. Prochaines étapes : preuve
 de session réelle, adaptation du moteur de rayons vers Jellyfin,
 puis lecteur libmpv/GPU avec autorisation et bascules mesurées.
 

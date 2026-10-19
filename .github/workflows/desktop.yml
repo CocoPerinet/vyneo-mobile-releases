@@ -83,6 +83,12 @@ jobs:
         run: |
           npm run check
           npm run tauri -- icon ../assets/icon.png
+      - name: Verify isolated G6u quality-selection safety policy
+        working-directory: desktop
+        shell: bash
+        run: |
+          rustc --edition=2021 --test src-tauri/src/quality_policy.rs -o ./vyneo-quality-tests.exe
+          ./vyneo-quality-tests.exe
       - name: Build unsigned PR or manual Windows installer
         if: github.ref_type != 'tag'
         working-directory: desktop
@@ -158,6 +164,12 @@ jobs:
         run: |
           npm run check
           npm run tauri -- icon ../assets/icon.png
+      - name: Verify isolated G6u quality-selection safety policy
+        working-directory: desktop
+        shell: bash
+        run: |
+          rustc --edition=2021 --test src-tauri/src/quality_policy.rs -o ./vyneo-quality-tests.exe
+          ./vyneo-quality-tests.exe
       - name: Build unsigned manual macOS DMG
         if: github.ref_type != 'tag'
         working-directory: desktop

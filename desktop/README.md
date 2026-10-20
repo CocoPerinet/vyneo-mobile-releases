@@ -1,93 +1,76 @@
-# Vynéo Desktop 0.1.2 (alpha, en validation)
+# Vynéo Desktop — interface indépendante (0.2.0)
 
-Le client conserve **l'interface Jellyfin personnalisée d'origine** depuis
-`https://cocojellyfin.duckdns.org:38443/web/index.html`. Les sections,
-le classement, les univers et « Pour vous » issus de Jellyfin utilisent le
-**cache existant par utilisateur** de `vyneo/inject.js` (localStorage,
-IndexedDB et mémoire de la WebView2). Aucune copie non chiffrée de
-l'historique ou du catalogue personnel n'est créée par Tauri.
+**Version stable 0.2.0 publiée le 20 octobre 2026.** Le client natif reste fonctionnellement incomplet : lecteur MPV et G7y/Qwen3 non raccordés. [Release signée](https://github.com/CocoPerinet/vyneo-mobile-releases/releases/tag/desktop-v0.2.0).
 
-## Fenêtre native et démarrage
+Vynéo Desktop charge notre frontend Svelte/TypeScript compilé localement
+dans Tauri. Il n'exécute plus le client Web Jellyfin. Jellyfin sur le
+N100 fournit seulement ses API médias, comptes et métadonnées.
 
-- Plus de menu Windows « Bibliothèque Jellyfin / Découvrir avec l'IA » au-dessus
-  du site. Un lien « ✦ Découvrir avec l'IA » discret est inséré **dans** le
-  frontend Jellyfin après connexion, en dehors de la lecture. Il ouvre la
-  fenêtre distincte G7y/Top 10 sous Cloudflare Access, sans divulguer
-  la session Jellyfin.
-- Tauri fournit un unique cadre Windows/macOS avec deux WebViews internes.
-  Une **coquille locale** sans réseau, CSS/HTML empaquetés dans l'application,
-  apparaît immédiatement. La véritable WebView Jellyfin démarre en parallèle
-  mais reste invisible tant que le document de connexion ou d'accueil
-  n'est pas prêt **et** que l'updater n'a pas terminé sa vérification.
-  Le changement se fait à l'intérieur du même cadre : aucun spinner ou
-  écran blanc du chargement réseau n'est montré à l'utilisateur.
-- En fermant Vynéo par la croix, l'application est masquée dans la zone de
-  notification et sa WebView **reste entièrement en mémoire**, DOM et
-  défilement compris. Une nouvelle ouverture du raccourci Vynéo réactive
-  cette fenêtre via le plugin Tauri single-instance, sans recharger Jellyfin.
-  La lecture HTML5 est mise en pause lorsque la fenêtre est masquée.
-  Menu de l'icône : **Ouvrir Vynéo / Découvrir avec l'IA / Quitter complètement**.
-- Une sortie explicite ou un redémarrage Windows termine la session mémoire.
-  Au prochain démarrage à froid, l'utilisateur voit l'habillage local sécurisé,
-  puis Jellyfin exploite son cache disque WebView2/IndexedDB existant.
-  Aucun programme ne peut garantir un *catalogue fonctionnel en ligne*
-  immédiatement sans réseau ni authentification. La coquille locale
-  n'affiche donc pas de titres personnels avant validation du compte.
-- Hors ligne, la coquille conserve un accès à une tentative de reconnexion.
-  Elle ne remplace jamais un échec réseau par une page WebView2 blanche.
+## Fonctions implémentées
 
-## Authentification et isolation
+- Navigation propre à Vynéo : Accueil, Films, Séries, Animés, Ma liste et Univers.
+- Authentification directe par l'API HTTPS Jellyfin, identité revérifiée.
+- Catalogue, recherche, favoris, reprises, épisodes à suivre et collections.
+- Hero cinématique, sections 16:9, fiches, Top 10 des œuvres les mieux
+  notées et jusqu’à dix rayons éditoriaux quotidiens fondés sur 45 recettes
+  documentées. Ces rayons exploitent au maximum les 96 titres récents
+  récupérés, et non l’intégralité du catalogue Jellyfin.
+- Première version locale de Pour vous, basée sur les genres vus/favoris.
+  Jusqu'à 512 métadonnées Jellyfin non visionnées sont explorées par
+  quatre requêtes maximum, dont les archives facultatives bornées à 1,5 s.
+  Ce n'est PAS encore le moteur LLM G7y.
+- Affiches obtenues avec un en-tête Authorization. Aucun jeton dans leur
+  URL. Cache mémoire de 76 images maximum, trois requêtes simultanées.
+- Fenêtre sans barre native, réouverture à chaud en zone de notification,
+  signature d'updates et installateurs Windows/Mac conservés.
 
-La WebView Jellyfin conserve le profil WebView2 existant, propre à
-l'identifiant `fr.visyren.vyneo.desktop`. L'application ne lit,
-n'exporte ni ne réutilise directement ses cookies/JWT, ne copie pas le
-mot de passe, et ne transforme pas une page publique en contenu privé.
-La reconnexion n'est automatique que si la session Jellyfin sauvegardée
-par Jellyfin reste valide.
+## Code source
 
-Un script Rust-owned injecte le bouton IA seulement si l'origine de
-la page est exactement
-`https://cocojellyfin.duckdns.org:38443`. Les navigations vers
-G7y déclenchent l'ouverture de la **fenêtre séparée** :
-`https://vyneo-preview.visyren.fr/app/secure.html`. L'authentification
-Cloudflare Access se déroule normalement, sans bypass ni token transféré.
+- frontend/src/App.svelte : frontend visuel Vynéo local.
+- frontend/src/api.ts : API Jellyfin sécurisée et lecture de métadonnées.
+- frontend/src/discover.ts : rayons locaux déterministes et leur rotation.
+- frontend/src/candidate-pages.ts : échantillonnage hebdomadaire de 512 candidats maximum.
+- frontend/src/g7y-contract.ts : validation des métadonnées G7y (pont non connecté).
+- frontend/src/artwork.ts : images en Blob et cache mémoire borné.
+- src-tauri/src/main.rs : cadre Tauri local et updater signé.
+- ui/ : ancien écran d'attente, conservé pour rollback, NON exécuté.
 
-La configuration Tauri conserve `withGlobalTauri:false` et
-`capabilities:[]`. Les pages externes n'ont aucun droit IPC Tauri.
-Le bootstrap local utilise une CSP restrictive (pas de JavaScript
-local, pas de réseau/fetch, pas d'iframe).
+La source visuelle de référence est le Jellyfin personnalisé sur N100,
+notamment ses anciens skin.css et inject.js. Aucun de ces fichiers n'est
+importé comme script ou stylesheet par le nouveau frontend.
 
-## Mises à jour
+## Limites de cette alpha
 
-L'updater Rust garde les signatures minisign et son contrôle
-`requireSignedVersion`, avec refus des downgrades. Au premier
-démarrage, l'interface locale s'affiche **pendant** le contrôle
-(timeout 3 s), puis pendant un éventuel téléchargement vérifié
-(timeout 30 s). L'utilisateur ne commence pas la lecture avant
-qu'une installation de nouvelle version ait été traitée.
+Les sessions sont en mémoire : fermeture par la croix = conservation du
+DOM et du compte dans le tray ; Quitter complètement ou redémarrer
+nécessite pour l'instant une nouvelle connexion. Aucune donnée personnelle
+n'est montrée avant authentification à un nouveau lancement.
 
-Les fichiers Windows et macOS sont publiés séparément sous les tags
-`desktop-vX.Y.Z`, avec manifestes propres à chaque système.
-Android 0.3.4, `update-manifest.json`, Jellyfin sur le N100 et G7y
-ne sont pas modifiés par cette refonte Desktop.
+L'intégration LLM G7y requiert encore un contrat natif sécurisé pour
+associer le compte Jellyfin et les droits à la réponse du serveur
+protégé par Cloudflare Access. La fenêtre IA distincte n'est plus le
+design visé. Ne pas contourner Cloudflare, exporter des cookies ou
+ouvrir le BFF privé sans authentification. Décision et prérequis détaillés :
+`../docs/NATIVE-G7Y-ACCESS-BRIDGE.md`.
 
-Les builds GitHub sont nécessaires pour valider Tauri Windows/macOS,
-le multiwebview, single-instance et la zone de notification. **Aucune
-release 0.1.2 n'est annoncée utilisable sans compilation CI verte et
-vérification interactive de la page et du comportement de fermeture.**
+Le lecteur MPV/GPU, HDR et autoqualité réelle G6u ne sont pas encore
+connectés à des flux autorisés. Les fiches le signalent.
 
-## Fonctions non encore livrées
+## Validation et publication
 
-- Fusion DOM des sections G7y/LLM directement dans l'accueil Jellyfin.
-  Le bouton IA ouvre toujours une seconde fenêtre sécurisée.
-- Lecteur libmpv/CEF, HDR matériel et qualité automatique réelle.
-  Les politiques G6u Rust sont isolées et testées sans flux vidéo réel.
-- Mode bibliothèque totalement hors ligne : ce n'est pas un cache
-  réutilisable sans contrôle des droits des comptes.
-- Une capture fidèle de la dernière page après **extinction complète** de
-  l'application. Seule la fenêtre maintenue en mémoire dans la zone de
-  notification conserve réellement l'écran précédent et son état interactif.
+Depuis desktop/, exécuter :
+    npm ci
+    npm run check
+    npm test
 
-Depuis `desktop/`, exécuter `npm ci && npm run check && npm test`
-pour les validations de configuration/JS. Les compilations natives sont
-faites par la CI GitHub Windows/macOS.
+Le premier valide l'architecture, TypeScript/Svelte et le build Vite.
+Le second teste l'API en mémoire et les manifestes/updaters existants.
+
+Le tag stable `desktop-v0.2.0` a été construit et signé en CI.
+L'updater Windows public annonce désormais 0.2.0, ce qui permet aux
+clients 0.1.1/0.1.2 de se mettre à jour à leur prochain **démarrage complet**.
+Le 0.1.x effectue encore une installation silencieuse ; à partir de
+la 0.2.0, les mises à jour suivantes demandent confirmation Oui/Non.
+La compatibilité 0.1.2 → 0.2.0 a été vérifiée sur les identifiants,
+la clé publique et les endpoints ; le résultat d'installation réelle
+sur le PC utilisateur reste à confirmer. Android 0.3.4 est inchangé.

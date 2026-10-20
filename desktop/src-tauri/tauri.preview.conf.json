@@ -1,0 +1,15 @@
+{
+  "productName": "Vynéo Preview",
+  "version": "0.2.0-beta.1",
+  "identifier": "fr.visyren.vyneo.desktop.preview",
+  "bundle": {
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://raw.githubusercontent.com/CocoPerinet/vyneo-mobile-releases/main/desktop-preview-{{target}}-{{arch}}.json"
+      ]
+    }
+  }
+}

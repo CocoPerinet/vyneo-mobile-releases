@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { resolve, dirname } from 'node:path';
 
 const base = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const workflow = readFileSync(resolve(base, '.github/workflows/desktop.yml'), 'utf8');
+const workflow = readFileSync(resolve(base, '.github/workflows/desktop.yml'), 'utf8')
+  .replace(/\r\n/g, '\n');
 const releaseConfig = JSON.parse(readFileSync(
   resolve(base, 'desktop/src-tauri/tauri.release.conf.json'), 'utf8'));
 
@@ -37,4 +38,14 @@ test('PR preview cannot sign or publish and release jobs use tags only', () => {
 test('all github release CLI invocations receive an explicit repository', () => {
   assert.match(workflow, /env:\n  GH_REPO: CocoPerinet\/vyneo-mobile-releases/);
   assert.match(workflow, /prepare:[\s\S]*?gh release create/);
+});
+
+test('desktop stable release must not be a prerelease or displace Android Latest', () => {
+  const prepare = workflow.split('  prepare:\n')[1]
+    .split('  windows_preview:\n')[0];
+  assert.match(prepare, /--verify-tag --latest=false/);
+  assert.doesNotMatch(prepare, /--prerelease/);
+  assert.match(prepare, /--json isPrerelease --jq \.isPrerelease/);
+  assert.match(prepare, /test "\$\(gh release view/);
+  assert.match(prepare, /G7y\/Qwen3 natifs non encore activés/);
 });

@@ -1,0 +1,130 @@
+name: Vynéo Desktop Preview - canal bêta signé
+
+on:
+  push:
+    tags:
+      - "desktop-preview-v*"
+
+permissions:
+  contents: read
+
+env:
+  GH_REPO: CocoPerinet/vyneo-mobile-releases
+
+concurrency:
+  group: desktop-preview-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Vérifier la préversion et les frontières stable/bêta
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/desktop-preview-v')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Verify exact Preview tag, installer identity and manifest
+        working-directory: desktop
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run check
+          npm test
+      - name: Ensure Preview publisher never writes stable manifest
+        working-directory: desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "desktop-preview-" scripts/preview-manifest.mjs
+          ! grep -q "desktop-windows-x86_64.json" scripts/preview-manifest.mjs
+
+  prepare:
+    name: Créer uniquement une prerelease Preview
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Prepare opt-in Preview release, not stable
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" \
+              --verify-tag --prerelease \
+              --title "Vynéo Preview ${GITHUB_REF_NAME#desktop-preview-v}" \
+              --notes "Canal bêta opt-in, isolé du Desktop stable. Aucun lecteur MPV ni G7y natif certifié."
+          fi
+          test "$(gh release view "$GITHUB_REF_NAME" --json isPrerelease --jq .isPrerelease)" = true
+
+  windows:
+    name: Windows x64 Preview signée, canal isolé
+    needs: [verify, prepare]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+      - name: Install pinned dependencies
+        working-directory: desktop
+        run: npm ci --no-audit --no-fund
+      - name: Verify isolated Preview build
+        working-directory: desktop
+        run: |
+          npm run check
+          npm run tauri -- icon ../assets/icon.png
+      - name: Build Preview NSIS updater with the existing verified signing key
+        working-directory: desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            throw "Preview signing key missing: abort before publishing"
+          }
+          npm run tauri -- build --bundles nsis --config src-tauri/tauri.preview.conf.json --config src-tauri/tauri.release.conf.json
+      - name: Publish only signed Preview assets and Preview manifest
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.preview.conf.json | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "desktop-preview-v$version") {
+            throw "Preview tag does not match signed package"
+          }
+          $source = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "*setup.exe" |
+            Where-Object { $_.Name -match 'Preview' } | Select-Object -First 1
+          if ($null -eq $source -or !(Test-Path "$($source.FullName).sig")) {
+            throw "Signed Preview NSIS package not found"
+          }
+          $asset = "Vyneo-Desktop-Preview-$version-windows-x64.exe"
+          Copy-Item $source.FullName $asset
+          Copy-Item "$($source.FullName).sig" "$asset.sig"
+          gh release upload "$env:GITHUB_REF_NAME" "$asset" "$asset.sig" --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Preview upload failed" }
+          $env:VYNEO_RELEASE_PLATFORM = "windows-x86_64"
+          $env:VYNEO_RELEASE_ASSET = $asset
+          $env:VYNEO_RELEASE_SIG = "$asset.sig"
+          node scripts/preview-manifest.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Preview manifest publication denied" }
+

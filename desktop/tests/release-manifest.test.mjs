@@ -12,6 +12,10 @@ import { fileURLToPath } from 'node:url';
 const publisher = resolve(dirname(fileURLToPath(import.meta.url)),
   '../scripts/release-manifest.mjs');
 const repo = 'CocoPerinet/vyneo-mobile-releases';
+// The fake 'gh' binary below is a POSIX shebang script. GitHub's
+// manifest publisher runs on ubuntu-latest; Windows runs pure manifest
+// contract tests but cannot execute this POSIX-only integration stub.
+const linuxPublisherTest = process.platform === 'win32' ? test.skip : test;
 
 function attemptPublish(overrides = {}) {
   const root = mkdtempSync(join(tmpdir(), 'vyneo-desktop-publish-test-'));
@@ -71,7 +75,7 @@ function attemptPublish(overrides = {}) {
   return { run, put };
 }
 
-test('signed desktop release only publishes platform manifest, not Mobile', () => {
+linuxPublisherTest('signed desktop release only publishes platform manifest, not Mobile', () => {
   const { run, put } = attemptPublish();
   assert.equal(run.status, 0, run.stderr);
   assert.ok(put);
@@ -83,7 +87,7 @@ test('signed desktop release only publishes platform manifest, not Mobile', () =
   assert.ok(body.platforms['windows-x86_64'].url.endsWith('.exe'));
 });
 
-test('old tagged release cannot downgrade an installed client', () => {
+linuxPublisherTest('old tagged release cannot downgrade an installed client', () => {
   const old = {
     type: 'file', sha: 'sample-sha',
     content: Buffer.from(JSON.stringify({ version: '0.1.2' }))
@@ -97,7 +101,7 @@ test('old tagged release cannot downgrade an installed client', () => {
   assert.equal(put, null);
 });
 
-test('publisher refuses an artifact signed for a different app version', () => {
+linuxPublisherTest('publisher refuses an artifact signed for a different app version', () => {
   const { run, put } = attemptPublish({
     TEST_SIGNED_VERSION: '0.1.2'
   });

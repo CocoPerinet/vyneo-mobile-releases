@@ -6,7 +6,7 @@ export const SERVER_ORIGIN="https://cocojellyfin.duckdns.org:38443";
 const ID=/^[a-f0-9]{32}$/i;
 const TOKEN=/^[a-z0-9._\-]{12,2048}$/i;
 const TYPES=new Set<MediaType>(["Movie","Series","Episode","BoxSet"]);
-const FIELDS="Overview,Genres,CommunityRating,DateCreated,PremiereDate,UserData,ImageTags,BackdropImageTags";
+const FIELDS="Overview,Genres,Tags,Studios,CommunityRating,DateCreated,PremiereDate,UserData,ImageTags,BackdropImageTags";
 const obj=(v:unknown):Record<string,unknown>=>
   v && typeof v==="object" && !Array.isArray(v)
     ?v as Record<string,unknown>:{};
@@ -35,6 +35,8 @@ export function normalizeItem(v:unknown):MediaItem|null {
     genres:Array.isArray(row.Genres)
       ?row.Genres.filter((g):g is string=>typeof g==="string")
         .slice(0,12).map(g=>g.slice(0,70)):[],
+    tags:Array.isArray(row.Tags)?row.Tags.filter((t):t is string=>typeof t==="string").slice(0,15).map(t=>t.slice(0,70)):[],
+    studios:Array.isArray(row.Studios)?row.Studios.map(s=>string(obj(s).Name,70)).filter(Boolean).slice(0,5):[],
     communityRating:score,
     isFavorite:ud.IsFavorite===true,
     played:ud.Played===true,
@@ -208,6 +210,28 @@ export class JellyfinApi {
     this.userId=user.Id;this.token=accessToken;
     this.username=string(me.Name,96)||username.trim();
     return this.session!;
+  }
+  // Restore only after a fresh server-side /Users/Me validation. A
+  // credential from another Jellyfin user can never be treated as logged-in.
+  async restore(saved:{userId:string;accessToken:string}):Promise<SessionPublic>{
+    this.logout();
+    const generation=this.authGeneration;
+    if(!validId(saved.userId) || !TOKEN.test(saved.accessToken))
+      throw new Error("RESTORE_INVALID");
+    const me=obj(await this.json("/Users/Me",{
+      token:saved.accessToken,maxBytes:98304
+    }));
+    if(generation!==this.authGeneration)throw new Error("LOGIN_CANCELLED");
+    if(me.Id!==saved.userId || obj(me.Policy).IsDisabled===true ||
+       typeof me.Name!=="string" || !me.Name.trim())
+      throw new Error("RESTORE_INVALID");
+    this.userId=saved.userId;this.username=string(me.Name,96);
+    this.token=saved.accessToken;
+    return this.session!;
+  }
+  savedCredential():{userId:string;username:string;accessToken:string}|null{
+    return this.userId && this.username && this.token?
+      {userId:this.userId,username:this.username,accessToken:this.token}:null;
   }
   private async items(path:string,limit:number):Promise<MediaItem[]>{
     this.requireUser();

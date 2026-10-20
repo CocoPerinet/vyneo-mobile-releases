@@ -20,10 +20,10 @@
   onclick={()=>onclick(item)}
   aria-label={"Détails : "+item.title}
   title={item.title}>
-  {#if rank>0}
-    <span class="vy-rank" aria-hidden="true">{rank}</span>
-  {/if}
   <span class="vy-card-picture">
+    {#if rank>0}
+      <span class="vy-rank" aria-hidden="true">{rank}</span>
+    {/if}
     {#if hasArtwork(item)}
       <img alt="" decoding="async" loading="lazy"
         use:lazyArtwork={{cache,item,kind:"Backdrop" as const}} />

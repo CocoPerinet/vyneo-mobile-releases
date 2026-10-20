@@ -38,9 +38,20 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
 .vy-search-label input{color:var(--vy-text);border:0;background:transparent;outline:none;width:145px;font-size:13px}
 .vy-search-label input:focus{width:220px}
 .vy-search-label input::placeholder{color:var(--vy-dim)}
-.vy-account{width:34px;height:34px;border:0;border-radius:50%;background:linear-gradient(145deg,#d76535,#a9472d);
+.vy-account{width:37px;height:37px;border:0;border-radius:50%;background:linear-gradient(145deg,#d76535,#a9472d);
   color:white;font-weight:800;box-shadow:0 1px 10px #0006}
-.vy-hero{position:relative;isolation:isolate;min-height:min(77vh,790px);
+.vy-account-wrap{position:relative}
+.vy-account-menu{position:absolute;right:0;top:48px;z-index:75;
+  min-width:250px;max-width:calc(100vw - 20px);padding:16px;
+  border-radius:12px;background:#20242f;box-shadow:0 15px 45px #000c;
+  border:1px solid #ffffff24}
+.vy-account-menu strong{display:block;font-size:14px;overflow-wrap:anywhere}
+.vy-account-menu small{display:block;color:var(--vy-dim);margin:5px 0 13px}
+.vy-account-menu button{width:100%;text-align:left;background:#313747;
+  color:white;border:1px solid #ffffff24;border-radius:8px;
+  padding:10px 13px;font-weight:700}
+.vy-account-menu button:hover{background:#41495d}
+.vy-hero{position:relative;isolation:isolate;min-height:min(70vh,650px);
   display:flex;align-items:center;margin-top:-74px;padding:130px 3.3% 155px;
   overflow:hidden;background:linear-gradient(120deg,#172032,#10131b 68%,#282032)}
 .vy-hero-art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
@@ -83,7 +94,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
 .vy-shelves{position:relative;z-index:5;margin:-116px 0 0;padding-bottom:30px}
 .vy-shelf{content-visibility:auto;contain-intrinsic-size:auto 270px;margin:26px 0 16px}
 .vy-shelf-heading{display:flex;align-items:center;gap:16px;padding:0 3.3%;margin-bottom:11px}
-.vy-shelf-heading h2{margin:0;font-size:21px;font-weight:800;color:#dfe4f0;letter-spacing:-.4px}
+.vy-shelf-heading h2{margin:0;font-size:21px;font-weight:800;color:#edf1fa;letter-spacing:-.4px}
 .vy-shelf-count{font-size:12px;color:var(--vy-dim)}
 .vy-rail{display:flex;gap:13px;padding:5px 3.3% 21px;overflow-x:auto;
   scroll-snap-type:x proximity;scroll-behavior:smooth;overscroll-behavior-x:contain;
@@ -109,15 +120,17 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
   overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .vy-card-caption{display:block;font-size:12px;color:var(--vy-dim);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;margin:0 2px}
-.vy-card-reason{display:block;margin:5px 2px 0;font-size:11px;
-  font-weight:700;color:var(--vy-accent-2);overflow:hidden;
+.vy-card-reason{display:block;margin:7px 2px 0;font-size:12px;
+  font-weight:650;color:#f8ba79;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
-.vy-card-ranking{position:relative;margin-left:25px}
-.vy-rank{position:absolute;z-index:2;left:-42px;bottom:34px;
-  font-size:98px;font-weight:1000;letter-spacing:-8px;line-height:1;
-  -webkit-text-stroke:2px #f5f7fb;color:#0b0e14;
-  text-shadow:4px 4px 9px #000b;pointer-events:none}
-.vy-card-ranking .vy-card-picture{border-radius:6px}
+.vy-card-ranking{position:relative}
+.vy-rank{position:absolute;z-index:3;left:11px;bottom:5px;
+  font-size:clamp(41px,4vw,61px);font-weight:950;letter-spacing:-4px;
+  line-height:1;-webkit-text-stroke:1.5px #fff;color:#0a0c1190;
+  text-shadow:0 3px 12px #000c;pointer-events:none}
+.vy-card-ranking .vy-card-picture{border-radius:9px}
+.vy-card-ranking .vy-card-picture:after{content:"";position:absolute;inset:35% 0 0;
+  pointer-events:none;background:linear-gradient(transparent,#0007)}
 .vy-card-universe .vy-card-picture{background:linear-gradient(150deg,#4d2a24,#2a211d,#16171a)}
 .vy-browser{padding:55px 3.3% 70px;max-width:1900px;margin:0 auto;min-height:80vh}
 .vy-browser-heading{display:flex;gap:10px;align-items:center;justify-content:space-between;
@@ -226,6 +239,10 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
 .vy-login-card input{background:#0c0e13;border:1px solid #353640;border-radius:9px;
   padding:12px 13px;color:white;margin-bottom:20px}
 .vy-login-card input:focus{outline:1px solid var(--vy-accent)}
+.vy-login-card .vy-remember{display:flex;align-items:center;gap:10px;
+  cursor:pointer;color:#cbd3e0;font-size:13px;margin:-5px 0 10px}
+.vy-login-card .vy-remember input{margin:0;width:16px;height:16px;
+  accent-color:var(--vy-accent-2);cursor:pointer}
 .vy-login-card .vy-primary{color:white;background:linear-gradient(120deg,#ec602f,#d74b2b);
   border:0;padding:13px;border-radius:9px;font-weight:800;margin-top:8px}
 .vy-login-card .vy-primary:disabled{opacity:.62;cursor:wait}

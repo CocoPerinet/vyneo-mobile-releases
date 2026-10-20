@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod quality_policy;
+mod credentials;
 
 use std::time::Duration;
 use tauri::{
@@ -56,6 +57,11 @@ async fn check_signed_update(app: tauri::AppHandle) {
 
 fn main() {
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            credentials::save_saved_session,
+            credentials::read_saved_session,
+            credentials::forget_saved_session,
+        ])
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(main) = app.get_webview_window("main") {
                 let _ = main.show();

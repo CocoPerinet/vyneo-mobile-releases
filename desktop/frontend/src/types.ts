@@ -53,6 +53,8 @@ export interface MediaItem {
   year:number|null;
   overview:string;
   genres:string[];
+  tags?:string[];
+  studios?:string[];
   communityRating:number|null;
   isFavorite:boolean;
   played:boolean;

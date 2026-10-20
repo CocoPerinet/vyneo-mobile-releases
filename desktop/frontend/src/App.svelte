@@ -1,5 +1,7 @@
 <script lang="ts">
   import type {LibrarySnapshot,MediaItem,SessionPublic,ViewKey,Shelf,CatalogKind} from "./types";
+  import {onMount} from "svelte";
+  import {nativeVault} from "./credential-vault";
   import {JellyfinApi} from "./api";
   import {ArtworkCache,hasArtwork,lazyArtwork} from "./artwork";
   import {buildShelves,featuredSlides} from "./discover";
@@ -33,6 +35,10 @@
   let loginPassword=$state("");
   let loginBusy=$state(false);
   let loginError=$state("");
+  let vaultNotice=$state("");
+  let rememberMe=$state(true);
+  let restoreBusy=$state(true);
+  let profileOpen=$state(false);
   let session=$state<SessionPublic|null>(null);
   let data=$state<LibrarySnapshot>(empty());
   let catalogs=$state<Record<CatalogKind,CatalogState>>({
@@ -119,7 +125,7 @@
       heroIndex=(heroIndex+step+heroSlides.length)%heroSlides.length;
   }
   function selectTab(next:ViewKey){
-    tab=next;selected=null;searchText="";searchRows=[];
+    tab=next;selected=null;searchText="";searchRows=[];profileOpen=false;
     if(next==="movies" && !catalogs.Movie.loaded)void loadCatalog("Movie");
     if(next==="series" && !catalogs.Series.loaded)void loadCatalog("Series");
     if(next==="anime" && !catalogs.Anime.loaded)void loadCatalog("Anime");
@@ -132,32 +138,55 @@
     }
     window.scrollTo({top:0,behavior:"instant"});
   }
+  function acceptSession(authenticated:SessionPublic){
+    session=authenticated;profileOpen=false;
+    const generation=++epoch;
+    try{
+      const stored=localStorage.getItem("vyneo.tab."+authenticated.userId);
+      if(tabs.some(t=>t.key===stored))tab=stored as ViewKey;
+    }catch{}
+    void refresh(generation);
+    if(tab==="movies")void loadCatalog("Movie");
+    if(tab==="series")void loadCatalog("Series");
+    if(tab==="anime")void loadCatalog("Anime");
+    if(tab==="favorites")for(const entry of favoriteSections)
+      void loadCatalog(entry.kind,true);
+  }
+  async function restoreSaved(){
+    try{
+      const saved=await nativeVault.read();
+      if(!saved)return;
+      const authenticated=await api.restore(saved);
+      acceptSession(authenticated);
+    }catch(error){
+      const code=error instanceof Error?error.message:String(error);
+      if(["SESSION_EXPIRED","RESTORE_INVALID","VAULT_INVALID_SESSION"].includes(code))
+        await nativeVault.clear().catch(()=>{});
+      else if(nativeVault.available)
+        vaultNotice="Connexion automatique indisponible. Reconnectez-vous si nécessaire.";
+    }finally{restoreBusy=false;}
+  }
+  onMount(()=>{void restoreSaved();});
   async function login(event:SubmitEvent){
     event.preventDefault();
-    if(loginBusy)return;
-    loginBusy=true;loginError="";
+    if(loginBusy || restoreBusy)return;
+    loginBusy=true;loginError="";vaultNotice="";
     const password=loginPassword;
     loginPassword="";
     try{
       const authenticated=await api.login(loginName,password);
-      session=authenticated;
-      const generation=++epoch;
-      try{
-        const stored=localStorage.getItem("vyneo.tab."+authenticated.userId);
-        if(tabs.some(t=>t.key===stored))tab=stored as ViewKey;
-      }catch{}
-      void refresh(generation);
-      if(tab==="movies")void loadCatalog("Movie");
-      if(tab==="series")void loadCatalog("Series");
-      if(tab==="anime")void loadCatalog("Anime");
-      if(tab==="favorites")for(const entry of favoriteSections){
-        void loadCatalog(entry.kind,true);
+      const credential=api.savedCredential();
+      if(rememberMe && credential && nativeVault.available){
+        try{await nativeVault.save(credential);}catch{
+          vaultNotice="Connexion réussie, mais la mémorisation sécurisée est indisponible.";
+        }
+      }else if(nativeVault.available){
+        await nativeVault.clear().catch(()=>{});
       }
+      acceptSession(authenticated);
     }catch{
       loginError="Connexion impossible. Vérifiez vos identifiants et le serveur.";
-    }finally{
-      loginBusy=false;
-    }
+    }finally{loginBusy=false;}
   }
   async function refresh(generation=epoch){
     const version=++refreshVersion;
@@ -194,15 +223,20 @@
       // Keep existing shelves on timeout, denial or offline network.
     });
   }
-  function logout(){
-    epoch++;refreshVersion++;
+  async function logout(){
+    epoch++;refreshVersion++;profileOpen=false;
     if(searchTimer!==null)clearTimeout(searchTimer);
     api.logout();artwork.clear();
     session=null;selected=null;tab="home";heroIndex=0;
-    loginPassword="";loginName="";loginError="";
+    loginPassword="";loginName="";loginError="";vaultNotice="";
     searchText="";searchRows=[];searchBusy=false;data=empty();homeWarning="";
     catalogs={Movie:freshCatalog(),Series:freshCatalog(),Anime:freshCatalog()};
     favoriteCatalogs={Movie:freshCatalog(),Series:freshCatalog(),Anime:freshCatalog()};
+    // Clear the system vault before permitting a new login.
+    loginBusy=true;
+    try{await nativeVault.clear();}
+    catch{vaultNotice="Impossible d'effacer la connexion mémorisée sur cet appareil.";}
+    finally{loginBusy=false;}
   }
   function updateSearch(){
     if(searchTimer!==null)clearTimeout(searchTimer);
@@ -228,6 +262,12 @@
   <title>Vynéo</title>
   <meta name="theme-color" content="#0a0c11" />
 </svelte:head>
+<svelte:window
+  onkeydown={(event)=>{if(event.key==="Escape")profileOpen=false;}}
+  onclick={(event)=>{
+    if(profileOpen && event.target instanceof Element &&
+       !event.target.closest(".vy-account-wrap"))profileOpen=false;
+  }} />
 <div class="vy-app" class:vy-authenticated={!!session}>
   {#if !session}
     <header class="vy-login-header">
@@ -253,10 +293,21 @@
           autocomplete="current-password" bind:value={loginPassword}
           maxlength="256" required />
         {#if loginError}<p class="vy-auth-error" role="alert">{loginError}</p>{/if}
-        <button type="submit" class="vy-primary" disabled={loginBusy}>
-          {loginBusy?"Connexion…":"Se connecter"}
+        {#if vaultNotice}<p class="vy-auth-hint" role="status">{vaultNotice}</p>{/if}
+        {#if nativeVault.available}
+          <label class="vy-remember">
+            <input type="checkbox" bind:checked={rememberMe} />
+            <span>Rester connecté sur cet appareil</span>
+          </label>
+        {/if}
+        <button type="submit" class="vy-primary" disabled={loginBusy || restoreBusy}>
+          {restoreBusy?"Restauration de la session…":loginBusy?"Connexion…":"Se connecter"}
         </button>
-        <span class="vy-auth-hint">Les identifiants ne sont pas enregistrés par Vynéo.</span>
+        <span class="vy-auth-hint">
+          {nativeVault.available
+            ?"Session enregistrée dans le coffre sécurisé de votre système."
+            :"Les identifiants ne sont pas enregistrés par Vynéo."}
+        </span>
       </form>
     </main>
   {:else}
@@ -277,8 +328,24 @@
             placeholder="Rechercher…" bind:value={searchText}
             oninput={updateSearch} />
         </label>
-        <button type="button" class="vy-account" title="Se déconnecter"
-          onclick={logout}>{session.username.slice(0,1).toUpperCase()}</button>
+        <div class="vy-account-wrap">
+          <button type="button" class="vy-account" title="Mon profil"
+            aria-label="Ouvrir le profil" aria-haspopup="dialog"
+            aria-expanded={profileOpen}
+            onclick={()=>profileOpen=!profileOpen}>
+            {session.username.slice(0,1).toUpperCase()}
+          </button>
+          {#if profileOpen}
+            <section class="vy-account-menu" aria-label="Profil Vynéo">
+              <strong>{session.username}</strong>
+              <small>{nativeVault.available && rememberMe
+                ?"Connexion sécurisée mémorisée":"Compte Jellyfin connecté"}</small>
+              <button type="button" onclick={()=>void logout()}>
+                Se déconnecter
+              </button>
+            </section>
+          {/if}
+        </div>
       </div>
     </header>
     <main class="vy-content">

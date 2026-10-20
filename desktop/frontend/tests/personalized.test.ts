@@ -20,16 +20,16 @@ const snapshot=(override:Partial<LibrarySnapshot>={}):LibrarySnapshot=>({
 describe("Native private, proof-backed discovery",()=>{
   it("uses only genres evidenced in three distinct watches or explicit favorites",()=>{
     const watched=[
-      item(1,["Science-fiction"],{played:true}),
-      item(2,["Science-fiction"],{played:true}),
-      item(3,["Science fiction"],{played:true})
+      item(1,["Science-fiction"],{played:true,overview:"Des astronautes explorent une planète inconnue pour sauver un équipage"}),
+      item(2,["Science-fiction"],{played:true,overview:"Un équipage d'astronautes sauve des explorateurs dans l'espace"}),
+      item(3,["Science fiction"],{played:true,overview:"Une planète inconnue et un vaisseau spatial en mission de sauvetage"})
     ];
-    const favorites=[item(4,["Comédie"],{isFavorite:true})];
+    const favorites=[item(4,["Comédie"],{isFavorite:true,overview:"Un comédien monte sur scène pour une soirée de standup"})];
     const input=snapshot({
       watched,favorites,
       candidates:[
-        item(11,["Science-fiction"]),
-        item(12,["Comedie"],{type:"Series"}),
+        item(11,["Science-fiction"],{overview:"Des astronautes en mission sur une planète inconnue sauvent un équipage"}),
+        item(12,["Comedie"],{overview:"Un comédien fait du standup sur scène pendant une soirée",type:"Movie"}),
         item(13,["Documentaire"],{communityRating:10}),
         item(1,["Science-fiction"]),
         item(4,["Comédie"])
@@ -37,15 +37,13 @@ describe("Native private, proof-backed discovery",()=>{
     });
     const outcome=recommendNative(input,NOW);
     expect(outcome.personalized).toBe(true);
-    expect(outcome.items.map(x=>x.item.id)).toEqual([ID(11),ID(12)]);
-    expect(outcome.items.map(x=>x.reason)).toEqual([
-      "Selon vos visionnages : Science-fiction",
-      "Genre de vos favoris : Comédie"
-    ]);
+    expect(new Set(outcome.items.map(x=>x.item.id))).toEqual(new Set([ID(11),ID(12)]));
+    expect(outcome.items.every(x=>x.reason?.includes("Titre "))).toBe(true);
+    expect(outcome.items.every(x=>!x.reason?.includes("Genre de"))).toBe(true);
     const shelves=buildShelves(input,"a".repeat(32),NOW);
     const forYou=shelves.find(row=>row.id==="for-you")!;
-    expect(forYou.title).toBe("Pour vous · Selon vos goûts");
-    expect(forYou.reasons?.[ID(11)]).toContain("Science-fiction");
+    expect(forYou.title).toBe("Pour vous · Des histoires qui vous ressemblent");
+    expect(forYou.reasons?.[ID(11)]).toContain("Titre ");
     expect(forYou.reasons?.[ID(13)]).toBeUndefined();
   });
   it("does not claim preferences from one watch or global ratings",()=>{
@@ -60,7 +58,7 @@ describe("Native private, proof-backed discovery",()=>{
     expect(outcome.items.every(x=>x.reason===null)).toBe(true);
     expect(buildShelves(input,"a".repeat(32),NOW)
       .find(x=>x.id==="for-you")?.title)
-      .toBe("À découvrir dans votre bibliothèque");
+      .toBe("À explorer dans votre bibliothèque");
   });
   it("excludes already seen, in-progress, next-up, favorited, invalid & future titles",()=>{
     const watched=[
@@ -95,9 +93,9 @@ describe("Native private, proof-backed discovery",()=>{
       ]
     });
     const chosen=recommendNative(input,NOW);
-    expect(chosen.personalized).toBe(true);
-    expect(chosen.items.map(x=>x.item.id)).toEqual([ID(12),ID(13)]);
-    expect(chosen.items.every(x=>x.reason?.includes("Anime"))).toBe(true);
+    expect(chosen.personalized).toBe(false);
+    expect(chosen.items.map(x=>x.item.id)).toEqual([ID(11),ID(12),ID(13)]);
+    expect(chosen.items.every(x=>x.reason===null)).toBe(true);
   });
   it("is deterministic and balances title types without inventing model input",()=>{
     const watched=[item(1,["Action"],{played:true}),
@@ -114,6 +112,26 @@ describe("Native private, proof-backed discovery",()=>{
     expect(first.items.some(x=>x.item.type==="Series")).toBe(true);
     expect(first.items.every(x=>!x.reason?.includes("IA locale"))).toBe(true);
     expect(new Set(first.items.map(x=>x.item.id)).size).toBe(12);
+  });
+  it("prefers a shared distinctive story to a generic high-rated Action film",()=>{
+    const watched=item(1,["Action","Science-fiction"],{
+      title:"Mission Europa",played:true,
+      overview:"Une équipe scientifique explore un océan sous une planète glacée et découvre une cité extraterrestre"
+    });
+    const thematic=item(8,["Aventure","Science-fiction"],{
+      title:"Océan de Jupiter",communityRating:7.4,
+      overview:"Une équipe scientifique découvre une cité extraterrestre sous l'océan d'une planète glacée"
+    });
+    const generic=item(9,["Action"],{
+      title:"Course poursuite",communityRating:10,
+      overview:"Un policier organise des courses de voitures dans une grande ville"
+    });
+    const list=recommendNative(snapshot({
+      watched:[watched],candidates:[generic,thematic]
+    }),NOW);
+    expect(list.personalized).toBe(true);
+    expect(list.items.map(x=>x.item.id)).toEqual([thematic.id]);
+    expect(list.items[0].reason).toContain("Mission Europa");
   });
   it("limits requests and handles an empty library without fake results",()=>{
     expect(recommendNative(snapshot(),NOW)).toEqual({

@@ -27,12 +27,14 @@ describe("Vynéo native shelves are metadata-driven and deterministic",()=>{
     const rows=buildShelves(sample(),"a".repeat(32),new Date("2026-10-20"));
     const names=rows.map(r=>r.title);
     expect(names).toContain("Reprendre la lecture");
-    expect(names.some(n=>n.startsWith("Pour vous"))).toBe(true);
-    expect(names.some(n=>n.startsWith("Top 10"))).toBe(true);
+    expect(names.some(n=>n.startsWith("Pour vous") || n.startsWith("À explorer"))).toBe(true);
+    expect(names.some(n=>n.includes("Sorties récentes"))).toBe(true);
+    expect(names.some(n=>n.includes("récemment ajoutés"))).toBe(false);
     expect(names).toContain("Sagas et collections");
     expect(names.some(n=>n.includes("science-fiction") || n.includes("Action") || n.includes("Bien notés"))).toBe(true);
     expect(rows.some(r=>r.id.startsWith("editorial-"))).toBe(true);
-    expect(rows.find(r=>r.kind==="top10")?.items).toHaveLength(10);
+    expect(rows.find(r=>r.id==="top-ten")?.items.length).toBeLessThanOrEqual(10);
+    expect(rows.find(r=>r.id==="top-ten")?.items.every(i=>(i.year??0)>=2024)).toBe(true);
     expect(featuredMedia(rows)?.id).toMatch(/^[a-f0-9]{32}$/);
     expect(names.join("|")).not.toMatch(/IA locale|LLM|ChatGPT/);
   });
@@ -57,6 +59,25 @@ describe("Vynéo native shelves are metadata-driven and deterministic",()=>{
     expect(featuredSlides(rows,100)).toHaveLength(7);
     const hidden=media(800,[],{hasBackdrop:false,hasPrimary:false});
     expect(featuredSlides([{id:"x",title:"x",items:[hidden]}])).toEqual([]);
+  });
+  it("never confuses an old movie recently added with a recent release",()=>{
+    const fresh=[media(503,["Action"],{
+      year:2026,communityRating:8.6,premiereDate:"2026-02-01"
+    }),media(504,["Drama"],{year:2025,communityRating:8.1})];
+    const old=media(501,["Action"],{
+      year:1999,communityRating:10,premiereDate:"2026-10-20"
+    });
+    const data:LibrarySnapshot={...sample(),recent:[old,...fresh],
+      candidates:[media(505,["Thriller"],{year:2024,communityRating:8.3})]};
+    const rows=buildShelves(data,"a".repeat(32),new Date("2026-10-20"));
+    expect(rows.map(x=>x.title)).not.toContain("Films récemment ajoutés");
+    expect(rows.map(x=>x.title)).not.toContain("Séries récemment ajoutées");
+    const selected=rows.find(x=>x.id==="top-ten")!;
+    expect(selected.title).toBe("Les mieux notés · Sorties récentes");
+    expect(selected.items.map(i=>i.id)).not.toContain(old.id);
+    expect(selected.items.map(i=>i.id)).toEqual(
+      expect.arrayContaining(fresh.map(i=>i.id)));
+    expect(selected.items.every(i=>(i.year??0)>=2024)).toBe(true);
   });
   it("shows no imaginary rankings when catalogue is empty",()=>{
     const zero:LibrarySnapshot={

@@ -75,6 +75,7 @@ export interface SessionPublic {
 }
 export interface LibrarySnapshot {
   recent:MediaItem[];
+  candidates?:MediaItem[];
   resume:MediaItem[];
   nextUp:MediaItem[];
   favorites:MediaItem[];
@@ -86,4 +87,5 @@ export interface Shelf {
   title:string;
   items:MediaItem[];
   kind?:"standard"|"top10"|"universe";
+  reasons?:Record<string,string>;
 }

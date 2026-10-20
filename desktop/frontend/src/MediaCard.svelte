@@ -8,8 +8,9 @@
     onclick:(item:MediaItem)=>void;
     rank?:number;
     variant?:"standard"|"top10"|"universe";
+    reason?:string;
   };
-  let {item,cache,onclick,rank=0,variant="standard"}:Props=$props();
+  let {item,cache,onclick,rank=0,variant="standard",reason=""}:Props=$props();
   const genreLabel=(item:MediaItem)=>item.genres.slice(0,2).join(" · ");
 </script>
 
@@ -42,4 +43,5 @@
     {/if}
     {#if item.seriesName}<span> · {item.seriesName}</span>{/if}
   </span>
+  {#if reason}<span class="vy-card-reason">{reason}</span>{/if}
 </button>

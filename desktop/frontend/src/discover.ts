@@ -1,6 +1,7 @@
 import type {LibrarySnapshot,MediaItem,Shelf} from "./types";
 import {rotatingEditorial} from "./editorial-recipes";
 import {hasArtwork} from "./artwork";
+import {recommendNative} from "./personalized";
 
 const unique=(items:MediaItem[],limit=30):MediaItem[]=>{
   const used=new Set<string>();
@@ -15,28 +16,11 @@ export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):She
   const nextUp=unique(data.nextUp,22);
   const favorites=unique(data.favorites,30);
   const collections=unique(data.collections,36);
-  const watched=unique(data.watched,96);
   const movie=recent.filter(item=>item.type==="Movie");
   const series=recent.filter(item=>item.type==="Series");
-  const freq=new Map<string,number>();
-  for(const item of watched){
-    for(const genre of item.genres){
-      freq.set(genre,(freq.get(genre)??0)+1);
-    }
-  }
-  for(const item of favorites){
-    for(const genre of item.genres){
-      freq.set(genre,(freq.get(genre)??0)+2);
-    }
-  }
-  const seen=new Set(watched.map(item=>item.id));
-  const weights=(item:MediaItem):number=>
-    item.genres.reduce((sum,g)=>sum+(freq.get(g)??0),0)+
-    (item.communityRating??0)/5;
-  const recommended=recent
-    .filter(item=>!seen.has(item.id) && !item.played)
-    .sort((a,b)=>weights(b)-weights(a) || a.id.localeCompare(b.id));
-  const withReasons=freq.size>0 && recommended.some(item=>weights(item)>0);
+  const recommendations=recommendNative(data,now,24);
+  const reasons=Object.fromEntries(recommendations.items
+    .filter(r=>r.reason!==null).map(r=>[r.item.id,r.reason!]));
   const rated=recent
     .filter(item=>item.communityRating!==null && !item.played)
     .sort((a,b)=>(b.communityRating??0)-(a.communityRating??0) ||
@@ -52,8 +36,11 @@ export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):She
   };
   put("resume","Reprendre la lecture",resume);
   put("next-up","À suivre",nextUp);
-  put("for-you",withReasons?"Pour vous · Selon vos goûts":
-    "À découvrir dans votre bibliothèque",recommended.slice(0,24));
+  put("for-you",recommendations.personalized?"Pour vous · Selon vos goûts":
+    "À découvrir dans votre bibliothèque",
+    recommendations.items.map(r=>r.item));
+  const forYou=rows.find(row=>row.id==="for-you");
+  if(forYou && recommendations.personalized)forYou.reasons=reasons;
   put("movies","Films récemment ajoutés",movie);
   put("series","Séries récemment ajoutées",series);
   put("favorites","Dans votre liste",favorites);

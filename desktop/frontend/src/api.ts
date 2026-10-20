@@ -366,6 +366,16 @@ export class JellyfinApi {
       SortBy:"DateCreated",SortOrder:"Descending",Limit:40
     }),40);
   }
+  async getCandidates():Promise<MediaItem[]>{
+    const uid=this.requireUser(),generation=this.authGeneration;
+    // Account-filtered metadata only, never stream URLs or media bytes.
+    const result=await this.items(this.userItems({
+      IncludeItemTypes:"Movie,Series",Filters:"IsUnplayed",
+      SortBy:"DateCreated",SortOrder:"Descending",Limit:128
+    }),128);
+    this.assertSession(uid,generation);
+    return result;
+  }
   async getWatched():Promise<MediaItem[]>{
     return this.items(this.userItems({
       IncludeItemTypes:"Movie,Series",Filters:"IsPlayed",

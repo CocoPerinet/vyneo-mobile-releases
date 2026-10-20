@@ -19,7 +19,7 @@
   const api=new JellyfinApi({deviceId:deviceId()});
   const artwork=new ArtworkCache(api);
   const empty=():LibrarySnapshot=>({
-    recent:[],resume:[],nextUp:[],favorites:[],watched:[],collections:[]
+    recent:[],candidates:[],resume:[],nextUp:[],favorites:[],watched:[],collections:[]
   });
   type CatalogState={
     items:MediaItem[];nextOffset:number|null;total:number|null;
@@ -184,6 +184,15 @@
       const result=add[index];
       if(result.status==="fulfilled")data={...data,[name]:result.value};
     }
+    // Optional, lower-priority discovery feed. The first home render and
+    // its shelves never wait on this larger user-authorized query.
+    void api.getCandidates().then(items=>{
+      if(generation!==epoch || version!==refreshVersion ||
+         !api.session || session?.userId!==api.session.userId)return;
+      data={...data,candidates:items};
+    }).catch(()=>{
+      // Keep existing shelves on timeout, denial or offline network.
+    });
   }
   function logout(){
     epoch++;refreshVersion++;
@@ -356,6 +365,7 @@
                   <MediaCard {item} cache={artwork}
                     rank={shelf.kind==="top10"?index+1:0}
                     variant={shelf.kind??"standard"}
+                    reason={shelf.reasons?.[item.id]??""}
                     onclick={(next)=>selected=next} />
                 {/each}
               </div>

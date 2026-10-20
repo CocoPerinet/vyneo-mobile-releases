@@ -304,7 +304,7 @@ export class JellyfinApi {
                           startIndex=0,limit=24):Promise<EpisodePage>{
     const uid=this.requireUser(),generation=this.authGeneration;
     if(!validId(seriesId) || !validId(seasonId) ||
-       !Number.isSafeInteger(startIndex) || startIndex<0 ||
+       !Number.isSafeInteger(startIndex) || startIndex<0 || startIndex>100000 ||
        !Number.isSafeInteger(limit) || limit<1 || limit>40)
       throw new Error("EPISODES_INVALID");
     const qs=new URLSearchParams({

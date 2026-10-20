@@ -49,22 +49,25 @@
   });
   async function hydrate(){
     const version=epoch;
-    if(item.type==="Series")seasonsLoading=true;
+    // Seasons do not wait for the full item's metadata: either endpoint
+    // can respond first and the series is navigable while posters load.
+    if(item.type==="Series"){
+      seasonsLoading=true;seasonsError="";
+      void api.getSeriesSeasons(item.id).then(results=>{
+        if(version!==epoch)return;
+        seasons=results;
+        if(results.length)chooseSeason(results[0].id);
+      }).catch(()=>{
+        if(version===epoch)seasonsError="Saisons momentanément indisponibles.";
+      }).finally(()=>{
+        if(version===epoch)seasonsLoading=false;
+      });
+    }
     try{
       const fresh=await api.getItemDetails(item.id);
       if(version!==epoch)return;
       media=fresh;
-    }catch{/* Original catalog card remains available offline. */}
-    if(version!==epoch || item.type!=="Series")return;
-    seasonsLoading=true;
-    try{
-      const results=await api.getSeriesSeasons(item.id);
-      if(version!==epoch)return;
-      seasons=results;seasonsError="";
-      if(results.length)chooseSeason(results[0].id);
-    }catch{
-      if(version===epoch)seasonsError="Saisons momentanément indisponibles.";
-    }finally{if(version===epoch)seasonsLoading=false;}
+    }catch{/* Original catalog card remains available. */}
   }
   function chooseSeason(id:string){
     seasonEpoch++;
@@ -215,6 +218,7 @@
           <h3>Lecture et qualité</h3>
           <p class="vy-detail-muted">
             Vérifiez les sources et pistes visibles par votre compte Jellyfin.
+            La compatibilité reste à certifier avec le futur lecteur.
           </p>
           <button type="button" class="vy-detail-action" disabled={playbackBusy}
             onclick={()=>void inspectPlayback()}>

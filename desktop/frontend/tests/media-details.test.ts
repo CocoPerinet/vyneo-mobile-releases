@@ -137,6 +137,7 @@ describe("read-only native media details",()=>{
     await expect(api.getItemDetails("../../bad")).rejects.toThrow("ITEM_INVALID");
     await expect(api.getSeriesSeasons("invalid")).rejects.toThrow("SERIES_INVALID");
     await expect(api.getSeasonEpisodes(SHOW,SEASON,-1)).rejects.toThrow("EPISODES_INVALID");
+    await expect(api.getSeasonEpisodes(SHOW,SEASON,100001)).rejects.toThrow("EPISODES_INVALID");
     await expect(api.getPlaybackInfo("not-id")).rejects.toThrow("PLAYBACK_ITEM_INVALID");
     expect(calls).toHaveLength(count);
   });

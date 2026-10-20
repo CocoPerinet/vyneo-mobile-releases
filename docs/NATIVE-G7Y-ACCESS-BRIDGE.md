@@ -45,6 +45,28 @@ avant établissement d'une identité Cloudflare Access native vérifiable.**
    Il remplace titres et métadonnées BFF par les objets locaux.
    Ceci ne remplace PAS une authentification cryptographique.
 
+## Piste officielle identifiée : Cloudflare Managed OAuth
+La documentation Cloudflare (consultée le 20/10/2026) décrit **Managed OAuth**
+pour les applications Access auto-hébergées et les clients non-navigateurs :
+https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/
+
+- Flux OAuth 2.0 avec navigateur de l'utilisateur et politiques Access
+  inchangées ; support RFC 8707 et redirections localhost/loopback
+  configurables (PKCE recommandé pour un client Desktop public).
+- Jeton OAuth **opaque** remis au client, résolu par Cloudflare en
+  assertion `Cf-Access-Jwt-Assertion` signée à l'origine. Aucun JWT
+  d'identité n'est exporté vers le frontend.
+- Option **désactivée par défaut** sur les applications Access
+  auto-hébergées existantes ; activer cette option est une mutation
+  de sécurité qui exige une revue distincte et un test isolé.
+- L'authentification Access seule ne crée **pas** la session G7h
+  Jellyfin/CSRF. Le BFF aura besoin d'un parcours natif explicite
+  de consentement, de preuve de compte et de rotation/révocation.
+- Il faut vérifier que Managed OAuth ne remplace pas un
+  `WWW-Authenticate` attendu par d'autres consommateurs.
+- **Aucune configuration Cloudflare n'a été modifiée.** Ne pas
+  ouvrir un CORS global ni embarquer une clé client secrète.
+
 ## Préconditions du vrai pont natif
 1. Choisir et vérifier avec Cloudflare **un flux client natif
    pris en charge** qui satisfait la même policy Access et les

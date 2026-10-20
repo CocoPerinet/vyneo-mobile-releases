@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {buildShelves,featuredMedia} from "../src/discover";
+import {buildShelves,featuredMedia,featuredSlides} from "../src/discover";
 import type {MediaItem,LibrarySnapshot} from "../src/types";
 
 const id=(n:number)=>n.toString(16).padStart(32,"0");
@@ -44,6 +44,19 @@ describe("Vynéo native shelves are metadata-driven and deterministic",()=>{
     const valid=new Set([...data.recent,...data.resume,...data.watched,
       ...data.nextUp,...data.favorites,...data.collections].map(x=>x.id));
     expect(first.every(s=>s.items.every(item=>valid.has(item.id)))).toBe(true);
+  });
+  it("selects distinct real-art hero slides across editorial sources",()=>{
+    const rows=buildShelves(sample(),"a".repeat(32),new Date("2026-10-20"));
+    const slides=featuredSlides(rows,5);
+    expect(slides.length).toBeGreaterThanOrEqual(2);
+    expect(slides.length).toBeLessThanOrEqual(5);
+    expect(new Set(slides.map(item=>item.id)).size).toBe(slides.length);
+    expect(slides.every(item=>item.hasBackdrop || item.hasPrimary)).toBe(true);
+    expect(featuredSlides(rows,5).map(item=>item.id))
+      .toEqual(slides.map(item=>item.id));
+    expect(featuredSlides(rows,100)).toHaveLength(7);
+    const hidden=media(800,[],{hasBackdrop:false,hasPrimary:false});
+    expect(featuredSlides([{id:"x",title:"x",items:[hidden]}])).toEqual([]);
   });
   it("shows no imaginary rankings when catalogue is empty",()=>{
     const zero:LibrarySnapshot={

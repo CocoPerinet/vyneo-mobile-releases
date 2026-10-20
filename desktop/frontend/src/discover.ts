@@ -1,5 +1,6 @@
 import type {LibrarySnapshot,MediaItem,Shelf} from "./types";
 import {rotatingEditorial} from "./editorial-recipes";
+import {hasArtwork} from "./artwork";
 
 const unique=(items:MediaItem[],limit=30):MediaItem[]=>{
   const used=new Set<string>();
@@ -62,11 +63,32 @@ export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):She
   put("universes","Sagas et collections",collections,"universe");
   return rows;
 }
-export function featuredMedia(rows:Shelf[]):MediaItem|null {
+export function featuredSlides(rows:Shelf[],limit=5):MediaItem[]{
+  const max=Math.max(1,Math.min(7,Math.floor(limit)));
+  const selected:MediaItem[]=[],used=new Set<string>();
+  const add=(item:MediaItem|undefined)=>{
+    if(!item || !hasArtwork(item) || used.has(item.id))return;
+    used.add(item.id);selected.push(item);
+  };
+  // Each source contributes one distinct, evidenced candidate first, so the
+  // banner never shows five near-identical releases from the same shelf.
   for(const key of ["for-you","movies","series","favorites","resume"]){
-    const item=rows.find(r=>r.id===key)?.items.find(i=>i.hasBackdrop) ??
-      rows.find(r=>r.id===key)?.items[0];
-    if(item)return item;
+    if(selected.length>=max)break;
+    const shelf=rows.find(row=>row.id===key);
+    add(shelf?.items.find(item=>item.hasBackdrop) ??
+      shelf?.items.find(hasArtwork));
   }
-  return null;
+  if(selected.length<max){
+    for(const row of rows){
+      for(const item of row.items){
+        if(selected.length>=max)break;
+        add(item);
+      }
+      if(selected.length>=max)break;
+    }
+  }
+  return selected;
+}
+export function featuredMedia(rows:Shelf[]):MediaItem|null {
+  return featuredSlides(rows,1)[0]??null;
 }

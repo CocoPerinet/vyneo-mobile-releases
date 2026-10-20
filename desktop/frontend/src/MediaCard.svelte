@@ -1,7 +1,7 @@
 <script lang="ts">
   import type {MediaItem} from "./types";
   import type {ArtworkCache} from "./artwork";
-  import {lazyArtwork} from "./artwork";
+  import {hasArtwork,lazyArtwork} from "./artwork";
   type Props={
     item:MediaItem;
     cache:ArtworkCache;
@@ -23,10 +23,9 @@
     <span class="vy-rank" aria-hidden="true">{rank}</span>
   {/if}
   <span class="vy-card-picture">
-    {#if item.hasBackdrop || item.hasPrimary}
+    {#if hasArtwork(item)}
       <img alt="" decoding="async" loading="lazy"
-        use:lazyArtwork={{cache,item,
-          kind:item.hasBackdrop?"Backdrop" as const:"Primary" as const}} />
+        use:lazyArtwork={{cache,item,kind:"Backdrop" as const}} />
     {/if}
     <span class="vy-card-shade" aria-hidden="true"></span>
     {#if item.progress!==null && item.progress>0}

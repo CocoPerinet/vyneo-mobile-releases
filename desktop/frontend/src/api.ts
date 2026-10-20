@@ -42,6 +42,12 @@ export function normalizeItem(v:unknown):MediaItem|null {
     hasPrimary:typeof imageTags.Primary==="string",
     hasBackdrop:Array.isArray(row.BackdropImageTags) &&
       row.BackdropImageTags.length>0,
+    hasThumb:typeof imageTags.Thumb==="string",
+    parentBackdropItemId:validId(row.ParentBackdropItemId)
+      ?row.ParentBackdropItemId:null,
+    hasParentBackdrop:Array.isArray(row.ParentBackdropImageTags) &&
+      row.ParentBackdropImageTags.length>0,
+    seriesId:validId(row.SeriesId)?row.SeriesId:null,
     seriesName:string(row.SeriesName,120)
   };
 }
@@ -299,12 +305,20 @@ export class JellyfinApi {
       SearchTerm:query,SortBy:"SortName",Limit:40
     }),40);
   }
-  async image(item:MediaItem,kind:"Primary"|"Backdrop"):Promise<Blob|null>{
+  async image(item:MediaItem,kind:"Primary"|"Backdrop"|"Thumb"):Promise<Blob|null>{
+    if((kind==="Primary" && !item.hasPrimary) ||
+       (kind==="Backdrop" && !item.hasBackdrop) ||
+       (kind==="Thumb" && !item.hasThumb))return null;
+    return this.imageById(item.id,kind);
+  }
+  async imageById(id:string,kind:"Primary"|"Backdrop"|"Thumb"):Promise<Blob|null>{
     this.requireUser();
-    if(!validId(item.id) || (kind==="Primary" && !item.hasPrimary) ||
-       (kind==="Backdrop" && !item.hasBackdrop))return null;
-    const path="/Items/"+item.id+"/Images/"+kind+
-      (kind==="Backdrop"?"/0?maxWidth=1280&quality=70":"?maxHeight=560&quality=72");
+    if(!validId(id) || !["Primary","Backdrop","Thumb"].includes(kind))
+      return null;
+    const path="/Items/"+id+"/Images/"+kind+
+      (kind==="Backdrop"?"/0?maxWidth=1280&quality=75":
+       kind==="Thumb"?"?maxWidth=640&quality=76":
+       "?maxHeight=560&quality=76");
     const response=await this.fetcher(new URL(path,this.origin),{
       method:"GET",headers:identityHeaders(this.token,this.deviceId),
       mode:"cors",credentials:"omit",cache:"no-store",redirect:"error",

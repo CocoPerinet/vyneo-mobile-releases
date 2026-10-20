@@ -22,6 +22,10 @@ export interface MediaItem {
   premiereDate:string;
   hasPrimary:boolean;
   hasBackdrop:boolean;
+  hasThumb?:boolean;
+  parentBackdropItemId?:string|null;
+  hasParentBackdrop?:boolean;
+  seriesId?:string|null;
   seriesName:string;
 }
 export interface SessionPublic {

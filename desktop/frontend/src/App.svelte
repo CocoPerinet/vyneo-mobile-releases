@@ -1,8 +1,8 @@
 <script lang="ts">
   import type {LibrarySnapshot,MediaItem,SessionPublic,ViewKey,Shelf,CatalogKind} from "./types";
   import {JellyfinApi} from "./api";
-  import {ArtworkCache,lazyArtwork} from "./artwork";
-  import {buildShelves,featuredMedia} from "./discover";
+  import {ArtworkCache,hasArtwork,lazyArtwork} from "./artwork";
+  import {buildShelves,featuredSlides} from "./discover";
   import MediaCard from "./MediaCard.svelte";
 
   function deviceId():string{
@@ -64,8 +64,10 @@
   ];
   let catalogKind=$derived<CatalogKind|null>(
     tab==="movies"?"Movie":tab==="series"?"Series":tab==="anime"?"Anime":null);
+  let heroIndex=$state(0);
   let shelves=$derived(session?buildShelves(data,session.userId):[]);
-  let hero=$derived(featuredMedia(shelves));
+  let heroSlides=$derived(featuredSlides(shelves));
+  let hero=$derived(heroSlides[heroIndex%Math.max(1,heroSlides.length)]??null);
   let gridItems=$derived.by(()=>{
     if(tab==="movies")return catalogs.Movie.items;
     if(tab==="series")return catalogs.Series.items;
@@ -110,6 +112,10 @@
         loading:false,error:"Impossible de charger cette page. Réessayez."},
         onlyFavorites);
     }
+  }
+  function moveHero(step:number){
+    if(heroSlides.length>1)
+      heroIndex=(heroIndex+step+heroSlides.length)%heroSlides.length;
   }
   function selectTab(next:ViewKey){
     tab=next;selected=null;searchText="";searchRows=[];
@@ -182,7 +188,7 @@
     epoch++;refreshVersion++;
     if(searchTimer!==null)clearTimeout(searchTimer);
     api.logout();artwork.clear();
-    session=null;selected=null;tab="home";
+    session=null;selected=null;tab="home";heroIndex=0;
     loginPassword="";loginName="";loginError="";
     searchText="";searchRows=[];searchBusy=false;data=empty();homeWarning="";
     catalogs={Movie:freshCatalog(),Series:freshCatalog(),Anime:freshCatalog()};
@@ -284,10 +290,9 @@
         </section>
       {:else if tab==="home"}
         <section class="vy-hero" aria-label="À la une">
-          {#if hero}
+          {#if hero && hasArtwork(hero)}
             <img class="vy-hero-art" alt=""
-              use:lazyArtwork={{cache:artwork,item:hero,
-                kind:hero.hasBackdrop?"Backdrop" as const:"Primary" as const}} />
+              use:lazyArtwork={{cache:artwork,item:hero,kind:"Backdrop" as const}} />
           {/if}
           <div class="vy-hero-shade"></div>
           <div class="vy-hero-inner">
@@ -302,8 +307,8 @@
                   <span aria-hidden="true">▶</span> Voir la fiche
                 </button>
                 <button type="button" class="vy-more-button"
-                  onclick={()=>selectTab("movies")}>
-                  Explorer les films
+                  onclick={()=>selectTab(hero.type==="Series"?"series":"movies")}>
+                  {hero.type==="Series"?"Explorer les séries":"Explorer les films"}
                 </button>
               </div>
             {:else}
@@ -317,6 +322,26 @@
                 onclick={()=>void refresh()}>Actualiser ma bibliothèque</button>
             {/if}
           </div>
+          {#if heroSlides.length>1}
+            <div class="vy-hero-controls" aria-label="Choisir une affiche à la une">
+              <button type="button" class="vy-hero-arrow"
+                aria-label="Bannière précédente" onclick={()=>moveHero(-1)}>
+                ‹
+              </button>
+              <div class="vy-hero-dots" role="group" aria-label="Bannières à la une">
+                {#each heroSlides as slide,index (slide.id)}
+                  <button type="button" class:active={hero?.id===slide.id}
+                    aria-label={"Bannière "+(index+1)+" : "+slide.title}
+                    aria-current={hero?.id===slide.id?"true":undefined}
+                    onclick={()=>heroIndex=index}><span></span></button>
+                {/each}
+              </div>
+              <button type="button" class="vy-hero-arrow"
+                aria-label="Bannière suivante" onclick={()=>moveHero(1)}>
+                ›
+              </button>
+            </div>
+          {/if}
         </section>
         <div class="vy-shelves">
           {#each shelves as shelf (shelf.id)}
@@ -442,9 +467,9 @@
           <button type="button" class="vy-detail-close" aria-label="Fermer"
             onclick={()=>selected=null}>×</button>
           <div class="vy-detail-top">
-            {#if selected.hasBackdrop || selected.hasPrimary}
+            {#if hasArtwork(selected)}
               <img alt="" use:lazyArtwork={{cache:artwork,item:selected,
-                kind:selected.hasBackdrop?"Backdrop" as const:"Primary" as const}} />
+                kind:"Backdrop" as const}} />
             {/if}
           </div>
           <div class="vy-detail-body">

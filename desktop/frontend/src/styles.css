@@ -45,6 +45,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
   overflow:hidden;background:linear-gradient(120deg,#172032,#10131b 68%,#282032)}
 .vy-hero-art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
   object-position:center 19%;z-index:-2}
+.vy-hero-art[data-vy-art-kind="primary"]{filter:blur(26px) brightness(.72);
+  transform:scale(1.09)}
 .vy-hero-shade{position:absolute;inset:0;z-index:-1;
   background:linear-gradient(to top,#0a0c11 2%,rgba(10,12,17,.72) 22%,rgba(10,12,17,.3) 67%),
   linear-gradient(to right,rgba(10,12,17,.91) 2%,rgba(10,12,17,.6) 40%,transparent 82%)}
@@ -64,6 +66,20 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
 .vy-watch-button{background:white;color:#000;box-shadow:0 6px 20px #0004}
 .vy-more-button{background:rgba(255,255,255,.19);color:white;backdrop-filter:blur(12px)}
 .vy-watch-button:hover,.vy-more-button:hover{transform:scale(1.035)}
+.vy-hero-controls{position:absolute;bottom:145px;right:3.3%;z-index:3;
+  display:flex;align-items:center;gap:10px;
+  padding:6px 10px;border-radius:999px;background:rgba(8,11,17,.4);
+  backdrop-filter:blur(10px)}
+.vy-hero-arrow{width:32px;height:32px;display:grid;place-items:center;
+  border:1px solid #ffffff55;border-radius:50%;background:#10131ba8;
+  color:#f0f3f9;font-size:26px;line-height:1;transition:background .2s ease}
+.vy-hero-arrow:hover{background:#343b4a}
+.vy-hero-dots{display:flex;align-items:center;gap:3px}
+.vy-hero-dots button{display:grid;place-items:center;width:29px;height:30px;
+  border:0;padding:7px 3px;background:none}
+.vy-hero-dots button span{display:block;width:16px;height:3px;border-radius:3px;
+  background:#ffffff6b;transition:width .15s ease,background .15s ease}
+.vy-hero-dots button.active span{width:22px;background:var(--vy-accent-2)}
 .vy-shelves{position:relative;z-index:5;margin:-116px 0 0;padding-bottom:30px}
 .vy-shelf{content-visibility:auto;contain-intrinsic-size:auto 270px;margin:26px 0 16px}
 .vy-shelf-heading{display:flex;align-items:center;gap:16px;padding:0 3.3%;margin-bottom:11px}
@@ -80,6 +96,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
   border:1px solid rgba(255,255,255,.05);
   box-shadow:0 6px 18px #0007;transition:transform .16s ease,box-shadow .16s ease}
 .vy-card-picture img{display:block;width:100%;height:100%;object-fit:cover}
+.vy-card-picture img[data-vy-art-kind="primary"]{
+  object-fit:contain;background:radial-gradient(ellipse at center,#283042,#141921 78%)}
+.vy-card-picture img[data-vy-art-kind="thumb"]{object-fit:cover}
 .vy-card:hover .vy-card-picture,.vy-card:focus-visible .vy-card-picture{
   transform:scale(1.025);box-shadow:0 13px 28px #000b}
 .vy-card-shade{position:absolute;inset:0;pointer-events:none;
@@ -127,6 +146,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
   background:#171a23;border:1px solid #ffffff14;border-radius:15px;box-shadow:0 22px 95px #000b}
 .vy-detail-top{height:260px;overflow:hidden;background:linear-gradient(135deg,#343345,#241f2b)}
 .vy-detail-top img{width:100%;height:100%;object-fit:cover}
+.vy-detail-top img[data-vy-art-kind="primary"]{
+  object-fit:contain;background:radial-gradient(ellipse,#303546,#171a23 70%)}
 .vy-detail-body{padding:25px 34px 34px}
 .vy-detail-body h2{margin:0 0 6px;font-weight:900;font-size:31px}
 .vy-detail-body p{line-height:1.65;color:#ced3df}
@@ -169,6 +190,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
   .vy-toolbar{margin-left:auto}.vy-search-label input{width:95px}
   .vy-hero{margin-top:-104px;padding:150px 4% 118px;min-height:515px}
   .vy-hero h1{font-size:36px}.vy-hero-overview{font-size:14px}
+  .vy-hero-controls{bottom:98px;right:4%}
   .vy-shelves{margin-top:-85px}.vy-shelf-heading{padding:0 4%}
   .vy-rail{padding-inline:4%}.vy-card{flex-basis:245px}
   .vy-login-main{grid-template-columns:1fr;gap:28px;padding:35px 6% 60px}
@@ -177,6 +199,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
 @media(max-width:460px){.vy-header{gap:8px}
   .vy-logo{font-size:24px}.vy-nav{gap:0}.vy-nav button{font-size:12px;padding:9px 10px}
   .vy-hero{min-height:465px}.vy-card{flex-basis:74vw}
+  .vy-hero-controls{bottom:85px;gap:5px;padding:4px 6px}
   .vy-shelf-heading h2{font-size:18px}
   .vy-login-card{padding:25px 21px}.vy-login-intro h1{font-size:35px}
   .vy-detail-screen{padding:0}.vy-detail{max-height:100vh;border-radius:0}

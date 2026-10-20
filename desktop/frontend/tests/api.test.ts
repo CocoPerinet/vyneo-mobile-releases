@@ -87,6 +87,24 @@ describe("Jellyfin native metadata client",()=>{
     await api.getRecent();
     expect(calls.some(x=>x.url.includes("api_key="))).toBe(false);
   });
+  it("loads authorized inherited images with bounded URLs and no token query",async()=>{
+    const {fetcher,calls}=fixture(),api=new JellyfinApi({fetcher});
+    await api.login("Alice","secret");
+    const start=calls.length;
+    expect(await api.imageById("invalid","Backdrop")).toBeNull();
+    expect(calls.length).toBe(start);
+    const backdrop=await api.imageById(OTHER,"Backdrop");
+    const thumb=await api.imageById(OTHER,"Thumb");
+    expect(backdrop?.type).toBe("image/jpeg");
+    expect(thumb?.type).toBe("image/jpeg");
+    const recent=calls.slice(start);
+    expect(recent[0].url).toContain("/Items/"+OTHER+"/Images/Backdrop/0?");
+    expect(recent[1].url).toContain("/Items/"+OTHER+"/Images/Thumb?");
+    expect(recent.every(c=>!c.url.includes(TOKEN))).toBe(true);
+    expect(recent.every(c=>c.opts.credentials==="omit")).toBe(true);
+    expect(recent.every(c=>String((c.opts.headers as Record<string,string>).Authorization)
+      .includes(TOKEN))).toBe(true);
+  });
   it("accepts image bytes via Authorization headers, not URLs",async()=>{
     const {fetcher,calls}=fixture(),api=new JellyfinApi({fetcher});
     await api.login("Alice","secret");

@@ -111,6 +111,7 @@
   scrollbar-width:none;
   overscroll-behavior-x:contain;
   scroll-snap-type:x proximity;
+  scroll-padding-inline:3.3%;
 }
 .vy-card{
   display:block;
@@ -331,3 +332,12 @@
 }
 .vy-hero-actions .vy-hero-action-icon.active{background:#ae5368}
 .vy-hero-actions .vy-hero-action-icon:disabled{opacity:.48}
+
+.vy-universes-page .vy-universe-section .vy-shelf-heading{display:none}
+.vy-universes-page .vy-universe-rail{
+  padding-inline:0;scroll-padding-inline:0;
+}
+@media(max-width:780px){
+ .vy-rail{scroll-padding-inline:4%}
+ .vy-universes-page .vy-universe-rail{scroll-padding-inline:0}
+}

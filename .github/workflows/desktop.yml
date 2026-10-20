@@ -59,10 +59,13 @@ jobs:
         run: |
           if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release create "$GITHUB_REF_NAME" \
-              --verify-tag --prerelease \
+              --verify-tag --latest=false \
               --title "Vynéo Desktop ${GITHUB_REF_NAME#desktop-v}" \
-              --notes "Bêta Desktop : interface Jellyfin Vynéo d'origine, accès aux recommandations G7y et mise à jour signée à l'ouverture. La lecture MPV/ABR native reste à développer."
+              --notes "Vynéo Desktop 0.2.0 : client natif indépendant Jellyfin, films, séries, animés, fiches épisodes et recommandations locales. L'updater signé propose les prochaines mises à jour avant installation. Lecture MPV et moteur G7y/Qwen3 natifs non encore activés."
           fi
+          # Desktop Stable must not be a GitHub prerelease. Keep the Android
+          # release selected as the repository's Latest release.
+          test "$(gh release view "$GITHUB_REF_NAME" --json isPrerelease --jq .isPrerelease)" = false
 
   windows_preview:
     name: Windows x64 / lecture seule / NSIS

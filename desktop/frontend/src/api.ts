@@ -101,7 +101,7 @@ export function resolveCatalogLibraryIds(payload:unknown):CatalogLibraryIds {
 function identityHeaders(token:string|null,deviceId:string):
     Record<string,string>{
   const auth='MediaBrowser Client="Vyneo", Device="Vyneo Desktop", '+
-    'DeviceId="'+deviceId+'", Version="0.2.0"';
+    'DeviceId="'+deviceId+'", Version="0.2.1"';
   return {
     Accept:"application/json",
     Authorization:token?auth+', Token="'+token+'"':auth

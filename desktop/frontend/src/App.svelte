@@ -338,8 +338,9 @@
           {#if profileOpen}
             <section class="vy-account-menu" aria-label="Profil Vynéo">
               <strong>{session.username}</strong>
-              <small>{nativeVault.available && rememberMe
-                ?"Connexion sécurisée mémorisée":"Compte Jellyfin connecté"}</small>
+              <small>{vaultNotice ||
+                (nativeVault.available && rememberMe
+                  ?"Connexion sécurisée mémorisée":"Compte Jellyfin connecté")}</small>
               <button type="button" onclick={()=>void logout()}>
                 Se déconnecter
               </button>

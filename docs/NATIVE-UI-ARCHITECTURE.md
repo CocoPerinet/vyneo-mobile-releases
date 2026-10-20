@@ -67,8 +67,16 @@ permet**. Le score est stable pour un utilisateur et un jour UTC,
 mais change lorsque la fenêtre quotidienne change ; les droits et
 genres proviennent de la réponse authentifiée Jellyfin.
 
-**Limite réelle :** ces rayons se fondent encore sur le lot
-récent (96 titres maximum) et ne prétendent pas parcourir les
-800+ animés, séries ou films du serveur. L'algorithme serveur G7y,
-qui explore 512 œuvres et consulte le cache Qwen3, sera raccordé
-seulement après conception de l'authentification native sécurisée.
+**Limite réelle :** les dix rayons éditoriaux se fondent encore sur le lot
+récent (96 titres maximum). En revanche, la rangée locale « Pour vous »
+peut explorer au plus 512 titres non visionnés, avec quatre pages
+Jellyfin contrôlées (0, 128, milieu, ancien) et repli sûr en cas de
+panne d'archive. Cette couverture est échantillonnée, **pas une
+indexation complète de toutes les bibliothèques**. Le G7y serveur
+réutilise aussi un cache de classifications Qwen3, mais ce modèle
+n'est pas relié à l'application Tauri.
+
+Le contrat de validation des métadonnées BFF est développé mais
+**délibérément inactif** tant que l'authentification Cloudflare Access
+native, le consentement et les contrôles de compte ne sont pas
+validés : voir `docs/NATIVE-G7Y-ACCESS-BRIDGE.md`.

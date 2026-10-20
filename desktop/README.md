@@ -16,6 +16,8 @@ N100 fournit seulement ses API médias, comptes et métadonnées.
   documentées. Ces rayons exploitent au maximum les 96 titres récents
   récupérés, et non l’intégralité du catalogue Jellyfin.
 - Première version locale de Pour vous, basée sur les genres vus/favoris.
+  Jusqu'à 512 métadonnées Jellyfin non visionnées sont explorées par
+  quatre requêtes maximum, dont les archives facultatives bornées à 1,5 s.
   Ce n'est PAS encore le moteur LLM G7y.
 - Affiches obtenues avec un en-tête Authorization. Aucun jeton dans leur
   URL. Cache mémoire de 76 images maximum, trois requêtes simultanées.
@@ -27,6 +29,8 @@ N100 fournit seulement ses API médias, comptes et métadonnées.
 - frontend/src/App.svelte : frontend visuel Vynéo local.
 - frontend/src/api.ts : API Jellyfin sécurisée et lecture de métadonnées.
 - frontend/src/discover.ts : rayons locaux déterministes et leur rotation.
+- frontend/src/candidate-pages.ts : échantillonnage hebdomadaire de 512 candidats maximum.
+- frontend/src/g7y-contract.ts : validation des métadonnées G7y (pont non connecté).
 - frontend/src/artwork.ts : images en Blob et cache mémoire borné.
 - src-tauri/src/main.rs : cadre Tauri local et updater signé.
 - ui/ : ancien écran d'attente, conservé pour rollback, NON exécuté.
@@ -46,7 +50,8 @@ L'intégration LLM G7y requiert encore un contrat natif sécurisé pour
 associer le compte Jellyfin et les droits à la réponse du serveur
 protégé par Cloudflare Access. La fenêtre IA distincte n'est plus le
 design visé. Ne pas contourner Cloudflare, exporter des cookies ou
-ouvrir le BFF privé sans authentification.
+ouvrir le BFF privé sans authentification. Décision et prérequis détaillés :
+`../docs/NATIVE-G7Y-ACCESS-BRIDGE.md`.
 
 Le lecteur MPV/GPU, HDR et autoqualité réelle G6u ne sont pas encore
 connectés à des flux autorisés. Les fiches le signalent.

@@ -72,9 +72,23 @@ export function classifyNewReleases(data:LibrarySnapshot,
   for(const ep of data.nextUp){
     if(ep.type!=="Episode" || ep.episodeNumber!==1 || !ep.seriesId ||
       !ep.seasonId)continue;
-    const season=allSeasons.get(ep.seasonId.toLowerCase());
     const series=bySeries.get(ep.seriesId.toLowerCase());
-    if(!season || !series || season.number<2 ||
+    if(!series)continue;
+    const known=allSeasons.get(ep.seasonId.toLowerCase());
+    // Jellyfin can omit Season.PremiereDate even when S2E1 has a genuine
+    // premiere date. Fall back to the episode date, never DateCreated.
+    // Refuse conflicting season metadata rather than guessing.
+    if(!known && seasons.some(s=>s.seriesId.toLowerCase()===
+      ep.seriesId!.toLowerCase()))continue;
+    const season=known??(ep.seasonNumber!==null &&
+      ep.seasonNumber!==undefined?{
+        seriesId:ep.seriesId,seasonId:ep.seasonId,
+        number:ep.seasonNumber,premiereDate:ep.premiereDate
+      }:null);
+    if(!season || season.number<2 ||
+      (known && ep.seasonNumber!==null &&
+        ep.seasonNumber!==undefined &&
+        ep.seasonNumber!==known.number) ||
       !within(season.premiereDate,nowMs-SIXTY,nowMs))continue;
     if(season.seriesId.toLowerCase()!==series.id.toLowerCase())continue;
     matched.set(series.id.toLowerCase(),{series,season});

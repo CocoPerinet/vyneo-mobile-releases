@@ -5,7 +5,7 @@
   import {JellyfinApi} from "./api";
   import {ArtworkCache,hasArtwork,lazyArtwork} from "./artwork";
   import {buildShelves,featuredSlides} from "./discover";
-  import {newBadge,includeNewReleaseShelf} from "./new-seasons";
+  import {newBadge,classifyNewReleases,includeNewReleaseShelf} from "./new-seasons";
   import type {RecentSeason} from "./new-seasons";
   import {UNIVERSES,universeItems} from "./universes";
   import type {UniverseId} from "./universes";
@@ -111,6 +111,10 @@
       {...row,items:row.items.filter(item=>!hiddenCards.includes(item.id))}:row
     ).filter(row=>row.items.length>0);
   });
+  let seasonBadges=$derived([
+    ...recentSeasons,
+    ...classifyNewReleases(data,recentSeasons,seriesEvidence).relevantSeasons
+  ]);
   let heroSlides=$derived(featuredSlides(shelves));
   let hero=$derived(heroSlides[heroIndex%Math.max(1,heroSlides.length)]??null);
   let gridItems=$derived.by(()=>{
@@ -245,7 +249,7 @@
     hoverCloseTimer=null;
   }
   const badgeFor=(item:MediaItem)=>
-    newBadge(item,recentSeasons)?.label??null;
+    newBadge(item,seasonBadges)?.label??null;
   function openMedia(item:MediaItem){
     closeHover();selected=item;
   }

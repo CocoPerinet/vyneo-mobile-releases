@@ -59,6 +59,20 @@ describe("Jellyfin parity: seasons, sequels and novelty badges",()=>{
     expect(classifyNewReleases(library([ep]),[wrong],[series],now)
       .newReleases).toEqual([]);
   });
+  it("uses genuine S2E1 premiere when Jellyfin omits Season metadata",()=>{
+    const result=classifyNewReleases(library([ep]),[],[series],now);
+    expect(result.newReleases.map(x=>x.id)).toEqual([series.id]);
+    expect(result.relevantSeasons).toEqual([{seriesId:ep.seriesId,
+      seasonId:ep.seasonId,number:2,premiereDate:ep.premiereDate}]);
+    expect(newBadge(series,result.relevantSeasons,now)?.label)
+      .toBe("Nouvelle saison S2");
+    const noAirDate={...ep,premiereDate:""};
+    expect(classifyNewReleases(library([noAirDate]),[],[series],now)
+      .newReleases).toEqual([]);
+    const wrongNumber={...ep,seasonNumber:1};
+    expect(classifyNewReleases(library([wrongNumber]),[],[series],now)
+      .newReleases).toEqual([]);
+  });
   it("only recommends sequels with a shared TMDb franchise ID",()=>{
     const candidate=item(22,"Movie",{franchiseId:"112233",
       premiereDate:"2026-10-01"});

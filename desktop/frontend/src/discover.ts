@@ -40,7 +40,10 @@ export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):She
   const rows:Shelf[]=[];
   const put=(id:string,title:string,items:MediaItem[],
     kind:Shelf["kind"]="standard")=>{
-    if(items.length)rows.push({id,title,items:unique(items),kind});
+    // Preserve the full, already bounded NextUp shelf instead of applying
+    // the default 30-item limit a second time.
+    if(items.length)rows.push({id,title,items:unique(items,
+      id==="next-up"?600:30),kind});
   };
   put("resume","Reprendre la lecture",resume);
   put("next-up","À suivre",nextUp);

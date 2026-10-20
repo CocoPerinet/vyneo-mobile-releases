@@ -63,6 +63,7 @@
   }|null>(null);
   let hoverBusy=$state(false);
   let hoverDetailsPending=$state(false);
+  let hoverFavoriteUnavailable=$state(false);
   let hoverError=$state("");
   // Bounded, user-scoped metadata cache: no item from another account survives logout.
   const hoverDetailsCache=new Map<string,{
@@ -182,6 +183,7 @@
     if(hoverCloseTimer!==null)clearTimeout(hoverCloseTimer);
     hoverOpenTimer=null;hoverCloseTimer=null;hover=null;hoverError="";
     hoverDetailsPending=false;
+    hoverFavoriteUnavailable=false;
   }
   function detailFor(item:MediaItem,uid:string):Promise<MediaItem>{
     const key=uid+":"+item.id.toLowerCase();
@@ -213,9 +215,16 @@
       if(generation===epoch && session?.userId===uid &&
         hover?.item.id===item.id){
         hover={...hover,item:details};
+        hoverFavoriteUnavailable=false;
       }
     }catch{
-      // Network failure does not discard the visible snapshot.
+      // Without the parent series state, an episode's heart could toggle
+      // the opposite value. Keep playback/metadata available, but fail closed.
+      if(generation===epoch && session?.userId===uid &&
+        hover?.item.id===item.id && item.type==="Episode" && item.seriesId){
+        hoverFavoriteUnavailable=true;
+        hoverError="Favori de la série indisponible. Rouvrez l'aperçu pour réessayer.";
+      }
     }finally{
       if(generation===epoch && session?.userId===uid &&
         hover?.item.id===item.id)hoverDetailsPending=false;
@@ -235,6 +244,7 @@
       const y=Math.max(86,Math.min(rect.top-95,
         Math.max(86,window.innerHeight-430)));
       hover={item,x,y,source};hoverError="";
+      hoverFavoriteUnavailable=false;
       void hydrateHover(item,generation,session.userId);
     },420);
   }
@@ -297,7 +307,8 @@
     }finally{if(generation===epoch)hoverBusy=false;}
   }
   async function toggleHoverState(action:"favorite"|"played"){
-    if(hover && !(hoverDetailsPending && action==="favorite"))
+    if(hover && (action!=="favorite" ||
+      (!hoverDetailsPending && !hoverFavoriteUnavailable)))
       await changeMediaState(hover.item,action);
   }
   async function toggleHeroState(action:"favorite"|"played"){
@@ -333,6 +344,17 @@
     if(heroSlides.length>1)
       heroIndex=(heroIndex+step+heroSlides.length)%heroSlides.length;
   }
+  function keepActiveNavVisible(){
+    const nav=document.querySelector<HTMLElement>(".vy-header .vy-nav");
+    const active=nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if(!nav || !active)return;
+    const bounds=nav.getBoundingClientRect();
+    const item=active.getBoundingClientRect();
+    if(item.left<bounds.left+8)
+      nav.scrollBy({left:item.left-bounds.left-14,behavior:"instant"});
+    else if(item.right>bounds.right-8)
+      nav.scrollBy({left:item.right-bounds.right+14,behavior:"instant"});
+  }
   function selectTab(next:ViewKey){
     closeHover();
     tab=next;selected=null;searchText="";searchRows=[];profileOpen=false;
@@ -348,6 +370,7 @@
       try{localStorage.setItem("vyneo.tab."+session.userId,next);}catch{}
     }
     window.scrollTo({top:0,behavior:"instant"});
+    requestAnimationFrame(keepActiveNavVisible);
   }
   function acceptSession(authenticated:SessionPublic){
     session=authenticated;profileOpen=false;
@@ -373,6 +396,7 @@
     if(tab==="anime")void loadCatalog("Anime");
     if(tab==="favorites")for(const entry of favoriteSections)
       void loadCatalog(entry.kind,true);
+    requestAnimationFrame(keepActiveNavVisible);
   }
   async function restoreSaved(){
     try{
@@ -501,7 +525,9 @@
 </svelte:head>
 <svelte:window
   onscroll={()=>{scrollPosition=window.scrollY;closeHover();}}
-  onresize={closeHover}
+  onresize={()=>{
+    closeHover();requestAnimationFrame(keepActiveNavVisible);
+  }}
   onkeydown={(event)=>{
     if(event.key==="Escape"){profileOpen=false;closeHover();}
   }}
@@ -835,7 +861,7 @@
         x={hover.x} y={hover.y} source={hover.source}
         novelty={badgeFor(hover.item)}
         busy={hoverBusy} parentLoading={hoverDetailsPending}
-        error={hoverError}
+        parentUnavailable={hoverFavoriteUnavailable} error={hoverError}
         onopen={()=>openMedia(hover!.item)}
         onfavorite={()=>void toggleHoverState("favorite")}
         onplayed={()=>void toggleHoverState("played")}

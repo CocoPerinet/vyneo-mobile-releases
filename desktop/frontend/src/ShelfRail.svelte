@@ -27,11 +27,28 @@
       behavior:"smooth"});
   }
   onMount(()=>{
-    const observer=new ResizeObserver(measure);
-    observer.observe(rail);
-    for(const row of rail.children)observer.observe(row);
+    let frame=0;
+    const schedule=()=>{
+      cancelAnimationFrame(frame);
+      frame=requestAnimationFrame(measure);
+    };
+    const observer=new ResizeObserver(schedule);
+    const watchEdges=()=>{
+      observer.disconnect();
+      observer.observe(rail);
+      if(rail.firstElementChild)observer.observe(rail.firstElementChild);
+      if(rail.lastElementChild && rail.lastElementChild!==rail.firstElementChild)
+        observer.observe(rail.lastElementChild);
+      schedule();
+    };
+    const mutations=new MutationObserver(watchEdges);
+    mutations.observe(rail,{childList:true});
+    watchEdges();
     const t=setTimeout(measure,80);
-    return()=>{clearTimeout(t);observer.disconnect();};
+    return()=>{
+      clearTimeout(t);cancelAnimationFrame(frame);
+      mutations.disconnect();observer.disconnect();
+    };
   });
 </script>
 <section class="vy-shelf" aria-label={shelf.title} data-vy-section={shelf.id}>

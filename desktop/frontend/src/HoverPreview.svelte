@@ -6,12 +6,13 @@
   type Props={
     item:MediaItem;cache:ArtworkCache;
     x:number;y:number;source:string;novelty:string|null;
-    busy?:boolean;parentLoading?:boolean;error?:string;
+    busy?:boolean;parentLoading?:boolean;parentUnavailable?:boolean;
+    error?:string;
     onopen:()=>void;onfavorite:()=>void;onplayed:()=>void;
     onhide:()=>void;onenter:()=>void;onleave:()=>void;
   };
   let {item,cache,x,y,source,novelty,busy=false,
-    parentLoading=false,error="",
+    parentLoading=false,parentUnavailable=false,error="",
     onopen,onfavorite,onplayed,onhide,onenter,onleave}:Props=$props();
   const duration=(ticks:number|null|undefined):string=>{
     if(!ticks)return "";
@@ -44,10 +45,12 @@
         aria-label="Afficher les options de lecture" title="Afficher la fiche et les options de lecture"
         onclick={onopen}><VyIcon kind="play" size={20}/></button>
       <button type="button" class="vy-icon-button" class:active={item.isFavorite}
-        aria-label={parentLoading?"Vérification du favori de la série":
+        aria-label={parentUnavailable?"Favori de la série indisponible":
+          parentLoading?"Vérification du favori de la série":
           item.isFavorite?"Retirer de ma liste":"Ajouter à ma liste"}
-        title={parentLoading?"Synchronisation du favori…":"Ma liste"}
-        disabled={busy||parentLoading} onclick={onfavorite}>
+        title={parentUnavailable?"Favori indisponible":
+          parentLoading?"Synchronisation du favori…":"Ma liste"}
+        disabled={busy||parentLoading||parentUnavailable} onclick={onfavorite}>
         <VyIcon kind="heart" size={18}/>
       </button>
       <button type="button" class="vy-icon-button" class:active={item.played}

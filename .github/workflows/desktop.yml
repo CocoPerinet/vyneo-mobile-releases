@@ -61,7 +61,7 @@ jobs:
             gh release create "$GITHUB_REF_NAME" \
               --verify-tag --latest=false \
               --title "Vynéo Desktop ${GITHUB_REF_NAME#desktop-v}" \
-              --notes "Vynéo Desktop ${GITHUB_REF_NAME#desktop-v} : affichage amélioré, recommandations basées sur les histoires plutôt que les genres génériques, classement des sorties récentes, menu de profil et restauration de la session Jellyfin par coffre système. Moteur G7y/Qwen3 natifs non encore activés, lecture MPV native non livrée."
+              --notes "Vynéo Desktop ${GITHUB_REF_NAME#desktop-v} : barre de navigation visible pendant le défilement, menu de profil indiquant le vrai statut de mémorisation, recommandations affinées et restauration sécurisée de la session. Moteur G7y/Qwen3 natifs non encore activés, lecture MPV native non livrée."
           fi
           # Desktop Stable must not be a GitHub prerelease. Keep the Android
           # release selected as the repository's Latest release.

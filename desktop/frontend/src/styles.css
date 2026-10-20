@@ -19,7 +19,7 @@ body{font:14px/1.5 var(--vy-font);color:var(--vy-text);-webkit-font-smoothing:an
 button,input{font:inherit}
 button{cursor:pointer}
 button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);outline-offset:3px}
-.vy-app{min-height:100vh;background:var(--vy-bg);overflow-x:hidden}
+.vy-app{min-height:100vh;background:var(--vy-bg);overflow-x:clip;overflow-y:visible}
 .vy-logo{font-weight:900;font-size:28px;letter-spacing:.25px;color:var(--vy-accent-2);line-height:1}
 .vy-logo-button{border:0;background:none;padding:8px 0;color:var(--vy-accent-2)}
 .vy-header{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:23px;

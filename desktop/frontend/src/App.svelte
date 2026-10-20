@@ -37,6 +37,7 @@
   let loginError=$state("");
   let vaultNotice=$state("");
   let rememberMe=$state(true);
+  let credentialStored=$state(false);
   let restoreBusy=$state(true);
   let profileOpen=$state(false);
   let session=$state<SessionPublic|null>(null);
@@ -158,6 +159,7 @@
       if(!saved)return;
       const authenticated=await api.restore(saved);
       acceptSession(authenticated);
+      credentialStored=true;
     }catch(error){
       const code=error instanceof Error?error.message:String(error);
       if(["SESSION_EXPIRED","RESTORE_INVALID","VAULT_INVALID_SESSION"].includes(code))
@@ -170,14 +172,14 @@
   async function login(event:SubmitEvent){
     event.preventDefault();
     if(loginBusy || restoreBusy)return;
-    loginBusy=true;loginError="";vaultNotice="";
+    loginBusy=true;loginError="";vaultNotice="";credentialStored=false;
     const password=loginPassword;
     loginPassword="";
     try{
       const authenticated=await api.login(loginName,password);
       const credential=api.savedCredential();
       if(rememberMe && credential && nativeVault.available){
-        try{await nativeVault.save(credential);}catch{
+        try{await nativeVault.save(credential);credentialStored=true;}catch{
           vaultNotice="Connexion réussie, mais la mémorisation sécurisée est indisponible.";
         }
       }else if(nativeVault.available){
@@ -224,7 +226,7 @@
     });
   }
   async function logout(){
-    epoch++;refreshVersion++;profileOpen=false;
+    epoch++;refreshVersion++;profileOpen=false;credentialStored=false;
     if(searchTimer!==null)clearTimeout(searchTimer);
     api.logout();artwork.clear();
     session=null;selected=null;tab="home";heroIndex=0;
@@ -339,8 +341,9 @@
             <section class="vy-account-menu" aria-label="Profil Vynéo">
               <strong>{session.username}</strong>
               <small>{vaultNotice ||
-                (nativeVault.available && rememberMe
-                  ?"Connexion sécurisée mémorisée":"Compte Jellyfin connecté")}</small>
+                (credentialStored
+                  ?"Connexion mémorisée sur cet appareil"
+                  :"Session active, non mémorisée")}</small>
               <button type="button" onclick={()=>void logout()}>
                 Se déconnecter
               </button>

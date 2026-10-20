@@ -66,6 +66,9 @@ export interface MediaItem {
   parentBackdropItemId?:string|null;
   hasParentBackdrop?:boolean;
   seriesId?:string|null;
+  seasonId?:string|null;
+  playedPercentage?:number|null;
+  franchiseId?:string|null;
   seasonNumber?:number|null;
   episodeNumber?:number|null;
   runtimeTicks?:number|null;

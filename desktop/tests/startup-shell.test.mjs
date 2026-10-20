@@ -45,7 +45,10 @@ test("cross-account state resets and discovery sections are first-party",()=>{
   assert.match(app,/\"home\"/);
   assert.match(app,/\"universes\"/);
   assert.match(app,/\"favorites\"/);
-  assert.match(app,/\"top10\"/);
+  // The rank renderer was extracted into the reusable native rail.
+  const rail=read("frontend/src/ShelfRail.svelte");
+  assert.match(app,/ShelfRail/);
+  assert.match(rail,/shelf\.kind===\"top10\"/);
 });
 test("signed updater and release separation remain available",()=>{
   assert.match(rust,/UPDATE_CHECK_TIMEOUT/);

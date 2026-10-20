@@ -5,6 +5,14 @@
   import {JellyfinApi} from "./api";
   import {ArtworkCache,hasArtwork,lazyArtwork} from "./artwork";
   import {buildShelves,featuredSlides} from "./discover";
+  import {newBadge,includeNewReleaseShelf} from "./new-seasons";
+  import type {RecentSeason} from "./new-seasons";
+  import {UNIVERSES,universeItems} from "./universes";
+  import type {UniverseId} from "./universes";
+  import ShelfRail from "./ShelfRail.svelte";
+  import UniverseRail from "./UniverseRail.svelte";
+  import HoverPreview from "./HoverPreview.svelte";
+  import VyIcon from "./VyIcon.svelte";
   import MediaCard from "./MediaCard.svelte";
   import MediaDetails from "./MediaDetails.svelte";
 
@@ -40,8 +48,24 @@
   let credentialStored=$state(false);
   let restoreBusy=$state(true);
   let profileOpen=$state(false);
+  let avatarUrl=$state<string|null>(null);
   let session=$state<SessionPublic|null>(null);
   let data=$state<LibrarySnapshot>(empty());
+  let recentSeasons=$state<RecentSeason[]>([]);
+  let seriesEvidence=$state<MediaItem[]>([]);
+  let hiddenCards=$state<string[]>([]);
+  let universeCatalog=$state<MediaItem[]>([]);
+  let activeUniverse=$state<UniverseId|null>(null);
+  let universeLoading=$state(false);
+  let universeError=$state("");
+  let hover=$state<{
+    item:MediaItem;x:number;y:number;source:string;
+  }|null>(null);
+  let hoverBusy=$state(false);
+  let hoverError=$state("");
+  let scrollPosition=$state(0);
+  let hoverOpenTimer:ReturnType<typeof setTimeout>|null=null;
+  let hoverCloseTimer:ReturnType<typeof setTimeout>|null=null;
   let catalogs=$state<Record<CatalogKind,CatalogState>>({
     Movie:freshCatalog(),Series:freshCatalog(),Anime:freshCatalog()
   });
@@ -64,23 +88,33 @@
   let searchTimer:ReturnType<typeof setTimeout>|null=null;
   const tabs:Array<{key:ViewKey;label:string}>= [
     {key:"home",label:"Accueil"},
+    {key:"anime",label:"Animés"},
     {key:"movies",label:"Films"},
     {key:"series",label:"Séries"},
-    {key:"anime",label:"Animés"},
     {key:"favorites",label:"Ma liste"},
     {key:"universes",label:"Univers"}
   ];
   let catalogKind=$derived<CatalogKind|null>(
     tab==="movies"?"Movie":tab==="series"?"Series":tab==="anime"?"Anime":null);
   let heroIndex=$state(0);
-  let shelves=$derived(session?buildShelves(data,session.userId):[]);
+  let shelves=$derived.by(()=>{
+    if(!session)return [];
+    const rows=includeNewReleaseShelf(buildShelves(data,session.userId),
+      data,recentSeasons,seriesEvidence);
+    return rows.filter(row=>row.id!=="universes").map(row=>
+      row.id==="next-up" || row.id==="resume"?
+      {...row,items:row.items.filter(item=>!hiddenCards.includes(item.id))}:row
+    ).filter(row=>row.items.length>0);
+  });
   let heroSlides=$derived(featuredSlides(shelves));
   let hero=$derived(heroSlides[heroIndex%Math.max(1,heroSlides.length)]??null);
   let gridItems=$derived.by(()=>{
     if(tab==="movies")return catalogs.Movie.items;
     if(tab==="series")return catalogs.Series.items;
     if(tab==="anime")return catalogs.Anime.items;
-    if(tab==="universes")return data.collections;
+    if(tab==="universes" && activeUniverse)
+      return universeItems(activeUniverse,universeCatalog);
+    if(tab==="universes")return [];
     return [];
   });
   let searchActive=$derived(searchText.trim().length>=2);
@@ -121,12 +155,136 @@
         onlyFavorites);
     }
   }
+  function clearAvatar(){
+    if(avatarUrl)URL.revokeObjectURL(avatarUrl);
+    avatarUrl=null;
+  }
+  function loadAvatar(generation=epoch){
+    const uid=session?.userId;
+    if(!uid)return;
+    void api.getUserAvatar().then(image=>{
+      if(generation!==epoch || session?.userId!==uid || !image)return;
+      clearAvatar();
+      avatarUrl=URL.createObjectURL(image);
+    }).catch(()=>{});
+  }
+  function closeHover(){
+    if(hoverOpenTimer!==null)clearTimeout(hoverOpenTimer);
+    if(hoverCloseTimer!==null)clearTimeout(hoverCloseTimer);
+    hoverOpenTimer=null;hoverCloseTimer=null;hover=null;hoverError="";
+  }
+  function requestHover(item:MediaItem,element:HTMLElement,source:string){
+    if(!window.matchMedia("(hover:hover) and (pointer:fine)").matches)return;
+    if(hoverOpenTimer!==null)clearTimeout(hoverOpenTimer);
+    if(hoverCloseTimer!==null)clearTimeout(hoverCloseTimer);
+    const generation=epoch;
+    const rect=element.getBoundingClientRect();
+    hoverOpenTimer=setTimeout(()=>{
+      if(generation!==epoch || !element.isConnected || !session)return;
+      const width=Math.min(330,window.innerWidth-28);
+      const x=Math.max(14,Math.min(window.innerWidth-width-14,
+        rect.left+(rect.width-width)/2));
+      const y=Math.max(86,Math.min(rect.top-95,
+        Math.max(86,window.innerHeight-430)));
+      hover={item,x,y,source};hoverError="";
+    },420);
+  }
+  function requestHideHover(){
+    if(hoverOpenTimer!==null)clearTimeout(hoverOpenTimer);
+    hoverOpenTimer=null;
+    if(hoverCloseTimer!==null)clearTimeout(hoverCloseTimer);
+    hoverCloseTimer=setTimeout(()=>{hover=null;hoverError="";},210);
+  }
+  function holdHover(){
+    if(hoverCloseTimer!==null)clearTimeout(hoverCloseTimer);
+    hoverCloseTimer=null;
+  }
+  const badgeFor=(item:MediaItem)=>
+    newBadge(item,recentSeasons)?.label??null;
+  function openMedia(item:MediaItem){
+    closeHover();selected=item;
+  }
+  async function changeMediaState(shown:MediaItem,
+    action:"favorite"|"played"){
+    if(hoverBusy || !session)return;
+    const uid=session.userId,generation=epoch;
+    const targetId=action==="favorite" && shown.type==="Episode"?
+      shown.seriesId??shown.id:shown.id;
+    const enabled=!(action==="favorite"?shown.isFavorite:shown.played);
+    hoverBusy=true;hoverError="";
+    try{
+      await api.updateMediaState(targetId,action,enabled);
+      if(generation!==epoch || session?.userId!==uid)return;
+      const rewrite=(item:MediaItem):MediaItem=>{
+        if(item.id.toLowerCase()!==targetId.toLowerCase() &&
+           item.id.toLowerCase()!==shown.id.toLowerCase())return item;
+        return action==="favorite"?{...item,isFavorite:enabled}:
+          {...item,played:enabled,progress:enabled?null:item.progress};
+      };
+      data={...data,
+        recent:data.recent.map(rewrite),resume:data.resume.map(rewrite),
+        nextUp:data.nextUp.map(rewrite),watched:data.watched.map(rewrite),
+        favorites:data.favorites.map(rewrite),
+        candidates:data.candidates?.map(rewrite)};
+      catalogs=Object.fromEntries(Object.entries(catalogs).map(([key,value])=>
+        [key,{...value,items:value.items.map(rewrite)}])
+      ) as Record<CatalogKind,CatalogState>;
+      favoriteCatalogs=Object.fromEntries(Object.entries(favoriteCatalogs)
+        .map(([key,value])=>[key,{...value,items:value.items.map(rewrite)}])
+      ) as Record<CatalogKind,CatalogState>;
+      if(hover?.item.id===shown.id)hover={...hover,item:rewrite(shown)};
+      if(action==="favorite")void api.getFavorites().then(items=>{
+        if(generation===epoch && session?.userId===uid)
+          data={...data,favorites:items};
+      }).catch(()=>{});
+      if(action==="played")void api.getNextUp().then(items=>{
+        if(generation===epoch && session?.userId===uid)
+          data={...data,nextUp:items};
+      }).catch(()=>{});
+    }catch{
+      if(generation===epoch)hoverError="Modification refusée par Jellyfin.";
+    }finally{if(generation===epoch)hoverBusy=false;}
+  }
+  async function toggleHoverState(action:"favorite"|"played"){
+    if(hover)await changeMediaState(hover.item,action);
+  }
+  async function toggleHeroState(action:"favorite"|"played"){
+    if(hero)await changeMediaState(hero,action);
+  }
+  function hideFromThisDevice(){
+    if(!hover || !session)return;
+    const id=hover.item.id;
+    if(!hiddenCards.includes(id))hiddenCards=[...hiddenCards,id].slice(-500);
+    try{localStorage.setItem("vyneo.hidden."+session.userId,
+      JSON.stringify(hiddenCards));}catch{}
+    closeHover();
+  }
+  async function loadUniverse(){
+    if(universeLoading || !session || universeCatalog.length)return;
+    const generation=epoch,uid=session.userId;
+    universeLoading=true;universeError="";
+    try{
+      const results=await api.getUniverseCatalog();
+      if(generation!==epoch || session?.userId!==uid)return;
+      universeCatalog=results;
+    }catch{
+      if(generation===epoch)
+        universeError="Impossible de charger les univers. Réessayez.";
+    }finally{if(generation===epoch)universeLoading=false;}
+  }
+  function openUniverse(next:UniverseId){
+    selectTab("universes");
+    activeUniverse=next;
+    void loadUniverse();
+  }
   function moveHero(step:number){
     if(heroSlides.length>1)
       heroIndex=(heroIndex+step+heroSlides.length)%heroSlides.length;
   }
   function selectTab(next:ViewKey){
+    closeHover();
     tab=next;selected=null;searchText="";searchRows=[];profileOpen=false;
+    activeUniverse=null;
     if(next==="movies" && !catalogs.Movie.loaded)void loadCatalog("Movie");
     if(next==="series" && !catalogs.Series.loaded)void loadCatalog("Series");
     if(next==="anime" && !catalogs.Anime.loaded)void loadCatalog("Anime");
@@ -141,7 +299,18 @@
   }
   function acceptSession(authenticated:SessionPublic){
     session=authenticated;profileOpen=false;
+    recentSeasons=[];seriesEvidence=[];hiddenCards=[];
+    universeCatalog=[];activeUniverse=null;universeError="";
+    closeHover();clearAvatar();
     const generation=++epoch;
+    loadAvatar(generation);
+    try{
+      const ids=JSON.parse(localStorage.getItem(
+        "vyneo.hidden."+authenticated.userId)??"[]");
+      if(Array.isArray(ids))hiddenCards=ids.filter(
+        (v):v is string=>typeof v==="string" && /^[a-f0-9]{32}$/i.test(v))
+        .slice(0,500);
+    }catch{}
     try{
       const stored=localStorage.getItem("vyneo.tab."+authenticated.userId);
       if(tabs.some(t=>t.key===stored))tab=stored as ViewKey;
@@ -203,6 +372,7 @@
       return;
     }
     data={...data,recent,resume};
+    recentSeasons=[];seriesEvidence=[];
     // Enrich the home in the background. A late result can never migrate
     // media from the previous account after logout or a session change.
     const add=await Promise.allSettled([
@@ -215,6 +385,16 @@
       const result=add[index];
       if(result.status==="fulfilled")data={...data,[name]:result.value};
     }
+    // This background metadata pass is independent of the first paint.
+    // Never infer a season from DateCreated or an unseen Jellyfin Series.
+    void Promise.allSettled([
+      api.getRecentSeasons(),api.getNextUpSeries(data.nextUp)
+    ]).then(result=>{
+      if(generation!==epoch || version!==refreshVersion ||
+        session?.userId!==api.session?.userId)return;
+      recentSeasons=result[0].status==="fulfilled"?result[0].value:[];
+      seriesEvidence=result[1].status==="fulfilled"?result[1].value:[];
+    });
     // Optional, lower-priority discovery feed. The first home render and
     // its shelves never wait on this larger user-authorized query.
     void api.getCandidates().then(items=>{
@@ -227,6 +407,9 @@
   }
   async function logout(){
     epoch++;refreshVersion++;profileOpen=false;credentialStored=false;
+    closeHover();clearAvatar();
+    hiddenCards=[];recentSeasons=[];seriesEvidence=[];
+    universeCatalog=[];activeUniverse=null;universeError="";
     if(searchTimer!==null)clearTimeout(searchTimer);
     api.logout();artwork.clear();
     session=null;selected=null;tab="home";heroIndex=0;
@@ -265,7 +448,11 @@
   <meta name="theme-color" content="#0a0c11" />
 </svelte:head>
 <svelte:window
-  onkeydown={(event)=>{if(event.key==="Escape")profileOpen=false;}}
+  onscroll={()=>{scrollPosition=window.scrollY;closeHover();}}
+  onresize={closeHover}
+  onkeydown={(event)=>{
+    if(event.key==="Escape"){profileOpen=false;closeHover();}
+  }}
   onclick={(event)=>{
     if(profileOpen && event.target instanceof Element &&
        !event.target.closest(".vy-account-wrap"))profileOpen=false;
@@ -313,7 +500,8 @@
       </form>
     </main>
   {:else}
-    <header class="vy-header">
+    <header class="vy-header"
+      class:vy-header-over-hero={tab==="home"&&!searchActive&&scrollPosition<28}>
       <button type="button" class="vy-logo vy-logo-button"
         aria-label="Retour à l'accueil" onclick={()=>selectTab("home")}>Vynéo</button>
       <nav class="vy-nav" aria-label="Navigation principale">
@@ -325,9 +513,11 @@
       </nav>
       <div class="vy-toolbar">
         <label class="vy-search-label">
-          <span class="vy-search-icon" aria-hidden="true">⌕</span>
+          <span class="vy-search-icon" aria-hidden="true">
+            <VyIcon kind="search" size={20}/>
+          </span>
           <input type="search" aria-label="Rechercher dans ma bibliothèque"
-            placeholder="Rechercher…" bind:value={searchText}
+            placeholder="Rechercher un film, une série…" bind:value={searchText}
             oninput={updateSearch} />
         </label>
         <div class="vy-account-wrap">
@@ -335,7 +525,11 @@
             aria-label="Ouvrir le profil" aria-haspopup="dialog"
             aria-expanded={profileOpen}
             onclick={()=>profileOpen=!profileOpen}>
-            {session.username.slice(0,1).toUpperCase()}
+            {#if avatarUrl}
+              <img class="vy-avatar-image" src={avatarUrl} alt=""/>
+            {:else}
+              {session.username.slice(0,1).toUpperCase()}
+            {/if}
           </button>
           {#if profileOpen}
             <section class="vy-account-menu" aria-label="Profil Vynéo">
@@ -362,7 +556,10 @@
           <div class="vy-catalog-grid">
             {#each searchRows as item (item.id)}
               <MediaCard {item} cache={artwork}
-                onclick={(next)=>selected=next} />
+                novelty={badgeFor(item)}
+                onhover={(element)=>requestHover(item,element,"search")}
+                onleave={requestHideHover}
+                onclick={openMedia} />
             {/each}
           </div>
           {#if !searchBusy && !searchRows.length}
@@ -387,9 +584,24 @@
                   onclick={()=>selected=hero}>
                   <span aria-hidden="true">▶</span> Voir la fiche
                 </button>
-                <button type="button" class="vy-more-button"
-                  onclick={()=>selectTab(hero.type==="Series"?"series":"movies")}>
-                  {hero.type==="Series"?"Explorer les séries":"Explorer les films"}
+                <button type="button" class="vy-icon-button vy-hero-action-icon"
+                  aria-label={hero.isFavorite?"Retirer de ma liste":"Ajouter à ma liste"}
+                  title="Ma liste" class:active={hero.isFavorite}
+                  disabled={hoverBusy}
+                  onclick={()=>void toggleHeroState("favorite")}>
+                  <VyIcon kind="heart" size={19}/>
+                </button>
+                <button type="button" class="vy-icon-button vy-hero-action-icon"
+                  aria-label={hero.played?"Marquer non vu":"Marquer vu"}
+                  title="Vu / non vu" class:active={hero.played}
+                  disabled={hoverBusy}
+                  onclick={()=>void toggleHeroState("played")}>
+                  <VyIcon kind="check" size={18}/>
+                </button>
+                <button type="button" class="vy-icon-button vy-hero-action-icon"
+                  aria-label={"Informations : "+hero.title} title="Voir la fiche"
+                  onclick={()=>openMedia(hero)}>
+                  <VyIcon kind="info" size={19}/>
                 </button>
               </div>
             {:else}
@@ -407,7 +619,7 @@
             <div class="vy-hero-controls" aria-label="Choisir une affiche à la une">
               <button type="button" class="vy-hero-arrow"
                 aria-label="Bannière précédente" onclick={()=>moveHero(-1)}>
-                ‹
+                <VyIcon kind="chevron-left" size={22}/>
               </button>
               <div class="vy-hero-dots" role="group" aria-label="Bannières à la une">
                 {#each heroSlides as slide,index (slide.id)}
@@ -419,29 +631,24 @@
               </div>
               <button type="button" class="vy-hero-arrow"
                 aria-label="Bannière suivante" onclick={()=>moveHero(1)}>
-                ›
+                <VyIcon kind="chevron-right" size={22}/>
               </button>
             </div>
           {/if}
         </section>
         <div class="vy-shelves">
           {#each shelves as shelf (shelf.id)}
-            <section class="vy-shelf" aria-label={shelf.title}>
-              <div class="vy-shelf-heading">
-                <h2>{shelf.title}</h2>
-                <span class="vy-shelf-count">{shelf.items.length} titres</span>
-              </div>
-              <div class="vy-rail">
-                {#each shelf.items as item,index (item.id)}
-                  <MediaCard {item} cache={artwork}
-                    rank={shelf.kind==="top10"?index+1:0}
-                    variant={shelf.kind??"standard"}
-                    reason={shelf.reasons?.[item.id]??""}
-                    onclick={(next)=>selected=next} />
-                {/each}
-              </div>
-            </section>
+            <ShelfRail {shelf} cache={artwork} onclick={openMedia}
+              badge={badgeFor} onhover={requestHover}
+              onleave={requestHideHover} />
+            {#if shelf.id==="new-seasons" ||
+              (shelf.id==="next-up" && !shelves.some(s=>s.id==="new-seasons"))}
+              <UniverseRail onselect={openUniverse}/>
+            {/if}
           {/each}
+          {#if !shelves.some(s=>s.id==="new-seasons" || s.id==="next-up")}
+            <UniverseRail onselect={openUniverse}/>
+          {/if}
         </div>
         {#if homeWarning}<p class="vy-empty" role="status">{homeWarning}</p>{/if}
         <footer class="vy-footer">
@@ -458,43 +665,74 @@
           </div>
           {#each favoriteSections as entry (entry.kind)}
             {@const group=favoriteCatalogs[entry.kind]}
-            <section class="vy-shelf vy-favorites-shelf" aria-label={entry.label}>
-              <div class="vy-shelf-heading">
+            {#if group.items.length}
+              <ShelfRail
+                shelf={{id:"favorite-"+entry.kind,title:entry.label,
+                  items:group.items}} cache={artwork} onclick={openMedia}
+                badge={badgeFor} onhover={requestHover}
+                onleave={requestHideHover} showCount={true}/>
+            {:else}
+              <section class="vy-shelf vy-favorites-shelf" aria-label={entry.label}>
                 <h2>{entry.label}</h2>
-                {#if group.total!==null}
-                  <span class="vy-shelf-count">
-                    {group.items.length} / {group.total} titres
-                  </span>
+                {#if group.loading}
+                  <p class="vy-empty">Chargement de votre liste…</p>
+                {:else if group.libraryAvailable===false}
+                  <p class="vy-empty">Bibliothèque non accessible à votre compte.</p>
+                {:else if group.loaded && !group.error}
+                  <p class="vy-empty">Aucun favori dans cette bibliothèque.</p>
                 {/if}
+              </section>
+            {/if}
+            {#if group.error}
+              <p class="vy-empty" role="alert">{group.error}</p>
+            {/if}
+            {#if group.nextOffset!==null && group.libraryAvailable!==false}
+              <div class="vy-pagination">
+                <button type="button" disabled={group.loading}
+                  onclick={()=>void loadCatalog(entry.kind,true)}>
+                  {group.loading?"Chargement…":
+                    group.error?"Réessayer":"Afficher davantage"}
+                </button>
               </div>
-              {#if group.items.length}
-                <div class="vy-rail">
-                  {#each group.items as item (item.id)}
-                    <MediaCard {item} cache={artwork}
-                      onclick={(next)=>selected=next} />
-                  {/each}
-                </div>
-              {:else if group.loading}
-                <p class="vy-empty">Chargement de votre liste…</p>
-              {:else if group.libraryAvailable===false}
-                <p class="vy-empty">Bibliothèque non accessible à votre compte.</p>
-              {:else if group.loaded && !group.error}
-                <p class="vy-empty">Aucun favori dans cette bibliothèque.</p>
-              {/if}
-              {#if group.error}
-                <p class="vy-empty" role="alert">{group.error}</p>
-              {/if}
-              {#if group.nextOffset!==null && group.libraryAvailable!==false}
-                <div class="vy-pagination">
-                  <button type="button" disabled={group.loading}
-                    onclick={()=>void loadCatalog(entry.kind,true)}>
-                    {group.loading?"Chargement…":
-                      group.error?"Réessayer":"Afficher davantage"}
-                  </button>
-                </div>
-              {/if}
-            </section>
+            {/if}
           {/each}
+        </section>
+      {:else if tab==="universes"}
+        <section class="vy-browser vy-universes-page">
+          {#if activeUniverse}
+            <button type="button" class="vy-universe-back"
+              onclick={()=>{activeUniverse=null;closeHover();}}>
+              ‹ Tous les univers
+            </button>
+            <div class="vy-browser-heading">
+              <h1>{UNIVERSES.find(u=>u.id===activeUniverse)?.label??"Univers"}</h1>
+            </div>
+            {#if universeLoading}
+              <p class="vy-empty">Recherche des œuvres autorisées dans Jellyfin…</p>
+            {:else if universeError}
+              <p class="vy-empty" role="alert">{universeError}</p>
+              <button type="button" class="vy-universe-retry"
+                onclick={()=>void loadUniverse()}>Réessayer</button>
+            {:else}
+              <div class="vy-catalog-grid">
+                {#each gridItems as item (item.id)}
+                  <MediaCard {item} cache={artwork} onclick={openMedia}
+                    novelty={badgeFor(item)}
+                    onhover={(element)=>requestHover(item,element,"universe")}
+                    onleave={requestHideHover} />
+                {/each}
+              </div>
+              {#if !gridItems.length}
+                <p class="vy-empty">Aucun titre de cet univers n'est présent dans
+                  votre bibliothèque accessible.</p>
+              {/if}
+            {/if}
+          {:else}
+            <h1>Univers</h1>
+            <p class="vy-universes-intro">Explorez les œuvres regroupées à partir
+              des studios et des métadonnées de votre bibliothèque Jellyfin.</p>
+            <UniverseRail onselect={openUniverse}/>
+          {/if}
         </section>
       {:else}
         <section class="vy-browser">
@@ -503,17 +741,15 @@
               <span class="vy-kicker">VOTRE BIBLIOTHÈQUE</span>
               <h1>{titleFor(tab)}</h1>
             </div>
-            <span class="vy-shelf-count">
-              {gridItems.length}{#if catalogKind && catalogs[catalogKind].total!==null}
-                / {catalogs[catalogKind].total}
-              {/if} titres affichés
-            </span>
+
           </div>
           <div class="vy-catalog-grid">
             {#each gridItems as item (item.id)}
               <MediaCard {item} cache={artwork}
-                variant={tab==="universes"?"universe":"standard"}
-                onclick={(next)=>selected=next} />
+                novelty={badgeFor(item)}
+                onhover={(element)=>requestHover(item,element,"catalog")}
+                onleave={requestHideHover}
+                onclick={openMedia} />
             {/each}
           </div>
           {#if catalogKind}
@@ -542,6 +778,17 @@
         </section>
       {/if}
     </main>
+    {#if hover && !selected}
+      <HoverPreview item={hover.item} cache={artwork}
+        x={hover.x} y={hover.y} source={hover.source}
+        novelty={badgeFor(hover.item)}
+        busy={hoverBusy} error={hoverError}
+        onopen={()=>openMedia(hover!.item)}
+        onfavorite={()=>void toggleHoverState("favorite")}
+        onplayed={()=>void toggleHoverState("played")}
+        onhide={hideFromThisDevice}
+        onenter={holdHover} onleave={requestHideHover}/>
+    {/if}
     {#if selected}
       <MediaDetails item={selected} {api} cache={artwork}
         onclose={()=>selected=null}/>

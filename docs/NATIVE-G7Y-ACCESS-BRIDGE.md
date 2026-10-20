@@ -1,0 +1,80 @@
+# Vynéo Desktop 0.2.0 : contrat de raccordement natif G7y
+20 octobre 2026. **Décision : aucune activation du BFF G7y dans Tauri
+avant établissement d'une identité Cloudflare Access native vérifiable.**
+
+## Constat vérifié dans le code existant
+- Le frontend Svelte natif utilise exclusivement l'origine Jellyfin
+  `https://cocojellyfin.duckdns.org:38443`. Les jetons Jellyfin vivent
+  en mémoire et sont transmis dans les en-têtes `Authorization`.
+- G7y/G7w est servi par le BFF privé
+  `https://vyneo-preview.visyren.fr`. Sa route
+  `POST /secure/rotating-sections` impose un JWT Cloudflare Access
+  signé à l'origine, une session G7h HttpOnly/SameSite=Strict liée au
+  même sujet, une vérification de compte Jellyfin et un jeton CSRF.
+- Le frontend Tauri est d'origine locale (tauri://localhost ou
+  http://tauri.localhost selon OS). Il ne possède pas et ne doit
+  pas copier les cookies / JWT du navigateur Access. Une requête
+  cross-origin directe n'est pas une authentification.
+- Les champs BFF `userEntitlementVerified=false`,
+  `realPlaybackAuthorized=false`, `playableUrls=0` et
+  `mediaBytesRead=0` décrivent des **métadonnées seulement** :
+  jamais une permission de lancer un lecteur.
+- Les endpoints existants ne fournissent pas un contrat OAuth/device
+  pour le Desktop. Aucune conversion magique cookie → token natif
+  n'est postulée.
+
+## Livraison préparatoire effectivement développée
+1. `frontend/src/candidate-pages.ts` :
+   exploration privée d'au plus **512 métadonnées** Jellyfin en
+   quatre pages maximum (0, 128, moyenne, ancienne). Pages d'archive
+   choisies de manière stable par semaine UTC et compte utilisateur.
+   Une page facultative a un timeout de 1,5 s. Le catalogue récent
+   fonctionne même si une archive est indisponible. Sans
+   `TotalRecordCount`, le premier lot demeure l'unique preuve.
+2. `frontend/src/api.ts` :
+   GET uniquement sur l'origine épinglée et le même compte,
+   `Filters=IsUnplayed`, pas d'URL vidéo, de session ou de chemin
+   de fichiers. Les IDs mal formés, doubles et totaux incohérents
+   ne deviennent pas des suggestions. Déconnexion et rotation de
+   compte invalident les résultats tardifs.
+3. `frontend/src/g7y-contract.ts` :
+   parseur **pur, non connecté**, qui reconnaît le schéma G7x/G7y,
+   rejette les données et déclarations d'autorisation inattendues,
+   les champs secrets et les titres non présents dans le catalogue
+   Jellyfin **déjà validé localement pour la session courante**.
+   Il remplace titres et métadonnées BFF par les objets locaux.
+   Ceci ne remplace PAS une authentification cryptographique.
+
+## Préconditions du vrai pont natif
+1. Choisir et vérifier avec Cloudflare **un flux client natif
+   pris en charge** qui satisfait la même policy Access et les
+   vérifications JWT à l'origine. Aucune route d'échange publique
+   hors Access, aucun service token statique dans le logiciel.
+2. Obtenir l'autorisation explicite de l'utilisateur avant de
+   connecter le compte Jellyfin au contexte Access ; vérifier
+   `/Users/Me` côté serveur. Prouver la correspondance exacte entre
+   l'identité Access validée, la session G7h et le compte Jellyfin.
+3. Introduire un transport dédié côté BFF, avec limitation de durée,
+   audience, anti-rejeu, protection CSRF/cross-site et révocation.
+   Aucun cookie/JWT/jeton Jellyfin ne sort des compartiments qui
+   les possèdent. Ne pas ouvrir CORS globalement.
+4. Le frontend ne consomme que des **métadonnées structurées** après
+   confirmation cryptographique et consultation Jellyfin personnelle ;
+   toute suggestion de titre reste revalidée sous le compte courant.
+   La sortie native est purgée à la déconnexion ou à l'expiration.
+5. Test de refus obligatoire : sans Access, mauvaise audience,
+   sujet différent, session expirée, consentement absent, compte
+   Jellyfin B non autorisé, ID media étranger, replay, retour
+   après logout, réseau hors ligne, champ média ou secret injecté.
+   L'ancien accueil local doit rester disponible en repli.
+
+## Décision de livraison
+- **Aujourd'hui :** recommandations locales explicables et
+  exploration 512 candidats, module G7y en lecture seule **non
+  appelé**. Aucun navigateur Access ou worker Qwen3 n'est relié.
+- **NO GO :** déployer un BFF modifié, injecter des cookies Access,
+  exposer un token dans l'URL, activer un lecteur ou publier la 0.2.0.
+- **Prochain gate :** preuve d'un flux Access natif officiellement
+  supporté, testée sur une identité fictive de bout en bout dans
+  un environnement isolé. Seulement ensuite qualification sur
+  une vraie session autorisée, sans divulguer d'identifiants.

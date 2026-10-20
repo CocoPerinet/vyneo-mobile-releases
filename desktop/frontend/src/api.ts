@@ -1,5 +1,6 @@
 import type {MediaItem,MediaType,SessionPublic,CatalogKind,CatalogPage,CatalogLibraryIds,SeasonSummary,EpisodePage,PlaybackProbe} from "./types";
 import {parseSeasons,parsePlaybackInfo} from "./media-details";
+import {candidateOffsets,CANDIDATE_BATCH_SIZE} from "./candidate-pages";
 
 export const SERVER_ORIGIN="https://cocojellyfin.duckdns.org:38443";
 const ID=/^[a-f0-9]{32}$/i;
@@ -143,6 +144,7 @@ export class JellyfinApi {
     body?:unknown;
     token?:string|null;
     maxBytes?:number;
+    timeoutMs?:number;
   }={}):Promise<unknown>{
     if(!path.startsWith("/") || path.startsWith("//"))
       throw new Error("PATH_DENIED");
@@ -160,7 +162,7 @@ export class JellyfinApi {
         method:options.method??"GET",headers,mode:"cors",
         credentials:"omit",cache:"no-store",redirect:"error",
         referrerPolicy:"no-referrer",
-        signal:AbortSignal.timeout(12000),
+        signal:AbortSignal.timeout(options.timeoutMs??12000),
         ...(options.method==="POST"?{body:JSON.stringify(options.body)}:{})
       });
     }catch{throw new Error("NETWORK_UNAVAILABLE");}
@@ -366,13 +368,60 @@ export class JellyfinApi {
       SortBy:"DateCreated",SortOrder:"Descending",Limit:40
     }),40);
   }
-  async getCandidates():Promise<MediaItem[]>{
+  async getCandidates(now=new Date()):Promise<MediaItem[]>{
     const uid=this.requireUser(),generation=this.authGeneration;
-    // Account-filtered metadata only, never stream URLs or media bytes.
-    const result=await this.items(this.userItems({
-      IncludeItemTypes:"Movie,Series",Filters:"IsUnplayed",
-      SortBy:"DateCreated",SortOrder:"Descending",Limit:128
-    }),128);
+    const readPage=async(startIndex:number,optional=false)=>{
+      const url=this.userItems({
+        IncludeItemTypes:"Movie,Series",Filters:"IsUnplayed",
+        SortBy:"DateCreated",SortOrder:"Descending",
+        EnableTotalRecordCount:"true",
+        StartIndex:startIndex,Limit:CANDIDATE_BATCH_SIZE
+      });
+      // Optional archive reads never hold the homepage for more than 1.5s.
+      const response=obj(await this.json(url,{
+        maxBytes:1048576,timeoutMs:optional?1500:12000
+      }));
+      this.assertSession(uid,generation);
+      if(!Array.isArray(response.Items) ||
+         response.Items.length>CANDIDATE_BATCH_SIZE)
+        throw new Error("CANDIDATES_INVALID");
+      const rawIds=new Set<string>();
+      for(const entry of response.Items){
+        const row=obj(entry);
+        if(!validId(row.Id) || rawIds.has(row.Id.toLowerCase()))
+          throw new Error("CANDIDATES_INVALID");
+        rawIds.add(row.Id.toLowerCase());
+      }
+      const total=typeof response.TotalRecordCount==="number" &&
+        Number.isSafeInteger(response.TotalRecordCount) &&
+        response.TotalRecordCount>=startIndex+response.Items.length &&
+        response.TotalRecordCount<=1_000_000_000
+        ?response.TotalRecordCount:null;
+      const items=parseItems(response,CANDIDATE_BATCH_SIZE).filter(item=>
+        (item.type==="Movie" || item.type==="Series") && !item.played);
+      return {items,total,consumed:response.Items.length};
+    };
+    const recent=await readPage(0);
+    if(recent.total===null || recent.consumed===0)return recent.items;
+    const seen=new Set(recent.items.map(item=>item.id));
+    const result=[...recent.items];
+    for(const offset of candidateOffsets(uid,recent.total,now)){
+      this.assertSession(uid,generation);
+      try{
+        const page=await readPage(offset,true);
+        // A stale or incoherent window is not evidence of additional
+        // entitlements. Preserve verified recent titles and stop sampling.
+        if(page.total!==recent.total || page.consumed===0 ||
+           page.items.some(item=>seen.has(item.id)))break;
+        for(const item of page.items){
+          seen.add(item.id);result.push(item);
+        }
+      }catch(error){
+        if(error instanceof Error && error.message==="SESSION_CHANGED")
+          throw error;
+        break;
+      }
+    }
     this.assertSession(uid,generation);
     return result;
   }

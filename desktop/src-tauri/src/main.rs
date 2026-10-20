@@ -10,9 +10,10 @@ use tauri::{
     Manager, WebviewUrl, WindowEvent,
 };
 use tauri_plugin_updater::UpdaterExt;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
-const UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(3);
-const UPDATE_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
+const UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
+const UPDATE_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(180);
 
 // The bundled Svelte/TypeScript app owns all UI and talks directly to
 // the Jellyfin media API. We never run the external Jellyfin browser SPA.
@@ -22,13 +23,27 @@ async fn check_signed_update(app: tauri::AppHandle) {
         updater.check().await
     }).await;
     if let Ok(Ok(Some(update))) = check {
+        // Never install an unexpected update silently. The stable and Preview
+        // editions each check their own distinct, signature-enforced feed.
+        let (send, receive) = tokio::sync::oneshot::channel();
+        app.dialog()
+            .message(format!(
+                "Vynéo {} est disponible. Installer cette mise à jour signée maintenant ?",
+                update.version
+            ))
+            .title("Mise à jour Vynéo")
+            .buttons(MessageDialogButtons::YesNo)
+            .show(move |approved| { let _ = send.send(approved); });
+        if !matches!(receive.await, Ok(true)) {
+            return;
+        }
         let package = tokio::time::timeout(
             UPDATE_DOWNLOAD_TIMEOUT,
             update.download(|_, _| {}, || {}),
         ).await;
         if let Ok(Ok(bytes)) = package {
-            // Minisign is checked before installation and the tag must
-            // match the signed version. Do not cancel installs mid-write.
+            // The updater independently verifies minisign, its embedded
+            // key, the signed version and platform before installing.
             if update.install(&bytes).is_ok() {
                 #[cfg(not(target_os = "windows"))]
                 app.restart();
@@ -48,6 +63,7 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let main = WebviewWindowBuilder::new(
                 app,

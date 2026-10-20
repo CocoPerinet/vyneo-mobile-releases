@@ -102,6 +102,10 @@ jobs:
         if: github.ref_type != 'tag'
         working-directory: desktop
         run: npm run tauri -- build --bundles nsis
+      - name: Verify opt-in Preview side-by-side installer without signing
+        if: github.ref_type != 'tag'
+        working-directory: desktop
+        run: npm run tauri -- build --bundles nsis --config src-tauri/tauri.preview.conf.json
 
   windows_release:
     name: Windows x64 / release signée

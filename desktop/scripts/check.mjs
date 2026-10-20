@@ -7,6 +7,7 @@ const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const read=file=>readFileSync(resolve(root,file),"utf8");
 const conf=JSON.parse(read("src-tauri/tauri.conf.json"));
 const release=JSON.parse(read("src-tauri/tauri.release.conf.json"));
+const preview=JSON.parse(read("src-tauri/tauri.preview.conf.json"));
 const pkg=JSON.parse(read("package.json"));
 const mobile=JSON.parse(read("../update-manifest.json"));
 const cargo=read("src-tauri/Cargo.toml");
@@ -31,6 +32,15 @@ assert.equal(conf.app.withGlobalTauri,false);
 assert.deepEqual(conf.app.security.capabilities,[]);
 assert.equal(conf.bundle.createUpdaterArtifacts,false);
 assert.equal(release.bundle.createUpdaterArtifacts,true);
+// Preview is a different installed app, not an upgrade of stable.
+assert.equal(preview.productName,"Vynéo Preview");
+assert.equal(preview.identifier,"fr.visyren.vyneo.desktop.preview");
+assert.match(preview.version,/^0\.2\.0-beta\.[1-9][0-9]*$/);
+assert.equal(preview.bundle.createUpdaterArtifacts,false);
+assert.deepEqual(preview.plugins.updater.endpoints,[
+  "https://raw.githubusercontent.com/CocoPerinet/vyneo-mobile-releases/main/desktop-preview-{{target}}-{{arch}}.json"
+]);
+assert.ok(!Object.prototype.hasOwnProperty.call(preview.plugins.updater,"pubkey"));
 assert.equal(conf.plugins.updater.requireSignedVersion,true);
 assert.equal(conf.plugins.updater.allowDowngrades,false);
 assert.equal(conf.plugins.updater.windows.installMode,"passive");
@@ -60,5 +70,10 @@ assert.equal(mobile.schemaVersion,1);
 assert.equal(mobile.platforms.android.url.includes("mobile-v"),true);
 const tag=process.env.GITHUB_REF_TYPE==="tag"?
   process.env.GITHUB_REF_NAME:null;
-if(tag)assert.equal(tag,"desktop-v"+pkg.version);
+if(tag){
+  if(tag.startsWith("desktop-preview-v"))
+    assert.equal(tag,"desktop-preview-v"+preview.version);
+  else
+    assert.equal(tag,"desktop-v"+pkg.version);
+}
 console.log("VYNEO_NATIVE_UI_CONTRACT_OK: local Svelte UI, Jellyfin API, updater signed, Mobile intact");

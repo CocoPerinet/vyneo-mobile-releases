@@ -101,6 +101,11 @@ jobs:
         run: |
           rustc --edition=2021 --test src-tauri/src/quality_policy.rs -o ./vyneo-quality-tests.exe
           ./vyneo-quality-tests.exe
+      - name: Test native OAuth PKCE, G7z vault and session bindings
+        working-directory: desktop/src-tauri
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: cargo test --quiet
       - name: Build unsigned PR or manual Windows installer
         if: github.ref_type != 'tag'
         working-directory: desktop
@@ -224,6 +229,11 @@ jobs:
         run: |
           rustc --edition=2021 --test src-tauri/src/quality_policy.rs -o ./vyneo-quality-tests.exe
           ./vyneo-quality-tests.exe
+      - name: Test native OAuth PKCE, G7z vault and session bindings
+        working-directory: desktop/src-tauri
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: cargo test --quiet
       - name: Build unsigned manual macOS DMG
         if: github.ref_type != 'tag'
         working-directory: desktop

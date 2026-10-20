@@ -5,6 +5,9 @@
   import {JellyfinApi} from "./api";
   import {ArtworkCache,hasArtwork,lazyArtwork} from "./artwork";
   import {buildShelves,featuredSlides} from "./discover";
+  import {g7zClient} from "./g7z-client";
+  import {requestNativeG7y,mergeNativeG7y} from "./g7z-secure-shelves";
+  import {requestNativePersonal,mergeNativePersonal} from "./g7z-personal";
   import MediaCard from "./MediaCard.svelte";
   import MediaDetails from "./MediaDetails.svelte";
 
@@ -40,6 +43,13 @@
   let credentialStored=$state(false);
   let restoreBusy=$state(true);
   let profileOpen=$state(false);
+  let nativeBusy=$state(false);
+  let nativeLinked=$state(false);
+  let nativeCode=$state("");
+  let nativeStatus=$state("");
+  let nativePersonal=$state<Shelf|null>(null);
+  let nativeG7yRows=$state<Shelf[]|null>(null);
+  let nativeVerifiedCandidates=$state<MediaItem[]>([]);
   let session=$state<SessionPublic|null>(null);
   let data=$state<LibrarySnapshot>(empty());
   let catalogs=$state<Record<CatalogKind,CatalogState>>({
@@ -73,7 +83,9 @@
   let catalogKind=$derived<CatalogKind|null>(
     tab==="movies"?"Movie":tab==="series"?"Series":tab==="anime"?"Anime":null);
   let heroIndex=$state(0);
-  let shelves=$derived(session?buildShelves(data,session.userId):[]);
+  let shelves=$derived(session?mergeNativeG7y(
+    mergeNativePersonal(buildShelves(data,session.userId),nativePersonal),
+    nativeG7yRows):[]);
   let heroSlides=$derived(featuredSlides(shelves));
   let hero=$derived(heroSlides[heroIndex%Math.max(1,heroSlides.length)]??null);
   let gridItems=$derived.by(()=>{
@@ -141,6 +153,9 @@
   }
   function acceptSession(authenticated:SessionPublic){
     session=authenticated;profileOpen=false;
+    nativeLinked=false;nativeBusy=false;nativeCode="";nativeStatus="";
+    nativePersonal=null;nativeG7yRows=null;
+    nativeVerifiedCandidates=[];
     const generation=++epoch;
     try{
       const stored=localStorage.getItem("vyneo.tab."+authenticated.userId);
@@ -190,6 +205,93 @@
       loginError="Connexion impossible. Vérifiez vos identifiants et le serveur.";
     }finally{loginBusy=false;}
   }
+  function nativeStamp(){
+    return session?{userId:session.userId,epoch}:null;
+  }
+  function nativeAllowed():MediaItem[]{
+    const pool=[...nativeVerifiedCandidates,...(data.candidates??[]),...data.recent,
+      ...data.resume,...data.nextUp,...data.favorites,...data.watched,
+      ...catalogs.Movie.items,...catalogs.Series.items];
+    const seen=new Set<string>(),valid:MediaItem[]=[];
+    for(const item of pool){
+      const key=item.id.toLowerCase();
+      if(seen.has(key))continue;
+      seen.add(key);valid.push(item);
+      if(valid.length===640)break;
+    }
+    return valid;
+  }
+  async function loadNative(generation=epoch,version=refreshVersion){
+    if(!session || !g7zClient.available)return;
+    const userId=session.userId;
+    const stillValid=()=>generation===epoch &&
+      version===refreshVersion && session?.userId===userId &&
+      api.session?.userId===userId;
+    const linked=await g7zClient.linked(userId);
+    if(!stillValid())return;
+    nativeLinked=linked;
+    // Native recommendations use their own per-user verified Jellyfin
+    // windows, even if the optional DateCreated candidate feed failed.
+    if(!linked)return;
+    let verified:MediaItem[]=[];
+    try{verified=await api.getG7yVerificationCandidates();}
+    catch{/* The local recommendations remain authoritative. */}
+    if(!stillValid())return;
+    nativeVerifiedCandidates=verified;
+    if(!verified.length)return;
+    const personal=await requestNativePersonal({
+      current:nativeStamp,allowed:nativeAllowed,
+      nativeTransport:(id)=>g7zClient.suggestions(id,"personal")
+    });
+    if(!stillValid())return;
+    nativePersonal=personal;
+    const rotating=await requestNativeG7y({
+      current:nativeStamp,allowed:nativeAllowed,
+      nativeTransport:(id)=>g7zClient.suggestions(id,"rotating")
+    });
+    if(!stillValid())return;
+    nativeG7yRows=rotating;
+    // Errors remain local to the optional recommendations module.
+  }
+  async function startNativeLink(){
+    if(!session || nativeBusy || !g7zClient.available)return;
+    const userId=session.userId,generation=epoch;
+    nativeBusy=true;nativeStatus="Ouverture sécurisée de Cloudflare Access…";
+    try{
+      const result=await g7zClient.begin(userId);
+      if(generation!==epoch || session?.userId!==userId)return;
+      if(result.state==="ALREADY_LINKED"){
+        nativeCode="";nativeLinked=true;
+        nativeStatus="Compte déjà associé. Actualisation des suggestions…";
+        void loadNative(generation);
+      }else{
+        nativeCode=result.userCode;
+        nativeLinked=false;
+        nativeStatus="Code valable cinq minutes. Autorisez cet appareil dans "+
+          "le menu Profil de Vynéo Preview, puis revenez ici.";
+      }
+    }catch{
+      if(generation===epoch){
+        nativeStatus="Association indisponible. La connexion Jellyfin reste active.";
+      }
+    }finally{if(generation===epoch)nativeBusy=false;}
+  }
+  async function finishNativeLink(){
+    if(!session || !nativeCode || nativeBusy)return;
+    const generation=epoch,userId=session.userId;
+    nativeBusy=true;nativeStatus="Vérification de l'autorisation…";
+    try{
+      await g7zClient.complete(userId);
+      if(generation!==epoch || session?.userId!==userId)return;
+      nativeCode="";nativeLinked=true;
+      nativeStatus="Recommandations privées associées à votre compte.";
+      void loadNative(generation);
+    }catch{
+      if(generation===epoch)
+        nativeStatus="Code non encore validé, expiré ou refusé. "+
+          "Votre session Jellyfin est conservée.";
+    }finally{if(generation===epoch)nativeBusy=false;}
+  }
   async function refresh(generation=epoch){
     const version=++refreshVersion;
     homeWarning="";
@@ -221,12 +323,22 @@
       if(generation!==epoch || version!==refreshVersion ||
          !api.session || session?.userId!==api.session.userId)return;
       data={...data,candidates:items};
+      void loadNative(generation,version);
     }).catch(()=>{
       // Keep existing shelves on timeout, denial or offline network.
+    }).finally(()=>{
+      if(generation===epoch && version===refreshVersion &&
+         session?.userId===api.session?.userId)
+        void loadNative(generation,version);
     });
   }
   async function logout(){
+    // Do not wait on Cloudflare before immediately ending Jellyfin access.
+    void g7zClient.forget().catch(()=>{});
     epoch++;refreshVersion++;profileOpen=false;credentialStored=false;
+    nativeLinked=false;nativeBusy=false;nativeCode="";nativeStatus="";
+    nativePersonal=null;nativeG7yRows=null;
+    nativeVerifiedCandidates=[];
     if(searchTimer!==null)clearTimeout(searchTimer);
     api.logout();artwork.clear();
     session=null;selected=null;tab="home";heroIndex=0;
@@ -344,6 +456,37 @@
                 (credentialStored
                   ?"Connexion mémorisée sur cet appareil"
                   :"Session active, non mémorisée")}</small>
+              {#if g7zClient.available}
+                <div class="vy-native-association">
+                  <strong>Recommandations G7y · IA locale</strong>
+                  {#if nativeCode}
+                    <p>Depuis votre navigateur, ouvrez Vynéo Preview,
+                      puis Profil → Associer Vynéo Desktop.</p>
+                    <output class="vy-native-code" aria-label="Code d'association">
+                      {nativeCode}
+                    </output>
+                    <button type="button" disabled={nativeBusy}
+                      onclick={()=>void g7zClient.openApproval().catch(()=>
+                        nativeStatus="Impossible d'ouvrir le navigateur.")}>
+                      Ouvrir Vynéo Preview
+                    </button>
+                    <button type="button" disabled={nativeBusy}
+                      onclick={()=>void finishNativeLink()}>
+                      {nativeBusy?"Vérification…":"J'ai autorisé cet appareil"}
+                    </button>
+                  {:else}
+                    <button type="button" disabled={nativeBusy}
+                      onclick={()=>void startNativeLink()}>
+                      {nativeBusy?"Connexion sécurisée…":
+                        nativeLinked?"Actualiser les recommandations IA":
+                        "Activer les recommandations IA"}
+                    </button>
+                  {/if}
+                  {#if nativeStatus}
+                    <small role="status">{nativeStatus}</small>
+                  {/if}
+                </div>
+              {/if}
               <button type="button" onclick={()=>void logout()}>
                 Se déconnecter
               </button>

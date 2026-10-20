@@ -100,3 +100,66 @@ https://developers.cloudflare.com/cloudflare-one/access-controls/applications/ht
   supporté, testée sur une identité fictive de bout en bout dans
   un environnement isolé. Seulement ensuite qualification sur
   une vraie session autorisée, sans divulguer d'identifiants.
+
+## 20/10/2026 : G7z, preuve de rattachement native sans déploiement
+
+Le travail se poursuit sur le serveur N100 dans la worktree dédiée
+`/home/coco/Projects/vyneo-g7z-native-bridge`
+(branche `feature/g7z-native-oauth-bridge`), sans modifier le
+service Vynéo G7c actif ni la stable Desktop 0.2.2.
+
+- Un protocole de liaison G7z en mémoire réalise PKCE, code à 12
+  caractères, consentement **browser G7h/CSRF**, double association
+  Access subject / compte Jellyfin, jetons délégués de 15 minutes,
+  rotation sans rejeu, révocation lors du logout, et les réponses
+  G7w/G7y sont réutilisées telles quelles, sans fichiers vidéo.
+- L'application navigateur G7h a son interface d'approbation isolée
+  et testée sur un serveur HTTPS/Jellyfin fictifs.
+- `frontend/src/g7z-secure-shelves.ts` et
+  `frontend/tests/g7z-secure-shelves.test.ts` préparent la
+  **frontière de réception des seules métadonnées autorisées par
+  le compte utilisateur courant**. L'adaptateur n'est pas appelé
+  par l'accueil : la connexion native OAuth réelle n'existe pas encore.
+- Cloudflare Managed OAuth est toujours **désactivé** pour
+  `vyneo-preview.visyren.fr`. Il faut encore coder le client OAuth
+  public dans Tauri, confirmer le comportement des headers Access,
+  qualifier l'identité/CSRF et tester une vraie mise à jour signée
+  avant d'envisager l'activation.
+- Voir `docs/G7Z-NATIVE-OAUTH-ACCESS-BRIDGE.md` **dans le dépôt
+  serveur** pour les gates, tests, cas de refus et rollback.
+- Aucun secret utilisateur, cookie ou jeton Access n'est ajouté
+  au frontend ni au dépôt Git. La stable 0.2.2 conserve sa
+  connexion Jellyfin durable validée.
+
+## 20/10/2026 : transport OAuth natif G7z et vérification Jellyfin concordante
+- Branche dédiée `feature/g7z-desktop-client` : `g7z_oauth.rs`
+  utilise **Cloudflare Managed OAuth** (authorization code + PKCE S256,
+  client public enregistré dynamiquement, découverte serveur OAuth,
+  `resource` RFC 8707, redirect loopback sur `127.0.0.1`),
+  validation stricte des origines et réponses HTTP sans redirections ;
+  aucun jeton OAuth ou code vérificateur n'est transmis au frontend.
+- `g7z_native.rs` : coffre OS G7z **distinct du coffre Jellyfin**,
+  association à un seul utilisateur, code temporaire de 12 caractères,
+  renouvellement à jeton tournant, refus d'une session périmée, révocation
+  best effort hors ligne et nettoyage du coffre au logout.
+- `g7z-client.ts` : seul le client Tauri appelle les commandes du
+  transport. Le profil propose une association explicite au navigateur,
+  jamais une connexion Jellyfin forcée. En l'absence de G7z, l'ancien
+  accueil demeure fonctionnel.
+- `g7y-verified-pages.ts` et `api.getG7yVerificationCandidates()`
+  corrigent l'incohérence entre les fenêtres de pagination de G7y
+  sur le N100 (`PremiereDate`, SHA256 semaine ISO, 4 pages/512 titres)
+  et le catalogue Desktop (`DateCreated` auparavant). Chaque résultat
+  G7w/G7y est recoupé avec les métadonnées consultables directement
+  avec le jeton Jellyfin du compte courant. Aucun droit d'accès n'est
+  déduit des réponses du BFF.
+- Tests ciblés : **11 tests pages et Jellyfin**, 18 tests IPC/adaptateurs
+  supplémentaires sur la version initiale ; compilation Svelte, typage
+  0 erreur/0 avertissement. Les tests globaux Vitest côté N100 ont
+  rencontré une limite temporaire de threads, pas un échec fonctionnel
+  identifié. Suite intégrale à exécuter sur COCO.
+- **Blocage d'activation** : `oauth_configuration.enabled=false`
+  sur l'application Access actuelle. Valider l'injection du JWT d'origine
+  et le traitement du header Authorization dans un environnement
+  staging, ainsi que le navigateur/Keychain sur macOS. Aucun changement
+  d'Access, de BFF live, d'updater ou de stable 0.2.2 à ce stade.

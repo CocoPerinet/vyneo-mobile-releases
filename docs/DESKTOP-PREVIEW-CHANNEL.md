@@ -1,6 +1,7 @@
 # Vynéo Desktop : canal Preview opt-in (Windows)
 
-État au 20 octobre 2026 : **pipeline de préversion en préparation**.
+État au 20 octobre 2026 : **Vynéo Preview 0.2.0-beta.1 Windows publiée et signée**.
+[GitHub prerelease](https://github.com/CocoPerinet/vyneo-mobile-releases/releases/tag/desktop-preview-v0.2.0-beta.1).
 La version stable installée n'est pas automatiquement remplacée.
 
 ## Comportement attendu
@@ -55,10 +56,13 @@ La version stable installée n'est pas automatiquement remplacée.
 ## Portée et restrictions
 
 - **Windows x64 uniquement** pour la signature et le flux Preview
-  de cette première CI. Le support Preview macOS nécessite son
+  de cette première CI. L'installateur NSIS bêta 1 (3,2 Mo) a été
+  publié avec son `.sig` et le manifeste Preview indépendant.
+  SHA256 EXE : `2389ea06aba5132d43ece598494293bf3ee8aea5aede17e7930f8dfd3afcb6a0`. Le support Preview macOS nécessite son
   propre job signé et le manifeste de sa plate-forme.
-- Les Builds de PR restent unsigned et ne sont jamais envoyés
-  vers les manifestes updater.
+- Les builds de PR restent unsigned et ne sont jamais envoyés
+  vers les manifestes updater. CI du tag bêta 1 :
+  [39419153653](https://github.com/CocoPerinet/vyneo-mobile-releases/actions/runs/39419153653) **SUCCESS**.
 - La signature est vérifiée cryptographiquement par Tauri
   à l'installation, pas par le test synthétique de manifeste.
   Les tests Node vérifient le format et la liaison de version.

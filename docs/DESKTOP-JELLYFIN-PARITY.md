@@ -26,3 +26,5 @@
 - Popup : enrichissement différé des métadonnées via /Users/{uid}/Items/{id}, cache borné et isolé par compte. Pour un épisode, le coeur reflète la série mère, et non l'épisode ; bouton temporairement verrouillé pendant la vérification.
 - Univers : pagination élargie jusqu'à 6 000 entrées autorisées, en différé, pour ne pas tronquer les médiathèques importantes.
 - Installeur QA prévu sous une identité indépendante fr.visyren.vyneo.desktop.jellyfinqa, coffre Windows distinct des versions stable et Preview. Aucune mise à jour automatique QA depuis les canaux de production.
+- Build QA Windows : depuis desktop/, générer d'abord les icônes avec npm run tauri -- icon ../assets/icon.png ; installer en version indépendante avec npm run tauri -- build --bundles nsis --config src-tauri/tauri.jellyfin-qa.conf.json.
+- Le CLI Tauri peut normaliser tauri-build en table TOML équivalente : les contrôles verrouillent toujours la version 2.7.3 exacte, sous les deux écritures.

@@ -25,7 +25,9 @@ assert.equal(pkg.version,"0.2.2");
 assert.match(cargo,/^version = "0\.2\.2"$/m);
 assert.match(cargo,/^tauri = \{ version = "=2\.12\.4"/m);
 assert.match(cargo,/^tauri-plugin-updater = "=2\.14\.0"$/m);
-assert.match(cargo,/^tauri-build = "=2\.7\.3"$/m);
+// Tauri's CLI may normalize this pinned dependency to an equivalent TOML
+// inline table during native packaging. Both syntaxes keep the same exact pin.
+assert.match(cargo,/^tauri-build = (?:"=2\.7\.3"|\{ version = "=2\.7\.3", features = \[\] \})$/m);
 assert.equal(conf.build.frontendDist,"../frontend/dist");
 assert.deepEqual(conf.app.windows,[]);
 assert.equal(conf.app.withGlobalTauri,false);

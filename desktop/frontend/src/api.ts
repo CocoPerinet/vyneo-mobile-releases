@@ -1,4 +1,5 @@
-import type {MediaItem,MediaType,SessionPublic,CatalogKind,CatalogPage,CatalogLibraryIds} from "./types";
+import type {MediaItem,MediaType,SessionPublic,CatalogKind,CatalogPage,CatalogLibraryIds,SeasonSummary,EpisodePage,PlaybackProbe} from "./types";
+import {parseSeasons,parsePlaybackInfo} from "./media-details";
 
 export const SERVER_ORIGIN="https://cocojellyfin.duckdns.org:38443";
 const ID=/^[a-f0-9]{32}$/i;
@@ -48,6 +49,17 @@ export function normalizeItem(v:unknown):MediaItem|null {
     hasParentBackdrop:Array.isArray(row.ParentBackdropImageTags) &&
       row.ParentBackdropImageTags.length>0,
     seriesId:validId(row.SeriesId)?row.SeriesId:null,
+    seasonNumber:typeof row.ParentIndexNumber==="number" &&
+      Number.isSafeInteger(row.ParentIndexNumber) &&
+      row.ParentIndexNumber>=0 && row.ParentIndexNumber<=1000
+      ?row.ParentIndexNumber:null,
+    episodeNumber:typeof row.IndexNumber==="number" &&
+      Number.isSafeInteger(row.IndexNumber) &&
+      row.IndexNumber>=0 && row.IndexNumber<=10000
+      ?row.IndexNumber:null,
+    runtimeTicks:typeof row.RunTimeTicks==="number" &&
+      Number.isSafeInteger(row.RunTimeTicks) &&
+      row.RunTimeTicks>0?row.RunTimeTicks:null,
     seriesName:string(row.SeriesName,120)
   };
 }
@@ -258,6 +270,75 @@ export class JellyfinApi {
     const more=consumed>0 && (total===null
       ?consumed===limit:startIndex+consumed<total);
     return {items,total,nextOffset:more?startIndex+consumed:null,libraryAvailable:true};
+  }
+  private assertSession(uid:string,generation:number){
+    if(generation!==this.authGeneration || this.userId!==uid)
+      throw new Error("SESSION_CHANGED");
+  }
+  async getItemDetails(itemId:string):Promise<MediaItem>{
+    const uid=this.requireUser(),generation=this.authGeneration;
+    if(!validId(itemId))throw new Error("ITEM_INVALID");
+    const raw=await this.json("/Users/"+uid+"/Items/"+itemId,{
+      maxBytes:524288
+    });
+    this.assertSession(uid,generation);
+    const media=normalizeItem(raw);
+    if(!media || media.id.toLowerCase()!==itemId.toLowerCase())
+      throw new Error("ITEM_INVALID");
+    return media;
+  }
+  async getSeriesSeasons(seriesId:string):Promise<SeasonSummary[]>{
+    const uid=this.requireUser(),generation=this.authGeneration;
+    if(!validId(seriesId))throw new Error("SERIES_INVALID");
+    const qs=new URLSearchParams({
+      userId:uid,EnableUserData:"true",
+      Fields:"Overview",EnableImages:"true"
+    });
+    const raw=await this.json("/Shows/"+seriesId+"/Seasons?"+qs,{
+      maxBytes:524288
+    });
+    this.assertSession(uid,generation);
+    return parseSeasons(raw);
+  }
+  async getSeasonEpisodes(seriesId:string,seasonId:string,
+                          startIndex=0,limit=24):Promise<EpisodePage>{
+    const uid=this.requireUser(),generation=this.authGeneration;
+    if(!validId(seriesId) || !validId(seasonId) ||
+       !Number.isSafeInteger(startIndex) || startIndex<0 ||
+       !Number.isSafeInteger(limit) || limit<1 || limit>40)
+      throw new Error("EPISODES_INVALID");
+    const qs=new URLSearchParams({
+      userId:uid,seasonId,StartIndex:String(startIndex),
+      Limit:String(limit),EnableUserData:"true",IsMissing:"false",
+      Fields:"Overview,Genres,MediaStreams"
+    });
+    const raw=obj(await this.json("/Shows/"+seriesId+"/Episodes?"+qs,{
+      maxBytes:786432
+    }));
+    this.assertSession(uid,generation);
+    if(!Array.isArray(raw.Items))throw new Error("EPISODES_INVALID");
+    const items=parseItems(raw,limit).filter(item=>
+      item.type==="Episode" && (!item.seriesId ||
+        item.seriesId.toLowerCase()===seriesId.toLowerCase()));
+    const consumed=Math.min(raw.Items.length,limit);
+    const total=typeof raw.TotalRecordCount==="number" &&
+      Number.isSafeInteger(raw.TotalRecordCount) && raw.TotalRecordCount>=0
+      ?raw.TotalRecordCount:null;
+    const hasNext=consumed>0 && (total===null
+      ?consumed===limit:startIndex+consumed<total);
+    return {items,total,nextOffset:hasNext?startIndex+consumed:null};
+  }
+  async getPlaybackInfo(itemId:string):Promise<PlaybackProbe>{
+    const uid=this.requireUser(),generation=this.authGeneration;
+    if(!validId(itemId))throw new Error("PLAYBACK_ITEM_INVALID");
+    // Read-only capability inspection. It must not start a playback session
+    // or expose Jellyfin paths, stream URLs, secrets or transcode arguments.
+    const qs=new URLSearchParams({userId:uid});
+    const raw=await this.json("/Items/"+itemId+"/PlaybackInfo?"+qs,{
+      maxBytes:786432
+    });
+    this.assertSession(uid,generation);
+    return parsePlaybackInfo(raw);
   }
   async getRecent():Promise<MediaItem[]>{
     return this.items(this.userItems({

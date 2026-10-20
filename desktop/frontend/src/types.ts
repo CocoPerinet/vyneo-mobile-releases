@@ -7,6 +7,44 @@ export interface CatalogPage {
   total:number|null;
   libraryAvailable:boolean;
 }
+export interface SeasonSummary {
+  id:string;
+  title:string;
+  number:number|null;
+  episodeCount:number|null;
+  unplayedCount:number|null;
+}
+export interface EpisodePage {
+  items:MediaItem[];
+  total:number|null;
+  nextOffset:number|null;
+}
+export type PlaybackTrackKind="Video"|"Audio"|"Subtitle";
+export interface PlaybackTrack {
+  kind:PlaybackTrackKind;
+  index:number;
+  codec:string;
+  language:string;
+  title:string;
+  width:number|null;
+  height:number|null;
+  channels:number|null;
+  isDefault:boolean;
+  isExternal:boolean;
+}
+export interface PlaybackSource {
+  title:string;
+  container:string;
+  bitrate:number|null;
+  directPlay:boolean;
+  directStream:boolean;
+  transcoding:boolean;
+  tracks:PlaybackTrack[];
+}
+export interface PlaybackProbe {
+  sources:PlaybackSource[];
+  errorCode:string|null;
+}
 export type ViewKey="home"|"movies"|"series"|"anime"|"favorites"|"universes";
 export interface MediaItem {
   id:string;
@@ -26,6 +64,9 @@ export interface MediaItem {
   parentBackdropItemId?:string|null;
   hasParentBackdrop?:boolean;
   seriesId?:string|null;
+  seasonNumber?:number|null;
+  episodeNumber?:number|null;
+  runtimeTicks?:number|null;
   seriesName:string;
 }
 export interface SessionPublic {

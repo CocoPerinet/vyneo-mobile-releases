@@ -4,6 +4,7 @@
   import {ArtworkCache,hasArtwork,lazyArtwork} from "./artwork";
   import {buildShelves,featuredSlides} from "./discover";
   import MediaCard from "./MediaCard.svelte";
+  import MediaDetails from "./MediaDetails.svelte";
 
   function deviceId():string{
     try{
@@ -461,36 +462,8 @@
       {/if}
     </main>
     {#if selected}
-      <div class="vy-detail-screen" role="presentation">
-        <div class="vy-detail" role="dialog" aria-modal="true"
-          aria-label={"Fiche : "+selected.title}>
-          <button type="button" class="vy-detail-close" aria-label="Fermer"
-            onclick={()=>selected=null}>×</button>
-          <div class="vy-detail-top">
-            {#if hasArtwork(selected)}
-              <img alt="" use:lazyArtwork={{cache:artwork,item:selected,
-                kind:"Backdrop" as const}} />
-            {/if}
-          </div>
-          <div class="vy-detail-body">
-            <h2>{selected.title}</h2>
-            <p class="vy-detail-meta">
-              {selected.year??""}
-              {#if selected.communityRating!==null}
-                · ★ {selected.communityRating.toFixed(1)}/10
-              {/if}
-              {#if selected.genres.length}
-                · {selected.genres.slice(0,3).join(" · ")}
-              {/if}
-            </p>
-            <p>{selected.overview || "Aucun synopsis disponible."}</p>
-            <div class="vy-unavailable">
-              Lecteur natif Vynéo en cours d'intégration.
-              La lecture et la qualité automatique ne sont pas encore activées.
-            </div>
-          </div>
-        </div>
-      </div>
+      <MediaDetails item={selected} {api} cache={artwork}
+        onclose={()=>selected=null}/>
     {/if}
   {/if}
 </div>

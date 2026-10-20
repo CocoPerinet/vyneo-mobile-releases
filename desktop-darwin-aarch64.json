@@ -1,10 +1,10 @@
 {
-  "version": "0.2.1",
+  "version": "0.2.2",
   "notes": "Mise à jour Vynéo Desktop signée et vérifiée.",
   "platforms": {
     "darwin-aarch64": {
-      "url": "https://github.com/CocoPerinet/vyneo-mobile-releases/releases/download/desktop-v0.2.1/Vyneo-Desktop-0.2.1-macos-arm64.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdE5rb1FiWk9WaEhnd294Z082R2IxaHVlL2l3bmJHVThIeDlFcDZ6cndKREd2Y2Q3YkVNNGgvOHFtWkJkUnRaeXJYaG9ocitZL3FpOU1tK20wbkwyYk1Qb0xsUEliY1FFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNTEzNjA1CWZpbGU6Vnluw6lvLmFwcC50YXIuZ3oJdmVyc2lvbjowLjIuMQpSRjZPSGhYNk5WTnRkZmVpMEdiWGNnVG1lL2N5RE5JSnFmVnVDYmhFcTd0L0VjU1cyeDNEUkw1OTl2UkNlR3RkVmRyaFZ1NHpaWEJUdm5JVEdnekJBUT09Cg=="
+      "url": "https://github.com/CocoPerinet/vyneo-mobile-releases/releases/download/desktop-v0.2.2/Vyneo-Desktop-0.2.2-macos-arm64.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdE5rb1FiWk9WaE5WUGlBWWdqZ2NwNFpleDVxbng5YWQ2Wmg1TFp0cjc1MldGY2FuNFQyMFhNTGxFZEE1bFdVT1p0Rlg2RnFUVDlRV2VPVTF5MFMrQ1BnQlhtMnFYbVE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNTE2MzMzCWZpbGU6Vnluw6lvLmFwcC50YXIuZ3oJdmVyc2lvbjowLjIuMgoyRm1Cc0UyY3FObFBOVGZtZEZOZFpwU0JDRDU4MThxM3lVTXRzS0VhV3Q2dnJBUDZwSDNNUSttSW03eWdWaHZmdVJnRGVGK21wa09FM3hvd0cxa0VEdz09Cg=="
     }
   }
 }

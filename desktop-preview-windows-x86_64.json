@@ -1,0 +1,10 @@
+{
+  "version": "0.2.0-beta.1",
+  "notes": "Vynéo Preview : préversion signée, proposée aux testeurs.",
+  "platforms": {
+    "windows-x86_64": {
+      "url": "https://github.com/CocoPerinet/vyneo-mobile-releases/releases/download/desktop-preview-v0.2.0-beta.1/Vyneo-Desktop-Preview-0.2.0-beta.1-windows-x64.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdE5rb1FiWk9WaElBOVhIVVEwQlg1enR2cGpIZ2NxR1locTBhY1drOXh2Z0VjUmRsNU1SZnBqMUF1Z1c4TmlBNzRjMklpb0tVTG1Fb2d6c2pibTdvRFRFNEt0endSRmdNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNDk4MDkwCWZpbGU6Vnluw6lvIFByZXZpZXdfMC4yLjAtYmV0YS4xX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjIuMC1iZXRhLjEKQ3JRQkt3N1lSQ0VsWndJMEZITC9QYWNlc3dmYmVzVnlLVkNXVUhramV6Y3RiSW04U2FZVzM4SCtITnY0VlVBUE05LzcreUg5a29MV0tlUE05SUNYQ0E9PQo="
+    }
+  }
+}

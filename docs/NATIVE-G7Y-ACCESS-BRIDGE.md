@@ -130,3 +130,36 @@ service Vynéo G7c actif ni la stable Desktop 0.2.2.
 - Aucun secret utilisateur, cookie ou jeton Access n'est ajouté
   au frontend ni au dépôt Git. La stable 0.2.2 conserve sa
   connexion Jellyfin durable validée.
+
+## 20/10/2026 : transport OAuth natif G7z et vérification Jellyfin concordante
+- Branche dédiée `feature/g7z-desktop-client` : `g7z_oauth.rs`
+  utilise **Cloudflare Managed OAuth** (authorization code + PKCE S256,
+  client public enregistré dynamiquement, découverte serveur OAuth,
+  `resource` RFC 8707, redirect loopback sur `127.0.0.1`),
+  validation stricte des origines et réponses HTTP sans redirections ;
+  aucun jeton OAuth ou code vérificateur n'est transmis au frontend.
+- `g7z_native.rs` : coffre OS G7z **distinct du coffre Jellyfin**,
+  association à un seul utilisateur, code temporaire de 12 caractères,
+  renouvellement à jeton tournant, refus d'une session périmée, révocation
+  best effort hors ligne et nettoyage du coffre au logout.
+- `g7z-client.ts` : seul le client Tauri appelle les commandes du
+  transport. Le profil propose une association explicite au navigateur,
+  jamais une connexion Jellyfin forcée. En l'absence de G7z, l'ancien
+  accueil demeure fonctionnel.
+- `g7y-verified-pages.ts` et `api.getG7yVerificationCandidates()`
+  corrigent l'incohérence entre les fenêtres de pagination de G7y
+  sur le N100 (`PremiereDate`, SHA256 semaine ISO, 4 pages/512 titres)
+  et le catalogue Desktop (`DateCreated` auparavant). Chaque résultat
+  G7w/G7y est recoupé avec les métadonnées consultables directement
+  avec le jeton Jellyfin du compte courant. Aucun droit d'accès n'est
+  déduit des réponses du BFF.
+- Tests ciblés : **11 tests pages et Jellyfin**, 18 tests IPC/adaptateurs
+  supplémentaires sur la version initiale ; compilation Svelte, typage
+  0 erreur/0 avertissement. Les tests globaux Vitest côté N100 ont
+  rencontré une limite temporaire de threads, pas un échec fonctionnel
+  identifié. Suite intégrale à exécuter sur COCO.
+- **Blocage d'activation** : `oauth_configuration.enabled=false`
+  sur l'application Access actuelle. Valider l'injection du JWT d'origine
+  et le traitement du header Authorization dans un environnement
+  staging, ainsi que le navigateur/Keychain sur macOS. Aucun changement
+  d'Access, de BFF live, d'updater ou de stable 0.2.2 à ce stade.

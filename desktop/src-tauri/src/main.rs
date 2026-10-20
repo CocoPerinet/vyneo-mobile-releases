@@ -64,6 +64,7 @@ fn main() {
             credentials::read_saved_session,
             credentials::forget_saved_session,
             g7z_native::g7z_begin,
+            g7z_native::g7z_open_approval,
             g7z_native::g7z_complete,
             g7z_native::g7z_recommendations,
             g7z_native::g7z_is_linked,

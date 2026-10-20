@@ -49,6 +49,7 @@
   let nativeStatus=$state("");
   let nativePersonal=$state<Shelf|null>(null);
   let nativeG7yRows=$state<Shelf[]|null>(null);
+  let nativeVerifiedCandidates=$state<MediaItem[]>([]);
   let session=$state<SessionPublic|null>(null);
   let data=$state<LibrarySnapshot>(empty());
   let catalogs=$state<Record<CatalogKind,CatalogState>>({
@@ -154,6 +155,7 @@
     session=authenticated;profileOpen=false;
     nativeLinked=false;nativeBusy=false;nativeCode="";nativeStatus="";
     nativePersonal=null;nativeG7yRows=null;
+    nativeVerifiedCandidates=[];
     const generation=++epoch;
     try{
       const stored=localStorage.getItem("vyneo.tab."+authenticated.userId);
@@ -207,7 +209,7 @@
     return session?{userId:session.userId,epoch}:null;
   }
   function nativeAllowed():MediaItem[]{
-    const pool=[...(data.candidates??[]),...data.recent,
+    const pool=[...nativeVerifiedCandidates,...(data.candidates??[]),...data.recent,
       ...data.resume,...data.nextUp,...data.favorites,...data.watched,
       ...catalogs.Movie.items,...catalogs.Series.items];
     const seen=new Set<string>(),valid:MediaItem[]=[];
@@ -228,7 +230,15 @@
     const linked=await g7zClient.linked(userId);
     if(!stillValid())return;
     nativeLinked=linked;
-    if(!linked || !(data.candidates?.length))return;
+    // Native recommendations use their own per-user verified Jellyfin
+    // windows, even if the optional DateCreated candidate feed failed.
+    if(!linked)return;
+    let verified:MediaItem[]=[];
+    try{verified=await api.getG7yVerificationCandidates();}
+    catch{/* The local recommendations remain authoritative. */}
+    if(!stillValid())return;
+    nativeVerifiedCandidates=verified;
+    if(!verified.length)return;
     const personal=await requestNativePersonal({
       current:nativeStamp,allowed:nativeAllowed,
       nativeTransport:(id)=>g7zClient.suggestions(id,"personal")
@@ -316,6 +326,10 @@
       void loadNative(generation,version);
     }).catch(()=>{
       // Keep existing shelves on timeout, denial or offline network.
+    }).finally(()=>{
+      if(generation===epoch && version===refreshVersion &&
+         session?.userId===api.session?.userId)
+        void loadNative(generation,version);
     });
   }
   async function logout(){
@@ -324,6 +338,7 @@
     epoch++;refreshVersion++;profileOpen=false;credentialStored=false;
     nativeLinked=false;nativeBusy=false;nativeCode="";nativeStatus="";
     nativePersonal=null;nativeG7yRows=null;
+    nativeVerifiedCandidates=[];
     if(searchTimer!==null)clearTimeout(searchTimer);
     api.logout();artwork.clear();
     session=null;selected=null;tab="home";heroIndex=0;
@@ -450,6 +465,11 @@
                     <output class="vy-native-code" aria-label="Code d'association">
                       {nativeCode}
                     </output>
+                    <button type="button" disabled={nativeBusy}
+                      onclick={()=>void g7zClient.openApproval().catch(()=>
+                        nativeStatus="Impossible d'ouvrir le navigateur.")}>
+                      Ouvrir Vynéo Preview
+                    </button>
                     <button type="button" disabled={nativeBusy}
                       onclick={()=>void finishNativeLink()}>
                       {nativeBusy?"Vérification…":"J'ai autorisé cet appareil"}

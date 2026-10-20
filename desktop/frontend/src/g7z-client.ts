@@ -1,7 +1,7 @@
 import {invoke,isTauri} from "@tauri-apps/api/core";
 
 const USER=/^[0-9a-f]{32}$/i;
-const CODE=/^[A-HJ-NP-Z2-9]{12}$/;
+const CODE=/^[A-HJKMNP-Z2-9]{12}$/;
 export type NativeLinkState=
  {state:"ALREADY_LINKED"} |
  {state:"LINK_REQUIRED";userCode:string;expiresInSeconds:300};
@@ -30,6 +30,12 @@ export class G7zClient{
        expiresInSeconds:300};
    }
    throw new Error("G7Z_LINK_CONTRACT_DENIED");
+ }
+ async openApproval():Promise<void>{
+   if(!this.available)throw new Error("G7Z_NATIVE_UNAVAILABLE");
+   const result=await this.call("g7z_open_approval");
+   if(result!==null && result!==undefined)
+     throw new Error("G7Z_LINK_CONTRACT_DENIED");
  }
  async complete(userId:string):Promise<void>{
    this.check(userId);

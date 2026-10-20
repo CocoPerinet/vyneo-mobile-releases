@@ -1,6 +1,7 @@
 import type {MediaItem,MediaType,SessionPublic,CatalogKind,CatalogPage,CatalogLibraryIds,SeasonSummary,EpisodePage,PlaybackProbe} from "./types";
 import {parseSeasons,parsePlaybackInfo} from "./media-details";
 import {candidateOffsets,CANDIDATE_BATCH_SIZE} from "./candidate-pages";
+import {g7yVerifiedPages,G7Y_BATCH} from "./g7y-verified-pages";
 
 export const SERVER_ORIGIN="https://cocojellyfin.duckdns.org:38443";
 const ID=/^[a-f0-9]{32}$/i;
@@ -448,6 +449,64 @@ export class JellyfinApi {
     }
     this.assertSession(uid,generation);
     return result;
+  }
+  async getG7yVerificationCandidates(now=new Date()):Promise<MediaItem[]>{
+    // Must exactly mirror the BFF's PremiereDate pages, independent of
+    // Desktop's DateCreated discovery feed. Local Jellyfin rights remain
+    // authoritative; no BFF-supplied item becomes a new local identity.
+    const uid=this.requireUser(),generation=this.authGeneration;
+    const readPage=async(page:number,optional=false)=>{
+      if(!Number.isSafeInteger(page) || page<0 || page>127)
+        throw new Error("G7Y_PAGES_INVALID");
+      const url="/Items?"+new URLSearchParams({
+        userId:uid,Recursive:"true",IncludeItemTypes:"Movie,Series",
+        SortBy:"PremiereDate",SortOrder:"Descending",IsPlayed:"false",
+        StartIndex:String(page*G7Y_BATCH),Limit:String(G7Y_BATCH),
+        EnableUserData:"true",Fields:"ProviderIds,Genres,Tags"
+      });
+      const body=obj(await this.json(url,{
+        maxBytes:1048576,timeoutMs:optional?1500:12000
+      }));
+      this.assertSession(uid,generation);
+      if(!Array.isArray(body.Items) || body.Items.length>G7Y_BATCH)
+        throw new Error("G7Y_PAGES_INVALID");
+      const ids=new Set<string>();
+      for(const entry of body.Items){
+        const id=obj(entry).Id;
+        if(!validId(id) || ids.has(id.toLowerCase()))
+          throw new Error("G7Y_PAGES_INVALID");
+        ids.add(id.toLowerCase());
+      }
+      const total=Number.isSafeInteger(body.TotalRecordCount) &&
+        (body.TotalRecordCount as number)>=body.Items.length &&
+        (body.TotalRecordCount as number)<=1_000_000
+        ?body.TotalRecordCount as number:null;
+      const rows=parseItems(body,G7Y_BATCH).filter(item=>
+        (item.type==="Movie" || item.type==="Series") && !item.played);
+      return {rows,total};
+    };
+    const base=await readPage(0);
+    const rows=[...base.rows];
+    if(base.total===null)return rows;
+    const pages=await g7yVerifiedPages(uid,base.total,now);
+    const seen=new Set(rows.map(item=>item.id.toLowerCase()));
+    for(const page of pages.slice(1)){
+      this.assertSession(uid,generation);
+      try{
+        const next=await readPage(page,true);
+        if(next.total!==base.total || next.rows.some(item=>
+          seen.has(item.id.toLowerCase())))break;
+        for(const item of next.rows){
+          seen.add(item.id.toLowerCase());rows.push(item);
+        }
+      }catch(error){
+        if(error instanceof Error && error.message==="SESSION_CHANGED")
+          throw error;
+        break;
+      }
+    }
+    this.assertSession(uid,generation);
+    return rows.slice(0,512);
   }
   async getWatched():Promise<MediaItem[]>{
     return this.items(this.userItems({

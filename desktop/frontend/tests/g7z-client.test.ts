@@ -33,6 +33,13 @@ describe("G7z native-only IPC",()=>{
    await bridge.forget();
    expect(call).not.toHaveBeenCalled();
  });
+ it("opens only the built-in trusted approval URL through Rust IPC",async()=>{
+   const call=vi.fn(async()=>null);
+   const bridge=new G7zClient(call,true);
+   await bridge.openApproval();
+   expect(call).toHaveBeenCalledTimes(1);
+   expect(call).toHaveBeenCalledWith("g7z_open_approval");
+ });
  it("only permits personal or rotating models, never arbitrary endpoints",async()=>{
    const call=vi.fn(async()=>({schema:"vyneo.g7x.private_rotating_shelves.v1"}));
    const bridge=new G7zClient(call,true);

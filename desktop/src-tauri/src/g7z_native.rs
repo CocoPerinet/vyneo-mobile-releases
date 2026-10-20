@@ -5,7 +5,7 @@ use keyring::{Entry,Error as KeyringError};
 use serde_json::{json,Value};
 use std::sync::atomic::{AtomicU64,Ordering};
 use std::sync::Mutex;
-use tauri::{AppHandle,Manager,State};
+use tauri::{AppHandle,State};
 use tokio::sync::Mutex as AsyncMutex;
 
 #[derive(Default)]
@@ -34,6 +34,7 @@ fn guid(id:&str)->bool{
 fn hex64(id:&str)->bool{
     id.len()==64 && id.bytes().all(|b|b.is_ascii_hexdigit())
 }
+#[cfg(test)]
 fn b64(value:&str)->bool{
     value.len()==43 && value.bytes().all(|b|
         b.is_ascii_alphanumeric() || matches!(b,b'_'|b'-'))
@@ -127,7 +128,7 @@ fn return_link(data:&Value)->Result<Value,String>{
         !=Some("vyneo.g7z.native_link.v1")
         || data.get("expiresInSeconds").and_then(Value::as_u64)!=Some(300)
         || !hex64(link) || code.len()!=12 || !code.bytes().all(|b|
-            b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789".contains(&b)){
+            b"ABCDEFGHJKMNPQRSTUVWXYZ23456789".contains(&b)){
         return Err(denied());
     }
     Ok(json!({"state":"LINK_REQUIRED","userCode":code,
@@ -158,11 +159,45 @@ pub async fn g7z_begin(app:AppHandle,state:State<'_,Bridge>,
     if state.generation.load(Ordering::SeqCst)!=generation{
         return Err("G7Z_CANCELLED".into());
     }
-    valid_access(&app,&mut record).await?;
+    match valid_access(&app,&mut record).await{
+        Ok(())=>{},
+        Err(reason) if reason=="G7Z_REAUTH_REQUIRED"=>{
+            record.oauth=g7z_oauth::start_oauth().await?;
+            record.native_token.clear();
+            record.native_expiry=0;
+        },
+        Err(reason)=>return Err(reason)
+    }
+    if state.generation.load(Ordering::SeqCst)!=generation{
+        return Err("G7Z_CANCELLED".into());
+    }
     save(&app,&record)?;
-    if record.native_expiry>g7z_oauth::unix()+45
-        && !record.native_token.is_empty(){
-        return Ok(json!({"state":"ALREADY_LINKED"}));
+    if record.native_expiry>g7z_oauth::unix() &&
+       !record.native_token.is_empty(){
+        // The origin can restart independently: prove the native grant is
+        // still active rather than trusting a stale OS vault timestamp.
+        let refreshed=g7z_oauth::api_call(&record.oauth,"/native/refresh",
+            json!({"userId":record.user_id}),
+            Some(&record.native_token)).await;
+        if let Ok(result)=refreshed{
+            let token=result.get("nativeToken").and_then(Value::as_str);
+            if result.as_object().is_some_and(|x|x.len()==3) &&
+               result.get("schema").and_then(Value::as_str)==
+                   Some("vyneo.g7z.native_session.v1") &&
+               result.get("expiresInSeconds").and_then(Value::as_u64)==
+                   Some(900) && token.is_some_and(hex64){
+                if state.generation.load(Ordering::SeqCst)!=generation{
+                    return Err("G7Z_CANCELLED".into());
+                }
+                record.native_token=token.unwrap_or_default().to_string();
+                record.native_expiry=g7z_oauth::unix()+895;
+                save(&app,&record)?;
+                return Ok(json!({"state":"ALREADY_LINKED"}));
+            }
+        }
+        record.native_token.clear();
+        record.native_expiry=0;
+        save(&app,&record)?;
     }
     let verifier=g7z_oauth::random_code()?;
     let nonce=g7z_oauth::random_code()?;
@@ -181,6 +216,14 @@ pub async fn g7z_begin(app:AppHandle,state:State<'_,Bridge>,
         user_id:record.user_id,link_id,verifier,nonce,generation,
     });
     Ok(output)
+}
+#[tauri::command]
+pub fn g7z_open_approval(state:State<'_,Bridge>)->Result<(),String>{
+    if state.pending.lock().map_err(|_|denied())?.is_none(){
+        return Err(denied());
+    }
+    webbrowser::open(g7z_oauth::ORIGIN)
+        .map_err(|_|"G7Z_BROWSER_UNAVAILABLE".into())
 }
 #[tauri::command]
 pub async fn g7z_complete(app:AppHandle,state:State<'_,Bridge>,

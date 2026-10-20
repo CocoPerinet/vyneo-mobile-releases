@@ -185,12 +185,16 @@ pub async fn refresh(grant:&OAuthGrant)->Result<OAuthGrant,String>{
     if grant.refresh_token.is_empty(){return Err("G7Z_REAUTH_REQUIRED".into());}
     let client=http()?;
     let url=endpoint(&grant.token_url)?;
-    let data=bounded(client.post(url).form(&[
+    let response=client.post(url).form(&[
         ("grant_type","refresh_token"),
         ("refresh_token",grant.refresh_token.as_str()),
         ("client_id",grant.client_id.as_str()),
         ("resource",ORIGIN)
-    ]).send().await.map_err(|_|failed())?).await?;
+    ]).send().await.map_err(|_|failed())?;
+    if matches!(response.status().as_u16(),400|401|403){
+        return Err("G7Z_REAUTH_REQUIRED".into());
+    }
+    let data=bounded(response).await?;
     new_grant(&data,grant.client_id.clone(),grant.token_url.clone(),
               &grant.refresh_token)
 }

@@ -36,7 +36,7 @@ pub fn challenge(secret:&str)->String{
 }
 pub fn endpoint(raw:&str)->Result<Url,String>{
     let url=Url::parse(raw).map_err(|_|failed())?;
-    if url.scheme()!="https:" || url.port_or_known_default()!=Some(443) ||
+    if url.scheme()!="https" || url.port_or_known_default()!=Some(443) ||
         url.host_str()!=Some(TEAM) && url.host_str()!=Some("vyneo-preview.visyren.fr") ||
         !url.username().is_empty() || url.password().is_some() ||
         url.fragment().is_some(){

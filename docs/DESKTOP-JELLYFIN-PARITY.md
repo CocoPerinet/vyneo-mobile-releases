@@ -21,3 +21,8 @@
 - Trois suites ciblées new-seasons.test.ts, jellyfin-parity-api.test.ts, universes.test.ts avec données simulées et vérification des droits Jellyfin.
 - Un npm test global sur N100 a rencontré une limite de création de threads (pids), pas un échec prouvé du code ; les tests globaux seront exécutés isolément sur COCO.
 - Restant : QA Chrome headless multi-résolution, vérification des actions, tests complets Node/Vitest Windows, tests manuels avec compte connecté, puis PR brouillon. Ne pas publier stable sans ces validations.
+
+## Compléments QA (21 octobre)
+- Popup : enrichissement différé des métadonnées via /Users/{uid}/Items/{id}, cache borné et isolé par compte. Pour un épisode, le coeur reflète la série mère, et non l'épisode ; bouton temporairement verrouillé pendant la vérification.
+- Univers : pagination élargie jusqu'à 6 000 entrées autorisées, en différé, pour ne pas tronquer les médiathèques importantes.
+- Installeur QA prévu sous une identité indépendante fr.visyren.vyneo.desktop.jellyfinqa, coffre Windows distinct des versions stable et Preview. Aucune mise à jour automatique QA depuis les canaux de production.

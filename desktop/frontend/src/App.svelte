@@ -62,7 +62,12 @@
     item:MediaItem;x:number;y:number;source:string;
   }|null>(null);
   let hoverBusy=$state(false);
+  let hoverDetailsPending=$state(false);
   let hoverError=$state("");
+  // Bounded, user-scoped metadata cache: no item from another account survives logout.
+  const hoverDetailsCache=new Map<string,{
+    at:number;promise:Promise<MediaItem>
+  }>();
   let scrollPosition=$state(0);
   let hoverOpenTimer:ReturnType<typeof setTimeout>|null=null;
   let hoverCloseTimer:ReturnType<typeof setTimeout>|null=null;
@@ -172,6 +177,45 @@
     if(hoverOpenTimer!==null)clearTimeout(hoverOpenTimer);
     if(hoverCloseTimer!==null)clearTimeout(hoverCloseTimer);
     hoverOpenTimer=null;hoverCloseTimer=null;hover=null;hoverError="";
+    hoverDetailsPending=false;
+  }
+  function detailFor(item:MediaItem,uid:string):Promise<MediaItem>{
+    const key=uid+":"+item.id.toLowerCase();
+    const now=Date.now(),entry=hoverDetailsCache.get(key);
+    if(entry && now-entry.at<120000){
+      hoverDetailsCache.delete(key);
+      hoverDetailsCache.set(key,entry);
+      return entry.promise;
+    }
+    const promise=api.getItemDetails(item.id).then(async fresh=>{
+      if(fresh.type!=="Episode" || !fresh.seriesId)return fresh;
+      const parent=await api.getItemDetails(fresh.seriesId);
+      // An episode heart controls the parent series, not the episode.
+      return {...fresh,isFavorite:parent.isFavorite};
+    });
+    const next={at:now,promise};
+    hoverDetailsCache.set(key,next);
+    while(hoverDetailsCache.size>140)
+      hoverDetailsCache.delete(hoverDetailsCache.keys().next().value!);
+    void promise.catch(()=>{
+      if(hoverDetailsCache.get(key)===next)hoverDetailsCache.delete(key);
+    });
+    return promise;
+  }
+  async function hydrateHover(item:MediaItem,generation:number,uid:string){
+    hoverDetailsPending=item.type==="Episode" && !!item.seriesId;
+    try{
+      const details=await detailFor(item,uid);
+      if(generation===epoch && session?.userId===uid &&
+        hover?.item.id===item.id){
+        hover={...hover,item:details};
+      }
+    }catch{
+      // Network failure does not discard the visible snapshot.
+    }finally{
+      if(generation===epoch && session?.userId===uid &&
+        hover?.item.id===item.id)hoverDetailsPending=false;
+    }
   }
   function requestHover(item:MediaItem,element:HTMLElement,source:string){
     if(!window.matchMedia("(hover:hover) and (pointer:fine)").matches)return;
@@ -187,6 +231,7 @@
       const y=Math.max(86,Math.min(rect.top-95,
         Math.max(86,window.innerHeight-430)));
       hover={item,x,y,source};hoverError="";
+      void hydrateHover(item,generation,session.userId);
     },420);
   }
   function requestHideHover(){
@@ -214,6 +259,8 @@
     hoverBusy=true;hoverError="";
     try{
       await api.updateMediaState(targetId,action,enabled);
+      hoverDetailsCache.delete(uid+":"+targetId.toLowerCase());
+      hoverDetailsCache.delete(uid+":"+shown.id.toLowerCase());
       if(generation!==epoch || session?.userId!==uid)return;
       const rewrite=(item:MediaItem):MediaItem=>{
         if(item.id.toLowerCase()!==targetId.toLowerCase() &&
@@ -246,7 +293,8 @@
     }finally{if(generation===epoch)hoverBusy=false;}
   }
   async function toggleHoverState(action:"favorite"|"played"){
-    if(hover)await changeMediaState(hover.item,action);
+    if(hover && !(hoverDetailsPending && action==="favorite"))
+      await changeMediaState(hover.item,action);
   }
   async function toggleHeroState(action:"favorite"|"played"){
     if(hero)await changeMediaState(hero,action);
@@ -301,7 +349,7 @@
     session=authenticated;profileOpen=false;
     recentSeasons=[];seriesEvidence=[];hiddenCards=[];
     universeCatalog=[];activeUniverse=null;universeError="";
-    closeHover();clearAvatar();
+    closeHover();clearAvatar();hoverDetailsCache.clear();
     const generation=++epoch;
     loadAvatar(generation);
     try{
@@ -407,7 +455,7 @@
   }
   async function logout(){
     epoch++;refreshVersion++;profileOpen=false;credentialStored=false;
-    closeHover();clearAvatar();
+    closeHover();clearAvatar();hoverDetailsCache.clear();
     hiddenCards=[];recentSeasons=[];seriesEvidence=[];
     universeCatalog=[];activeUniverse=null;universeError="";
     if(searchTimer!==null)clearTimeout(searchTimer);
@@ -782,7 +830,8 @@
       <HoverPreview item={hover.item} cache={artwork}
         x={hover.x} y={hover.y} source={hover.source}
         novelty={badgeFor(hover.item)}
-        busy={hoverBusy} error={hoverError}
+        busy={hoverBusy} parentLoading={hoverDetailsPending}
+        error={hoverError}
         onopen={()=>openMedia(hover!.item)}
         onfavorite={()=>void toggleHoverState("favorite")}
         onplayed={()=>void toggleHoverState("played")}

@@ -380,7 +380,9 @@ export class JellyfinApi {
   async getUniverseCatalog():Promise<MediaItem[]>{
     const uid=this.requireUser(),generation=this.authGeneration;
     const result:MediaItem[]=[],seen=new Set<string>();
-    for(let offset=0;offset<2400;offset+=200){
+    // 2400 silently omitted part of larger Jellyfin libraries (films,
+    // anime and series). Scan up to 6000 scoped records, on demand only.
+    for(let offset=0;offset<6000;offset+=200){
       const path=this.userItems({
         IncludeItemTypes:"Movie,Series",SortBy:"PremiereDate",
         SortOrder:"Descending",Limit:200,StartIndex:offset,

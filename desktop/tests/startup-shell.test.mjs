@@ -11,6 +11,8 @@ const rust=read("src-tauri/src/main.rs");
 const html=read("frontend/index.html");
 const app=read("frontend/src/App.svelte");
 const api=read("frontend/src/api.ts");
+const qa=JSON.parse(read("src-tauri/tauri.jellyfin-qa.conf.json"));
+const credentials=read("src-tauri/src/credentials.rs");
 
 test("native UI is bundled locally, never imports Jellyfin Web",()=>{
   assert.equal(cfg.build.frontendDist,"../frontend/dist");
@@ -49,6 +51,15 @@ test("cross-account state resets and discovery sections are first-party",()=>{
   const rail=read("frontend/src/ShelfRail.svelte");
   assert.match(app,/ShelfRail/);
   assert.match(rail,/shelf\.kind===\"top10\"/);
+});
+test("parity QA identity and credentials stay isolated",()=>{
+  assert.equal(qa.identifier,"fr.visyren.vyneo.desktop.jellyfinqa");
+  assert.notEqual(qa.identifier,cfg.identifier);
+  assert.equal(qa.productName,"Vynéo Jellyfin QA");
+  assert.equal(qa.bundle.createUpdaterArtifacts,false);
+  assert.deepEqual(qa.plugins.updater.endpoints,[
+    "https://127.0.0.1:9/qa-updates-disabled.json"]);
+  assert.match(credentials,/fr\.visyren\.vyneo\.desktop\.jellyfinqa\.jellyfin/);
 });
 test("signed updater and release separation remain available",()=>{
   assert.match(rust,/UPDATE_CHECK_TIMEOUT/);

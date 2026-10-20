@@ -1,6 +1,6 @@
 # Vynéo Desktop — interface indépendante (0.2.0)
 
-**Prototype en validation : aucune release 0.2.0 publiée.**
+**Version stable 0.2.0 publiée le 20 octobre 2026.** Le client natif reste fonctionnellement incomplet : lecteur MPV et G7y/Qwen3 non raccordés. [Release signée](https://github.com/CocoPerinet/vyneo-mobile-releases/releases/tag/desktop-v0.2.0).
 
 Vynéo Desktop charge notre frontend Svelte/TypeScript compilé localement
 dans Tauri. Il n'exécute plus le client Web Jellyfin. Jellyfin sur le
@@ -66,6 +66,11 @@ Depuis desktop/, exécuter :
 Le premier valide l'architecture, TypeScript/Svelte et le build Vite.
 Le second teste l'API en mémoire et les manifestes/updaters existants.
 
-Les builds natifs et la parité visuelle restent à valider sur Windows/Mac
-avant tout tag desktop-v0.2.0. Les manifestes publics auto-update restent
-en version 0.1.1. Mobile Android 0.3.4 est inchangé.
+Le tag stable `desktop-v0.2.0` a été construit et signé en CI.
+L'updater Windows public annonce désormais 0.2.0, ce qui permet aux
+clients 0.1.1/0.1.2 de se mettre à jour à leur prochain **démarrage complet**.
+Le 0.1.x effectue encore une installation silencieuse ; à partir de
+la 0.2.0, les mises à jour suivantes demandent confirmation Oui/Non.
+La compatibilité 0.1.2 → 0.2.0 a été vérifiée sur les identifiants,
+la clé publique et les endpoints ; le résultat d'installation réelle
+sur le PC utilisateur reste à confirmer. Android 0.3.4 est inchangé.

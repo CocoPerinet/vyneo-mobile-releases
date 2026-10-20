@@ -17,7 +17,7 @@ hero cinématique et cartes paysage 16:9.
 
 Elle n'importe AUCUN runtime, CSS injecté ou fichier Web Jellyfin.
 
-## Nouveau frontend Desktop 0.2.0 en branche isolée
+## Frontend Desktop 0.2.0, publié en stable et conservé sur sa branche de développement
 
 - desktop/frontend/ : Svelte 5, Vite, fichier HTML packagé localement.
 - App.svelte : connexion, navbar, hero, carousel, bibliothèque, recherche,
@@ -43,12 +43,24 @@ Ce raccordement n'est PAS encore fonctionnel en 0.2.0.
 La lecture vidéo et la commutation adaptative G6u sont également
 des travaux distincts, soumis aux tests de codec et d'accès média.
 
-## Release et rollback
+## Release et retour arrière
 
-La branche 0.2.0 n'a aucun tag public et ne remplace aucun client.
-Les manifestes d'auto-update Windows/Mac restent en 0.1.1, et le
-manifeste Mobile Android 0.3.4 est inchangé. Les services du serveur
-Jellyfin et du BFF Vynéo ne sont pas modifiés.
+Le tag **`desktop-v0.2.0`** correspond à une véritable release stable,
+créée le 20 octobre 2026 à la demande de l'utilisateur pour tester
+l'auto-update de son Vynéo installé en **0.1.2**. Elle conserve
+l'identifiant Windows, le même endpoint et la même clé de signature.
+Le manifeste public Windows a été promu de 0.1.1 à 0.2.0 et vérifié
+contre le fichier `.sig` signé. Les clients 0.1.x tentent cette
+mise à jour **silencieusement** à leur prochain lancement complet.
+La 0.2.0 proposera les mises à jour futures dans un dialogue Oui/Non.
+
+**Attention :** le canal stable ne permet pas de rétrograder
+automatiquement vers 0.1.2 : `allowDowngrades=false`. Une correction
+nécessitera une version numériquement supérieure. L'expérience réelle
+sur l'installation de l'utilisateur reste à vérifier.
+
+La release Android 0.3.4 demeure la « Latest » générale du dépôt.
+Les services Jellyfin et le BFF Vynéo n'ont pas été modifiés.
 
 ## Bibliothèque locale de recettes éditoriales G7x
 

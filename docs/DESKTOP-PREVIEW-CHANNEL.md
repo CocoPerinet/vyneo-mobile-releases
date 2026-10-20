@@ -2,12 +2,12 @@
 
 État au 20 octobre 2026 : **Vynéo Preview 0.2.0-beta.1 Windows publiée et signée**.
 [GitHub prerelease](https://github.com/CocoPerinet/vyneo-mobile-releases/releases/tag/desktop-preview-v0.2.0-beta.1).
-La version stable installée n'est pas automatiquement remplacée.
+L'installation séparée de Preview ne remplace pas Vynéo stable. En parallèle, Vynéo Desktop **0.2.0 a été publié en stable** à la demande de l'utilisateur.
 
 ## Comportement attendu
 
 - Stable : identifiant `fr.visyren.vyneo.desktop`, nom Vynéo,
-  version publique 0.1.x, manifestes signés
+  version publique 0.2.0 depuis le 20/10/2026, manifestes signés
   `main/desktop-{target}-{arch}.json`.
 - Preview : identifiant `fr.visyren.vyneo.desktop.preview`,
   nom **Vynéo Preview**, version `0.2.0-beta.1` et manifestes
@@ -68,16 +68,16 @@ La version stable installée n'est pas automatiquement remplacée.
   Les tests Node vérifient le format et la liaison de version.
 - Le workflow Stable `desktop.yml` et le script
   `release-manifest.mjs` continuent de refuser un tag bêta.
-- L'ancien installateur 0.1.1 possède toujours son propre
-  updater silencieux. Le nouveau dialogue n'existe que dans
-  les **binaires construits avec cette modification**.
-  Il est impossible de lui injecter cette fonctionnalité
-  sans une mise à jour signée de sa propre édition.
-- Une prerelease `desktop-v0.1.2` existe déjà sur GitHub
-  mais les trois manifestes **stable** publics ont été
-  observés sur `0.1.1`. Aucun flux n'a été modifié
-  pendant cet audit ; cela nécessite un diagnostic
-  séparé avant toute décision de publier sur Stable.
-- Ne pas publier `desktop-v0.2.0` tant que le lecteur
-  natif et le raccordement G7y ne sont pas validés.
+- Les anciennes installations Desktop 0.1.1/0.1.2 disposent d'un
+  updater **silencieux**. Elles peuvent récupérer la mise à jour signée
+  Stable 0.2.0 au prochain démarrage complet, sans présenter de popup.
+  Le dialogue Oui/Non est intégré aux binaires 0.2.0 et suivants,
+  et sera testable sur une future mise à jour Stable 0.2.1.
+- Historique : la 0.1.2 avait été signée puis ses manifestes remis
+  volontairement à 0.1.1 le 19/10 pendant le pivot frontend.
+  Cette suspension a été levée explicitement le 20/10 à la demande
+  de l'utilisateur via la publication de **Stable 0.2.0**.
+- Stable 0.2.0 reste une version **de test fonctionnel** : le lecteur
+  MPV et le raccordement sécurisé G7y/Qwen3 ne sont pas encore livrés.
+  Ne pas prétendre qu'ils fonctionnent dans la release.
 

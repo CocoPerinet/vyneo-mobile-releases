@@ -17,4 +17,10 @@ tauri-plugin-dialog = "=2.6.0"
 # Native Windows Credential Manager and macOS Keychain, never plain localStorage.
 keyring = { version = "=3.6.3", default-features = false, features = ["apple-native", "windows-native"] }
 serde_json = "1"
-tokio = { version = "1", features = ["time", "sync"] }
+tokio = { version = "1", features = ["time", "sync", "net", "io-util"] }
+# Access Managed OAuth is handled by Rust only, never by the Svelte WebView.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+base64 = "0.22"
+sha2 = "0.10"
+getrandom = "0.3"
+webbrowser = "1.0"

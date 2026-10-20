@@ -42,7 +42,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
   color:white;font-weight:800;box-shadow:0 1px 10px #0006}
 .vy-account-wrap{position:relative}
 .vy-account-menu{position:absolute;right:0;top:48px;z-index:75;
-  min-width:250px;max-width:calc(100vw - 20px);padding:16px;
+  min-width:250px;width:min(350px,calc(100vw - 20px));max-height:min(70vh,520px);
+  overflow:auto;box-sizing:border-box;padding:16px;
   border-radius:12px;background:#20242f;box-shadow:0 15px 45px #000c;
   border:1px solid #ffffff24}
 .vy-account-menu strong{display:block;font-size:14px;overflow-wrap:anywhere}
@@ -51,6 +52,15 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
   color:white;border:1px solid #ffffff24;border-radius:8px;
   padding:10px 13px;font-weight:700}
 .vy-account-menu button:hover{background:#41495d}
+.vy-native-association{margin:12px 0;padding:13px 0;border-top:1px solid #ffffff24;
+  border-bottom:1px solid #ffffff24}
+.vy-native-association strong{color:#f6ba83}
+.vy-native-association p{color:var(--vy-dim);font-size:12px;line-height:1.5}
+.vy-native-code{display:block;margin:12px 0;padding:12px;text-align:center;
+  font:700 16px ui-monospace,monospace;letter-spacing:.16em;
+  color:#fff;background:#131823;border-radius:7px;user-select:all}
+.vy-account-menu button:disabled{opacity:.55;cursor:wait}
+.vy-native-association small{line-height:1.5;overflow-wrap:anywhere}
 .vy-hero{position:relative;isolation:isolate;min-height:min(70vh,650px);
   display:flex;align-items:center;margin-top:-74px;padding:130px 3.3% 155px;
   overflow:hidden;background:linear-gradient(120deg,#172032,#10131b 68%,#282032)}

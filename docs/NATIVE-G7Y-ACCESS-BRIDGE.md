@@ -100,3 +100,33 @@ https://developers.cloudflare.com/cloudflare-one/access-controls/applications/ht
   supporté, testée sur une identité fictive de bout en bout dans
   un environnement isolé. Seulement ensuite qualification sur
   une vraie session autorisée, sans divulguer d'identifiants.
+
+## 20/10/2026 : G7z, preuve de rattachement native sans déploiement
+
+Le travail se poursuit sur le serveur N100 dans la worktree dédiée
+`/home/coco/Projects/vyneo-g7z-native-bridge`
+(branche `feature/g7z-native-oauth-bridge`), sans modifier le
+service Vynéo G7c actif ni la stable Desktop 0.2.2.
+
+- Un protocole de liaison G7z en mémoire réalise PKCE, code à 12
+  caractères, consentement **browser G7h/CSRF**, double association
+  Access subject / compte Jellyfin, jetons délégués de 15 minutes,
+  rotation sans rejeu, révocation lors du logout, et les réponses
+  G7w/G7y sont réutilisées telles quelles, sans fichiers vidéo.
+- L'application navigateur G7h a son interface d'approbation isolée
+  et testée sur un serveur HTTPS/Jellyfin fictifs.
+- `frontend/src/g7z-secure-shelves.ts` et
+  `frontend/tests/g7z-secure-shelves.test.ts` préparent la
+  **frontière de réception des seules métadonnées autorisées par
+  le compte utilisateur courant**. L'adaptateur n'est pas appelé
+  par l'accueil : la connexion native OAuth réelle n'existe pas encore.
+- Cloudflare Managed OAuth est toujours **désactivé** pour
+  `vyneo-preview.visyren.fr`. Il faut encore coder le client OAuth
+  public dans Tauri, confirmer le comportement des headers Access,
+  qualifier l'identité/CSRF et tester une vraie mise à jour signée
+  avant d'envisager l'activation.
+- Voir `docs/G7Z-NATIVE-OAUTH-ACCESS-BRIDGE.md` **dans le dépôt
+  serveur** pour les gates, tests, cas de refus et rollback.
+- Aucun secret utilisateur, cookie ou jeton Access n'est ajouté
+  au frontend ni au dépôt Git. La stable 0.2.2 conserve sa
+  connexion Jellyfin durable validée.

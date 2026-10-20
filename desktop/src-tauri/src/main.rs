@@ -2,6 +2,8 @@
 
 mod quality_policy;
 mod credentials;
+mod g7z_oauth;
+mod g7z_native;
 
 use std::time::Duration;
 use tauri::{
@@ -61,7 +63,13 @@ fn main() {
             credentials::save_saved_session,
             credentials::read_saved_session,
             credentials::forget_saved_session,
+            g7z_native::g7z_begin,
+            g7z_native::g7z_complete,
+            g7z_native::g7z_recommendations,
+            g7z_native::g7z_is_linked,
+            g7z_native::g7z_forget,
         ])
+        .manage(g7z_native::Bridge::default())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(main) = app.get_webview_window("main") {
                 let _ = main.show();

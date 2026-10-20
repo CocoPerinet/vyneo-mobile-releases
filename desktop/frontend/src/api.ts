@@ -452,9 +452,16 @@ export class JellyfinApi {
         userId:uid,StartIndex:String(offset),Limit:"300",
         Fields:"DateCreated,PremiereDate",EnableUserData:"true"
       });
-      const raw=obj(await this.json("/Shows/NextUp?"+query,{
-        maxBytes:2097152,timeoutMs:12000
-      }));
+      let raw:Record<string,unknown>;
+      try{
+        raw=obj(await this.json("/Shows/NextUp?"+query,{
+          maxBytes:2097152,timeoutMs:12000
+        }));
+      }catch(error){
+        this.assertSession(uid,generation);
+        if(offset===0)throw error;
+        break; // Keep already authorized episodes if the later page times out.
+      }
       this.assertSession(uid,generation);
       if(!Array.isArray(raw.Items) || raw.Items.length>300)
         throw new Error("NEXT_UP_INVALID");
@@ -623,9 +630,16 @@ export class JellyfinApi {
         SortBy:"DatePlayed",SortOrder:"Descending",
         Limit:200,StartIndex:offset
       });
-      const raw=obj(await this.json(path,{
-        maxBytes:1572864,timeoutMs:12000
-      }));
+      let raw:Record<string,unknown>;
+      try{
+        raw=obj(await this.json(path,{
+          maxBytes:1572864,timeoutMs:12000
+        }));
+      }catch(error){
+        this.assertSession(uid,generation);
+        if(offset===0)throw error;
+        break; // Later history pages must not erase already read favorites.
+      }
       this.assertSession(uid,generation);
       if(!Array.isArray(raw.Items) || raw.Items.length>200)
         throw new Error("WATCH_HISTORY_INVALID");

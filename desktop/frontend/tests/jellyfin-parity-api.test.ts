@@ -19,7 +19,7 @@ function series(n:number){
     ProductionYear:2024,Studios:[{Name:"Marvel Studios"}],
     PremiereDate:"2024-01-01",ImageTags:{Primary:"tag"}};
 }
-function fixture(){
+function fixture({nextUpCount=275,failSecond=false}:{nextUpCount?:number;failSecond?:boolean}={}){
   const calls:Array<{url:URL;options:RequestInit}>=[];
   const fetcher=vi.fn(async(u:RequestInfo|URL,options:RequestInit={})=>{
     const url=new URL(String(u)),path=url.pathname;
@@ -28,9 +28,13 @@ function fixture(){
       return output({User:{Id:USER,Name:"Alice"},AccessToken:TOKEN});
     if(path==="/Users/Me")
       return output({Id:USER,Name:"Alice",Policy:{IsDisabled:false}});
-    if(path==="/Shows/NextUp")
-      return output({Items:Array.from({length:275},(_,i)=>episode(i)),
-        TotalRecordCount:275});
+    if(path==="/Shows/NextUp"){
+      const start=Number(url.searchParams.get("StartIndex")??0);
+      if(failSecond && start>=300)return output({error:"offline"},503);
+      return output({Items:Array.from({
+        length:Math.max(0,Math.min(300,nextUpCount-start))
+      },(_,i)=>episode(start+i)),TotalRecordCount:nextUpCount});
+    }
     if(path==="/Users/"+USER+"/Items"){
       const types=url.searchParams.get("IncludeItemTypes");
       if(types==="Season"){
@@ -71,6 +75,17 @@ describe("Jellyfin UI parity uses real scoped API metadata",()=>{
    expect(request.url.searchParams.get("Limit")).toBe("300");
    expect(entries[0].seasonId).toBe(id(1000));
    expect(entries[0].episodeNumber).toBe(1);
+ });
+ it("reads second NextUp page but keeps first if second times out",async()=>{
+   const good=fixture({nextUpCount:450});
+   await good.api.login("Alice","password");
+   expect(await good.api.getNextUp()).toHaveLength(450);
+   expect(good.calls.filter(x=>x.url.pathname==="/Shows/NextUp")
+     .map(x=>x.url.searchParams.get("StartIndex"))).toEqual(["0","300"]);
+   const interrupted=fixture({nextUpCount:450,failSecond:true});
+   await interrupted.api.login("Alice","password");
+   const entries=await interrupted.api.getNextUp();
+   expect(entries).toHaveLength(300);
  });
  it("identifies recent seasons by PremiereDate, never import date",async()=>{
    const {api,calls}=fixture();await api.login("Alice","password");

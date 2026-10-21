@@ -40,3 +40,15 @@
 - Packaging QA validé sur COCO. Signé : NON (outil Authenticode NotSigned), aucun déploiement ni installation automatisée. C'est une construction de validation, pas une version finale.
 - Blocage de départ résolu : icônes Tauri Windows manquantes générées à partir de assets/icon.png ; ancienne vérification Cargo.toml rendue compatible avec la normalisation Tauri sans déverrouiller tauri-build.
 - À vérifier avant promotion : test avec le véritable compte et le rendu des affiches, branchement G7z LLM pour Univers, lecteur et téléchargements natifs, moteur complet des univers (phases MCU/Star Wars).
+
+
+## Livraison QA 0.2.3-qa.2 (21 octobre 2026)
+- Source de build : `c6b9d39` sur `feature/desktop-jellyfin-parity`, avec correctifs popup, onglets mobiles et surveillance des carrousels ; version QA distincte `fr.visyren.vyneo.desktop.jellyfinqa`.
+- Tests sur COCO après synchronisation : 22 tests Node réussis (6 scénarios de publication ignorés), 94/94 tests Vitest, `npm run check` avec zéro erreur et zéro avertissement Svelte/TypeScript, build Vite réussi.
+- `npm run qa:parity` : Chrome headless, 264 éléments À suivre simulés, actions favoris et vu, indisponibilité sécurisée du favori parent, 6 univers, carousel, navigation mobile active et absence de débordement aux résolutions 390 / 1280 / 1920 px.
+- `cargo test --release --locked` : 7/7 tests Rust réussis sur COCO.
+- Installeur NSIS Windows x64 : `Vynéo Jellyfin QA_0.2.3-qa.2_x64-setup.exe`, 3 353 079 octets, SHA-256 `86EB2A0AC2B680A36566206558BDD1779834EE818A2AAFC4A937323C0CFE4040`. Non signé (Authenticode NotSigned).
+- Installation silencieuse `/S` sur COCO : code retour 0. Entrée de désinstallation indépendante `Vynéo Jellyfin QA`, version `0.2.3-qa.2`, installée dans `%LOCALAPPDATA%/Vynéo Jellyfin QA/`, raccourci Menu Démarrer présent.
+- Stable 0.2.2 : installation et processus préservés ; SHA-256 de l'exécutable stable identique avant/après (`4BEA205537F7E4C5AC32AE5D999BFC01124B91F3F0F50F1F321E35BE691BACD0`). Canal updater QA désactivé, coffre natif isolé.
+- En session PowerShell distante, `cargo` exige un PATH temporaire `$env:PATH="$HOME\.cargo\bin;$env:PATH"` ; ne pas modifier le PATH global.
+- Aucun tag stable, manifeste updater, application stable, Jellyfin de production ou publication GitHub Releases modifié. Validation de lancement natif et avec le véritable compte Jellyfin restant à réaliser par l'utilisateur, sans perturber son poste.

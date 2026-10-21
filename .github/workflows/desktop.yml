@@ -106,6 +106,9 @@ jobs:
         run: |
           cargo test --bin vyneo-desktop native_stream::tests
           cargo test --bin vyneo-desktop native_hls::tests
+      - name: Decode real H.264/AAC HLS fixture in headless Chromium
+        working-directory: desktop
+        run: npm run qa:hls-first-frame
       - name: Build unsigned PR or manual Windows installer
         if: github.ref_type != 'tag'
         working-directory: desktop

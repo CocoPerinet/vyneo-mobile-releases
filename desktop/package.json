@@ -11,7 +11,8 @@
     "check": "node scripts/check.mjs && npm run typecheck:ui && npm run build:ui",
     "test": "node --test --test-concurrency=1 tests/*.test.mjs && npm run test:ui",
     "test:ui": "vitest run --config frontend/vite.config.ts --maxWorkers=1 --pool=forks",
-    "qa:parity": "node qa/parity-qa.mjs"
+    "qa:parity": "node qa/parity-qa.mjs",
+    "qa:hls-first-frame": "node qa/hls-first-frame-qa.mjs"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "7.3.0",

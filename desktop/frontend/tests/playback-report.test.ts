@@ -93,6 +93,47 @@ describe("accurate, non-invasive Jellyfin playback lifecycle",()=>{
     expect(attempted.map(e=>e.kind)).toEqual(["start"]);
     expect(errors).toHaveBeenCalledTimes(1);
   });
+  it("does not leak a stale playback report into a different signed-in session",async()=>{
+    const calls:string[]=[];
+    let release:(value:Response)=>void=()=>{};
+    const fetcher=vi.fn(async(input:RequestInfo|URL):Promise<Response>=>{
+      const path=new URL(String(input)).pathname;
+      calls.push(path);
+      if(path==="/Users/AuthenticateByName")
+        return authResponse({User:{Id:USER,Name:"Alice"},AccessToken:TOKEN});
+      if(path==="/Users/Me")
+        return authResponse({Id:USER,Name:"Alice",Policy:{IsDisabled:false}});
+      if(path==="/Sessions/Playing")
+        return new Promise<Response>(resolve=>{release=resolve;});
+      throw new Error("Unexpected request");
+    }) as typeof fetch;
+    const api=new JellyfinApi({fetcher});
+    await api.login("Alice","password");
+    const pending=api.reportPlayback({...context,kind:"start",
+      positionTicks:0,canSeek:true,isPaused:false,isMuted:false,
+      volumeLevel:68});
+    await vi.waitFor(()=>expect(calls).toContain("/Sessions/Playing"));
+    api.logout();
+    release(new Response(null,{status:204}));
+    await expect(pending).rejects.toThrow("SESSION_CHANGED");
+    await expect(api.reportPlayback({...context,kind:"progress",
+      positionTicks:100,canSeek:true,isPaused:false,isMuted:false,
+      volumeLevel:68})).rejects.toThrow("AUTH_REQUIRED");
+  });
+  it("keeps the player independent from a forbidden Jellyfin report",async()=>{
+    const writes:PlaybackReport[]=[];
+    const recorder=new PlaybackReporter(context,async value=>{
+      writes.push(value);
+      throw new Error("HTTP 403");
+    });
+    recorder.playing(snapshot(21));
+    recorder.progress(snapshot(50),true);
+    recorder.stop(snapshot(80));
+    await recorder.drain();
+    expect(writes.map(x=>x.kind)).toEqual(["start"]);
+    // No second write can bypass the refused start, and the controller
+    // did not throw an exception into the video playback event handler.
+  });
   it("POSTs authenticated 204 playback reports without token URLs or JSON response",async()=>{
     const calls:Array<{url:URL,opts:RequestInit}>=[];
     const fetcher=vi.fn(async(input:RequestInfo|URL,opts:RequestInit={})=>{

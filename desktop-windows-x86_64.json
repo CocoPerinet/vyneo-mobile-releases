@@ -1,10 +1,10 @@
 {
-  "version": "0.2.2",
+  "version": "0.2.3",
   "notes": "Mise à jour Vynéo Desktop signée et vérifiée.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/CocoPerinet/vyneo-mobile-releases/releases/download/desktop-v0.2.2/Vyneo-Desktop-0.2.2-windows-x64.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdE5rb1FiWk9WaExZUkNiaE1yUjZuSmJ6UG1aNSt1Q0hyK3JmRzlPWGREQ2NaaDRmeEJqME1CSEFNMzl3MlNKOUNRNzdncXpRVEtrQUJyRE14VWNySHdCSHF0STR0K3dJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNTE3MTYyCWZpbGU6Vnluw6lvXzAuMi4yX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjIuMgpIMXdVOTFXanBDVlRtc3V4M0NMUUVWbURFL3Q1SEhLbE01S2xha0tlSFpNZVBkV0toUlE0VGtTUUZqSnI2WDYwUDJPTjIrYnRyWll4QmxsNkM0RWZCZz09Cg=="
+      "url": "https://github.com/CocoPerinet/vyneo-mobile-releases/releases/download/desktop-v0.2.3/Vyneo-Desktop-0.2.3-windows-x64.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdE5rb1FiWk9WaEcvVy9YTWJzY2NBaENGdjRBaUtoZ1FnYzhhSkpnUUJ0ZzRaa0JtRytJYWQ4L0JTa0tqeXczTGwxdkNlbmYza2tlOGUyM0ZoNVdIT3Avby9uTmRHTkEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNTUwNDI5CWZpbGU6Vnluw6lvXzAuMi4zX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjIuMwo3VW5vVndtbnFPRnlGSFpXMTA2SVIwWllPZzNOWmZ6MEdkdkFIRHlDV0NNSndSTVNsNHBWWGtIOHg2N1JvSVp4R0VkbXo0ekJCSzkzNTUwT2VObmxEQT09Cg=="
     }
   }
 }

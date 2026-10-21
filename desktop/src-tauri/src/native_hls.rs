@@ -46,25 +46,66 @@ fn private_base(item: &str) -> Result<reqwest::Url, ()> {
         .map_err(|_| ())
 }
 
+/** The Jellyfin POST /PlaybackInfo chooses the codecs, session and
+ * stream-specific parameters. Never guess the transcode URL locally: use
+ * only its vetted, token-free master playlist with the pinned origin. */
+pub(crate) fn validated_playlist_url(
+    item: &str, source: &str, path: &str
+) -> Option<reqwest::Url> {
+    if path.len()>5000 || !path.starts_with('/') || path.starts_with("//")
+        || path.contains('#') || path.contains('\\')
+        || path.chars().any(|c| c.is_control())
+    { return None; }
+    let url=reqwest::Url::parse(UPSTREAM).ok()?.join(path).ok()?;
+    if url.scheme()!="https"
+        || url.host_str()!=Some("cocojellyfin.duckdns.org")
+        || url.port_or_known_default()!=Some(38443)
+        || !url.username().is_empty() || url.password().is_some()
+    { return None; }
+    let parts=url.path().split('/').collect::<Vec<_>>();
+    if parts.len()!=4 || !parts[0].is_empty()
+        || !parts[1].eq_ignore_ascii_case("videos")
+        || !parts[3].eq_ignore_ascii_case("master.m3u8")
+        || parts[2].replace('-',"").to_ascii_lowercase()
+            !=item.to_ascii_lowercase()
+    { return None; }
+    let mut source_matched=false;
+    let mut video_matched=false;
+    let mut audio_matched=false;
+    let mut container_matched=false;
+    let mut count=0usize;
+    for (key,value) in url.query_pairs() {
+        count+=1;
+        if count>70 || key.len()>64 || value.len()>384
+            || !key.bytes().all(|b| b.is_ascii_alphanumeric()
+                || b==b'_' || b==b'-')
+            || value.chars().any(|c|c.is_control())
+        { return None; }
+        let normalized=key.to_ascii_lowercase()
+            .replace('-',"").replace('_',"");
+        if normalized.contains("token") || normalized.contains("apikey")
+            || normalized.contains("secret") || normalized.contains("password")
+            || normalized.contains("authorization")
+            || normalized.contains("credential") || normalized.contains("bearer")
+        { return None; }
+        match normalized.as_str() {
+            "mediasourceid" =>
+                source_matched=value.replace('-',"").eq_ignore_ascii_case(source),
+            "videocodec" =>video_matched=value.eq_ignore_ascii_case("h264"),
+            "audiocodec" =>audio_matched=value.split(',')
+                .any(|v|v.eq_ignore_ascii_case("aac")),
+            "segmentcontainer" =>container_matched=value.eq_ignore_ascii_case("ts"),
+            _=>{}
+        }
+    }
+    if !(source_matched && video_matched && audio_matched && container_matched){
+        return None;
+    }
+    Some(url)
+}
+
 fn index_url(grant: &StreamGrant) -> Result<reqwest::Url, ()> {
-    let mut url = private_base(&grant.item)?;
-    url.query_pairs_mut()
-        .append_pair("MediaSourceId", &grant.source)
-        .append_pair("DeviceId", &grant.device)
-        .append_pair("VideoCodec", "h264")
-        .append_pair("AudioCodec", "aac")
-        .append_pair("VideoBitRate", "8000000")
-        .append_pair("AudioBitRate", "192000")
-        .append_pair("MaxWidth", "1920")
-        .append_pair("MaxHeight", "1080")
-        .append_pair("MaxAudioChannels", "2")
-        .append_pair("SegmentContainer", "mp4")
-        .append_pair("SegmentLength", "6")
-        .append_pair("RequireAvc", "true")
-        .append_pair("AllowVideoStreamCopy", "true")
-        .append_pair("AllowAudioStreamCopy", "true")
-        .append_pair("EnableSubtitlesInManifest", "false");
-    Ok(url)
+    grant.negotiated_hls.clone().ok_or(())
 }
 
 fn sanitized_upstream(
@@ -350,8 +391,42 @@ mod tests {
         StreamGrant {
             item:"a".repeat(32),source:"b".repeat(32),
             token:"c".repeat(52),device:"desktop-test".into(),
-            kind:StreamKind::Hls,assets:Arc::new(Mutex::new(HashMap::new())),
+            kind:StreamKind::Hls,
+            negotiated_hls:Some(validated_playlist_url(
+                &"a".repeat(32),&"b".repeat(32),
+                &format!("/Videos/{}/master.m3u8?MediaSourceId={}&VideoCodec=h264&AudioCodec=aac&SegmentContainer=ts&PlaySessionId={}&Tag=fixture",
+                    "a".repeat(32),"b".repeat(32),"c".repeat(32))
+            ).unwrap()),
+            assets:Arc::new(Mutex::new(HashMap::new())),
             expires:Instant::now()+Duration::from_secs(120)
+        }
+    }
+    #[test]
+    fn profile_negotiated_playlist_is_pinned_and_not_rediscovered() {
+        let item="a".repeat(32);
+        let source="b".repeat(32);
+        let canonical=format!(
+            "/Videos/{}/master.m3u8?MediaSourceId={}&VideoCodec=h264&AudioCodec=aac&SegmentContainer=ts&PlaySessionId={}&Tag=sample",
+            item,source,"c".repeat(32));
+        let url=validated_playlist_url(&item,&source,&canonical).unwrap();
+        assert_eq!(url.as_str(),
+            format!("{UPSTREAM}{canonical}").as_str());
+        assert_eq!(index_url(&fixture()).unwrap()
+            .query_pairs().find(|(k,_)|k=="Tag").unwrap().1,"fixture");
+        for invalid in [
+            format!("https://evil.example{canonical}"),
+            canonical.replace("master.m3u8","main.m3u8"),
+            canonical.replace(&source,&"d".repeat(32)),
+            canonical.replace("VideoCodec=h264","VideoCodec=hevc"),
+            canonical.replace("AudioCodec=aac","AudioCodec=ac3"),
+            canonical.replace("SegmentContainer=ts","SegmentContainer=mp4"),
+            format!("{canonical}&ApiKey=SECRET"),
+            format!("{canonical}&Authorization=SECRET"),
+            format!("{canonical}#fragment"),
+            format!("/Videos/{}/master.m3u8?MediaSourceId={}&VideoCodec=h264",
+                "f".repeat(32),source)
+        ] {
+            assert!(validated_playlist_url(&item,&source,&invalid).is_none());
         }
     }
     #[test]

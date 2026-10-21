@@ -25,8 +25,11 @@ test("HLS uses local capability assets with pinned Jellyfin origin",()=>{
   const hls=get("src-tauri/src/native_hls.rs");
   const native=get("src-tauri/src/native_stream.rs");
   assert.match(hls,/const UPSTREAM: &str = "https:\/\/cocojellyfin\.duckdns\.org:38443"/);
-  assert.match(hls,/VideoCodec", "h264"/);
-  assert.match(hls,/AudioCodec", "aac"/);
+  assert.match(hls,/validated_playlist_url/);
+  assert.match(hls,/master\.m3u8/);
+  assert.match(hls,/videocodec/);
+  assert.match(hls,/audiocodec/);
+  assert.match(hls,/negotiated_hls/);
   assert.match(hls,/MAX_PLAYLIST: usize = 512 \* 1024/);
   assert.match(hls,/MAX_SEGMENT: usize = 16 \* 1024 \* 1024/);
   assert.match(hls,/access_token/);
@@ -38,7 +41,9 @@ test("HLS uses local capability assets with pinned Jellyfin origin",()=>{
   assert.match(native,/"hls" => StreamKind::Hls/);
   const page=get("frontend/src/MediaDetails.svelte");
   assert.match(page,/import\("hls.js"\)/);
-  assert.match(page,/selectJellyfinHls\(probe\)/);
+  assert.match(page,/selectJellyfinHls\(\{/);
+  assert.match(page,/negotiatePlaybackInfo\(target\.id\)/);
+  assert.match(page,/negotiation\.hlsPaths\[source\.id\]/);
   assert.match(page,/player\?\.destroy\(\)/);
 });
 test("video CSP allows only Tauri custom media and no token-bearing URLs",()=>{

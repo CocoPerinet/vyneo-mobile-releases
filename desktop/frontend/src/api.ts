@@ -4,6 +4,8 @@ import {validateStreamTicket} from "./native-playback";
 import type {NativeStreamTicket} from "./native-playback";
 import {reportBody,reportPath} from "./playback-report";
 import type {PlaybackReport} from "./playback-report";
+import {parseNegotiatedPlayback,WEBVIEW2_DEVICE_PROFILE,NEGOTIATED_MAX_BITRATE} from "./playback-negotiation";
+import type {NegotiatedPlayback} from "./playback-negotiation";
 import {parseSeasons,parsePlaybackInfo} from "./media-details";
 import type {RecentSeason} from "./new-seasons";
 import type {TrendingRank} from "./trending";
@@ -446,6 +448,27 @@ export class JellyfinApi {
       ?consumed===limit:startIndex+consumed<total);
     return {items,total,nextOffset:hasNext?startIndex+consumed:null};
   }
+  /** Actual playback negotiation. Unlike the diagnostic GET, this POST
+   * declares the codecs and HLS container supported by WebView2/hls.js.
+   * The server supplies a negotiated URL; we strip tokens and pin its path
+   * before the native protocol is permitted to use it. */
+  async negotiatePlaybackInfo(itemId:string):Promise<NegotiatedPlayback>{
+    const uid=this.requireUser(),generation=this.authGeneration;
+    if(!validId(itemId))throw new Error("PLAYBACK_ITEM_INVALID");
+    const raw=await this.json("/Items/"+itemId+"/PlaybackInfo",{
+      method:"POST",maxBytes:786432,timeoutMs:17000,
+      body:{
+        UserId:uid,MaxStreamingBitrate:NEGOTIATED_MAX_BITRATE,
+        MaxAudioChannels:2,StartTimeTicks:0,
+        EnableDirectPlay:true,EnableDirectStream:true,
+        EnableTranscoding:true,
+        AllowVideoStreamCopy:true,AllowAudioStreamCopy:true,
+        DeviceProfile:WEBVIEW2_DEVICE_PROFILE
+      }
+    });
+    this.assertSession(uid,generation);
+    return parseNegotiatedPlayback(raw,itemId);
+  }
   /** Authenticated Jellyfin session events; 204 No Content is success.
    * Only a playing native video invokes this, never artwork/probe calls. */
   async reportPlayback(event:PlaybackReport):Promise<void>{
@@ -494,19 +517,20 @@ export class JellyfinApi {
     Promise<NativeStreamTicket>{
     return this.beginNativeMediaPlayback(itemId,mediaSourceId,"direct");
   }
-  async beginNativeHlsPlayback(itemId:string,mediaSourceId:string):
-    Promise<NativeStreamTicket>{
-    return this.beginNativeMediaPlayback(itemId,mediaSourceId,"hls");
+  async beginNativeHlsPlayback(itemId:string,mediaSourceId:string,
+    hlsPath:string):Promise<NativeStreamTicket>{
+    return this.beginNativeMediaPlayback(itemId,mediaSourceId,"hls",hlsPath);
   }
   private async beginNativeMediaPlayback(itemId:string,mediaSourceId:string,
-    kind:"direct"|"hls"):Promise<NativeStreamTicket>{
+    kind:"direct"|"hls",hlsPath?:string):Promise<NativeStreamTicket>{
     const uid=this.requireUser(),epoch=this.authGeneration;
     if(!validId(itemId) || !validId(mediaSourceId))
       throw new Error("STREAM_SCOPE_INVALID");
     if(!isTauri())throw new Error("NATIVE_PLAYER_REQUIRED");
     const raw=await invoke<unknown>("create_native_stream_ticket",{
       itemId,mediaSourceId,userId:uid,
-      accessToken:this.token,deviceId:this.deviceId,kind
+      accessToken:this.token,deviceId:this.deviceId,kind,
+      hlsPath:kind==="hls"?hlsPath:null
     });
     const ticket=validateStreamTicket(raw);
     if(epoch!==this.authGeneration || this.userId!==uid){

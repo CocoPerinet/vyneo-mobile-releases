@@ -235,12 +235,16 @@
     stopStream();streamBusy=true;streamError="";reportWarning="";
     playbackNotificationSent=false;
     try{
-      const probe=playback??await api.getPlaybackInfo(target.id);
+      const negotiation=await api.negotiatePlaybackInfo(target.id);
       if(epoch!==version || request!==streamEpoch ||
         shown.id!==target.id)return;
+      const probe=negotiation.probe;
       playback=probe;
       const direct=selectDirectMp4(probe);
-      const hls=direct?null:selectJellyfinHls(probe);
+      const hls=direct?null:selectJellyfinHls({
+        ...probe,sources:probe.sources.filter(source=>
+          source.id && negotiation.hlsPaths[source.id])
+      });
       const source=direct??hls;
       if(!source?.id){
         streamError="Jellyfin ne propose ni lecture MP4 compatible "+
@@ -250,7 +254,8 @@
       const mode=direct?"direct":"hls";
       const ticket=mode==="direct"
         ?await api.beginNativeDirectPlayback(target.id,source.id)
-        :await api.beginNativeHlsPlayback(target.id,source.id);
+        :await api.beginNativeHlsPlayback(target.id,source.id,
+          negotiation.hlsPaths[source.id]);
       if(epoch!==version || request!==streamEpoch ||
         shown.id!==target.id){
         await api.endNativePlayback(ticket.ticket).catch(()=>{});

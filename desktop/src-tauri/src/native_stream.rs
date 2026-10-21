@@ -28,6 +28,7 @@ pub(crate) struct StreamGrant {
     pub(crate) token: String,
     pub(crate) device: String,
     pub(crate) kind: StreamKind,
+    pub(crate) negotiated_hls: Option<reqwest::Url>,
     pub(crate) assets: Arc<Mutex<HashMap<String, reqwest::Url>>>,
     pub(crate) expires: Instant,
 }
@@ -81,6 +82,7 @@ pub fn create_native_stream_ticket(
     access_token: String,
     device_id: String,
     kind: String,
+    hls_path: Option<String>,
 ) -> Result<NativeStreamTicket, String> {
     if !guid(&item_id) || !guid(&media_source_id) || !guid(&user_id)
         || !safe_token(&access_token) || !safe_device(&device_id)
@@ -92,10 +94,21 @@ pub fn create_native_stream_ticket(
         "hls" => StreamKind::Hls,
         _ => return Err("STREAM_KIND_INVALID".into()),
     };
+    let negotiated_hls=if stream_kind==StreamKind::Hls {
+        let path=hls_path.as_deref()
+            .ok_or_else(|| "STREAM_HLS_URL_INVALID".to_string())?;
+        Some(crate::native_hls::validated_playlist_url(
+            &item_id,&media_source_id,path
+        ).ok_or_else(|| "STREAM_HLS_URL_INVALID".to_string())?)
+    }else{
+        if hls_path.is_some(){return Err("STREAM_HLS_SCOPE_INVALID".into());}
+        None
+    };
     let key = uuid::Uuid::new_v4().simple().to_string();
     let grant = StreamGrant {
         item: item_id, source: media_source_id,
         token: access_token, device: device_id, kind: stream_kind,
+        negotiated_hls,
         assets: Arc::new(Mutex::new(HashMap::new())),
         expires: Instant::now() + TICKET_LIFETIME,
     };

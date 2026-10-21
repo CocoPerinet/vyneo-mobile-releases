@@ -953,7 +953,7 @@
           <button type="button" class="vy-quick-secondary"
             disabled={loginBusy || restoreBusy}
             onclick={()=>void beginQuickConnect()}>
-            Se connecter avec Quick Connect
+            Connexion avec Quick Connect
           </button>
         {/if}
         <span class="vy-auth-hint">

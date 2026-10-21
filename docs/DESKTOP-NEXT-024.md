@@ -57,3 +57,41 @@ Branche : `feature/desktop-next-v0.2.4`.
   `desktop-v0.2.4` uniquement quand ces vérifications seront satisfaisantes.
 - Ne pas modifier la stable `0.2.3`, son manifeste de mise à jour, l'Android
   ni le serveur Jellyfin pour développer cette branche.
+
+## Correctifs visuels remontés le 21 octobre (lot suivant)
+
+- **Placeholder d'image** : chaque élément `img` lazy est masqué tant
+  qu'il n'a pas chargé une image décodable (`data-vy-art-ready`). Si le
+  navigateur échoue sur un Blob JPG/PNG corrompu, la source est retirée et
+  le fond dégradé du composant reste visible, sans icône d'image cassée.
+- **Top 10** : rang numérique en bas à gauche, badges
+  `Nouveau film`/`Nouvelle saison` en haut à droite.
+  Vérification Playwright par intersection de rectangles réels.
+- **Navigation** : plus d'onglet `Univers` dans le header. Les tuiles de
+  l'accueil ouvrent toujours les univers. `Accueil` reste l'onglet actif
+  lorsque l'utilisateur explore un univers, et le bouton
+  `Tous les univers` reste disponible.
+- **Sept univers** : ajout de `Nouveau DCU` distinct de `DC`, en
+  conservant l'ordre exact de la skin Jellyfin (MCU, Disney, Pixar,
+  DreamWorks, Star Wars, DC, Nouveau DCU). Le logo `dcu.png` a été copié
+  depuis le thème Jellyfin en lecture seule, et garde sa couleur bleue.
+  Titres connus Star Wars sans studio Lucasfilm et films DC ciblés
+  rattrapés sans inventer de contenus absents de la bibliothèque.
+- **Tuiles** : contraintes de largeur et hauteur des sept logos pour
+  empêcher DC et Nouveau DCU de déborder de leurs cartes.
+
+### Résultats réellement obtenus
+
+- 99/99 Vitest sur COCO, 22 Node PASS (6 SKIP spécifiques POSIX).
+- `npm run check` : 0 erreur Svelte/TypeScript, build Vite PASS.
+- Playwright headless `npm run qa:parity` : PASS sur COCO. Il couvre
+  désormais un PNG volontairement corrompu, l'absence d'icône cassée,
+  les badges Top 10 sans chevauchement, les logos des sept univers
+  dans leurs tuiles et la navigation mobile. Scénarios synthétiques
+  uniquement, pas d'accès au compte Jellyfin réel.
+- Source finale de ce lot : `0fc69cf` et descendants de la même branche.
+- **Objectif single app** : ne pas multiplier les installations QA.
+  La livraison au public doit passer par la stable signée `0.2.4`
+  et son manifeste Tauri auto-updater, sans téléchargement manuel.
+  L'identité QA installée sera supprimée séparément lorsque la stable
+  signée sera prête ; aucune suppression de la stable autorisée.

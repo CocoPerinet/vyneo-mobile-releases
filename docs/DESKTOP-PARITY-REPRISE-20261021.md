@@ -915,3 +915,100 @@ L'installation unique Vynéo `0.2.4` reste intacte et la PR #9
 reste brouillon. Le bloc D `real-library` et `side-by-side`
 ne change PAS de statut. Il ne faut pas publier une stable
 sur la seule foi des tests synthétiques.
+
+## 22 octobre, suite : décodage audio AAC, durée STRM, sécurité QA et QSV
+
+### Décodage audio réellement mesuré dans WebView2 natif
+
+Les commits `65a1b66`, `ae2e6cb` et `b639b99` ont renforcé
+le banc de test portable Tauri/WebView2 avec un nœud WebAudio
+`MediaElementAudioSourceNode` et un `AnalyserNode`. La source
+est décodée par le vrai lecteur HLS WebView2, mais transite
+**uniquement vers un GainNode à gain zéro** pour éviter tout son
+sur les enceintes de l'utilisateur durant les tests invisibles.
+
+Le test vérifie maintenant obligatoirement un AudioContext actif,
+au moins trois acquisitions du signal et une amplitude RMS
+supérieure ou égale à 0,008 sur la piste AAC synthétique de
+440 Hz. La commande locale `npm run qa:native-webview2`,
+réexécutée à COCO au commit `d5d90f6`, est **PASS** :
+64 images vidéo décodées, pause/seek/reprise OK, audioContext
+`running`, `audioAnalyserSamples=10`,
+`audioRmsPeak=0.062772`. Aucun utilisateur ni média
+Jellyfin privé n'a été employé.
+
+Le signal PCM décodé dans WebView2 est ainsi prouvé avec ce
+média synthétique. Cela ne démontre PAS que les pistes audio
+E-AC3/AC3 et multilingues des STRM réels sont négociées
+correctement avec Jellyfin.
+
+### Reprise d'un média distant sans durée sur l'item
+
+Le commit `51fa77a` conserve le `RunTimeTicks` de la
+`MediaSource` après `PlaybackInfo`. Jellyfin peut fournir
+la durée du fichier distant à ce niveau alors que la fiche
+STRM de la bibliothèque n'en possède aucune. L'ordre de
+priorité est désormais :
+1. durée navigateur `video.duration` si elle est finie ;
+2. durée `MediaSource.RunTimeTicks` validée en ticks ;
+3. aucune reprise automatique si ces deux mesures manquent.
+
+L'application vérifie la plage `seekable` et peut réessayer
+une seule reprise au moment des événements `loadedmetadata`,
+`durationchange` ou `canplay`, afin de ne pas perdre la
+position quand l'API MSE/HLS annonce sa durée tardivement.
+Les cas de valeurs Infinity/NaN, durées incohérentes et
+avances trop proches de la fin sont couverts par tests.
+
+### Preuve QSV synthétique sur le vrai Jellyfin du N100
+
+Contrôle préalable : charge serveur ~0,78 et CPU du conteneur
+Jellyfin ~3,6 % au démarrage. Test ffmpeg matériel de 48
+images synthétiques à 320 × 180, fréquence 24 i/s, avec
+`vaapi=iHD`, `qsv=qs@va`, upload matériel et
+`h264_qsv`, sortie `null` sans fichier écrit.
+Exécution bornée à 25 secondes, achevée sans erreur :
+`frame=48, time=00:00:01.87, speed=21.1x`.
+
+Ce test prouve une **capacité d'encodage QSV fonctionnelle**
+dans le conteneur Jellyfin, et NON une performance en 1080p
+avec des vidéos distantes et sous-titres ASS brûlés.
+
+### Récupération d'une QA interrompue par SSH
+
+Une coupure de la connexion SSH pendant une QA avait laissé
+une tâche temporaire `VyneoNativeMediaQA*` et un binaire QA
+masqué actifs. Cette tâche et ce binaire ont été arrêtés
+explicitement et la version stable n'a pas été touchée.
+
+Les commits `d5d90f6` et `712cc95` :
+- ajoutent un temps d'exécution maximal de **2 minutes** aux
+  tâches temporaires de QA ;
+- suppriment au démarrage les tâches orphelines uniquement
+  lorsque leur action pointe vers **l'exécutable QA exact** ;
+- font fermer automatiquement le binaire **QA uniquement**
+  après validation et révocation du ticket média ;
+- vérifient statiquement que la logique de sortie n'est
+  accessible qu'à la feature `native-e2e-qa`.
+
+Au terme du test Windows : **0 tâche QA restante**, **1 seul
+processus Vynéo stable** et **1 installation 0.2.4**
+toujours enregistrée. Une déconnexion du relais de commande
+ne doit plus laisser un processus de test exécuté indéfiniment.
+
+### Validation logicielle et restriction de publication
+
+Sur COCO au commit `712cc95` : **158 tests frontend
+Vitest PASS**, **30 tests Node PASS** (6 autres ignorés selon
+contexte), zéro erreur ni avertissement Svelte,
+compilation Vite, QA Playwright et décodage HLS Chromium
+PASS. Le test natif HLS WebView2 du commit `d5d90f6`
+a aussi été exécuté après le durcissement du lecteur audio.
+
+La PR #9 et le bloc D `real-library`/`side-by-side`
+restent **PENDING** : il manque toujours une session QA
+Jellyfin explicitement autorisée, la lecture d'un vrai .strm
+dans Vynéo, le son audible réel, les sous-titres,
+la progression effectivement enregistrée sur le serveur et
+la comparaison du même compte dans Jellyfin et Vynéo.
+Il n'y a aucun tag ni publication stable signée.

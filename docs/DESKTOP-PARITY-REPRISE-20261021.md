@@ -1012,3 +1012,74 @@ dans Vynéo, le son audible réel, les sous-titres,
 la progression effectivement enregistrée sur le serveur et
 la comparaison du même compte dans Jellyfin et Vynéo.
 Il n'y a aucun tag ni publication stable signée.
+
+## 22 octobre, suite : connexion sécurisée Jellyfin Quick Connect
+
+### Motif
+
+Le serveur Jellyfin a confirmé publiquement
+`GET /QuickConnect/Enabled -> true (HTTP 200)`.
+La QA ne possède pas de compte Jellyfin supplémentaire autorisé :
+aucun jeton de la version stable ne doit être copié dans un second
+exécutable ni dans une trace de débogage. Un véritable contrôle
+sur un profil déterminé doit donc passer par une **approbation
+explicite de l'utilisateur** sans lui demander de transmettre
+son mot de passe ou son jeton.
+
+### Implémentation candidate uniquement (commits 8805d21 et 1c9b347)
+
+- Dans l'écran de connexion Vynéo : bouton facultatif
+  **Connexion avec Quick Connect**, en complément des champs
+  classiques utilisateur/mot de passe inchangés.
+- Après clic : `POST /QuickConnect/Initiate` à l'hôte Jellyfin
+  fixe, avec en-tête client/DeviceId validé. Le backend transmet
+  `Code` à l'UI, conserve `Secret` exclusivement en mémoire.
+  Aucun paramètre d'URL ni stockage navigateur pour le secret.
+- L'utilisateur saisit lui-même le code dans son Jellyfin déjà
+  authentifié, sous les paramètres Quick Connect, puis clique
+  **J'ai autorisé le code** dans Vynéo.
+- `POST /Users/AuthenticateWithQuickConnect` transmet le Secret
+  seulement dans le corps JSON, pas dans un GET, pas dans l'URL.
+  Le client valide le UserId, le nouveau jeton et **/Users/Me**
+  avant d'accepter cette session. Un refus ou code pas encore
+  autorisé ne connecte personne.
+- Le bouton d'annulation invalide toute demande en attente.
+  Le numéro de génération empêche une réponse retardée d'un
+  précédent compte de reprendre une session périmée.
+- Une fois connecté, la préférence existante **Rester connecté**
+  peut enregistrer le jeton dans le coffre natif chiffré de
+  **l'identité Vynéo utilisée**, en conservant l'architecture
+  établie. Aucun second installeur et aucune modification du
+  coffre de l'application stable n'ont eu lieu.
+- Le libellé du bouton secondaire évite une ambiguïté avec le
+  bouton `Se connecter` existant, trouvée et corrigée
+  automatiquement lors de la QA Playwright.
+
+### Validations exécutées et portée
+
+- 3 tests unitaires Quick Connect : initialisation sans jeton,
+  secret en POST seulement, connexion après approbation
+  simulée, rejet de la tentative anticipée, session/motif de
+  compte erroné, annulation pendant une requête différée.
+- QA Playwright en navigateur (fixture uniquement) :
+  code temporaire affiché, secret absent du DOM, tentative
+  d'échange non autorisée retournant une erreur sûre, code
+  conservé pour retenter, annulation sans session et parcours
+  de connexion classique encore fonctionnel. Marqueur :
+  `VYNEO_QUICK_CONNECT_PRIVATE_UNAPPROVED_CANCEL_PASS`.
+- Windows COCO, commit `139bb34` : **161 tests Vitest PASS**,
+  **30 tests Node PASS** (+6 ignorés), Svelte zéro erreur /
+  zéro avertissement, build Vite, QA complète et navigation
+  sur l'interface Jellyfin de test réussis. Le protocole
+  native HLS déjà validé reste inchangé.
+- L'API Quick Connect est confirmée par l'implémentation de
+  clients Jellyfin, et le serveur réel rapporte la fonction
+  activée. En revanche, **aucun vrai code Quick Connect n'a
+  été soumis à l'utilisateur et aucune véritable autorisation
+  n'a été accordée** : les tests utilisent des secrets fictifs.
+
+La PR #9 reste en brouillon, la stable 0.2.4 reste l'unique
+application installée. Les critères **D side-by-side et
+D real-library restent PENDING** en attendant l'approbation
+manuelle d'une session QA authentifiée, puis les tests en
+lecture réelle et de progression.

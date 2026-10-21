@@ -7,7 +7,8 @@ import {createServer} from "node:http";
 import {readFileSync,writeFileSync,copyFileSync,mkdirSync,existsSync} from "node:fs";
 import {dirname,join,resolve} from "node:path";
 import {fileURLToPath} from "node:url";
-import {spawn} from "node:child_process";
+import {spawn,execFile} from "node:child_process";
+import {promisify} from "node:util";
 import {randomBytes} from "node:crypto";
 import assert from "node:assert/strict";
 
@@ -16,7 +17,40 @@ const source=join(desktop,"qa","native-webview2");
 const assets=join(desktop,"qa-native-dist");
 const exe=join(desktop,"src-tauri","target","debug","vyneo-desktop.exe");
 const nonce=randomBytes(16).toString("hex");
-let server=null,qaProcess=null;
+const execFileAsync=promisify(execFile);
+let server=null,taskRegistered=false;
+const taskName="VyneoNativeMediaQA"+nonce.slice(0,12);
+const psQuote=value=>"'"+value.replaceAll("'","''")+"'";
+async function taskPowerShell(command){
+  return execFileAsync("powershell.exe",[
+    "-NoProfile","-NonInteractive","-Command",command
+  ],{windowsHide:true,timeout:12000,maxBuffer:100000});
+}
+async function startInteractiveQa(){
+  const create=([
+    "$ErrorActionPreference='Stop';",
+    "$principal=New-ScheduledTaskPrincipal -UserId",
+    '"$env:COMPUTERNAME\$env:USERNAME" -LogonType Interactive -RunLevel Limited;',
+    "$action=New-ScheduledTaskAction -Execute",psQuote(exe)+";",
+    "Register-ScheduledTask -TaskName",psQuote(taskName),
+    "-Action $action -Principal $principal -Force | Out-Null;",
+    "Start-ScheduledTask -TaskName",psQuote(taskName)
+  ]).join(" ");
+  taskRegistered=true;
+  await taskPowerShell(create);
+}
+async function stopInteractiveQa(){
+  if(!taskRegistered)return;
+  taskRegistered=false;
+  const remove=([
+    "$ErrorActionPreference='Continue';",
+    "Stop-ScheduledTask -TaskName",psQuote(taskName),
+    "-ErrorAction SilentlyContinue;",
+    "Unregister-ScheduledTask -TaskName",psQuote(taskName),
+    "-Confirm:$false -ErrorAction SilentlyContinue"
+  ]).join(" ");
+  await taskPowerShell(remove);
+}
 const maxBuildMs=420000,maxPlaybackMs=26000;
 let reportResolve,reportReject;
 const reportPromise=new Promise((yes,no)=>{reportResolve=yes;reportReject=no;});
@@ -134,29 +168,18 @@ async function main(){
     join(assets,"hls.min.js")
   );
   await build();
-  console.log("QA_NATIVE_WEBVIEW2_LAUNCHING_HIDDEN_WITH_NO_JELLYFIN_CREDENTIALS");
-  qaProcess=spawn(exe,[],{
-    cwd:desktop,windowsHide:true,
-    env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:
-      "--autoplay-policy=no-user-gesture-required"},
-    stdio:["ignore","pipe","pipe"]
-  });
-  let runtimeErrors="";
-  qaProcess.stderr?.on("data",part=>{
-    runtimeErrors=(runtimeErrors+String(part)).slice(-6000);
-  });
-  const ended=new Promise((_,reject)=>{
-    qaProcess.once("error",reject);
-    qaProcess.once("exit",(code)=>reject(
-      new Error("QA_NATIVE_PROCESS_EXITED_EARLY_"+code+": "+runtimeErrors)));
-  });
+  console.log("QA_NATIVE_WEBVIEW2_LAUNCHING_HIDDEN_IN_INTERACTIVE_SESSION");
+  // SSH runs in Windows Session 0 and cannot create a WebView2 HWND.
+  // An InteractiveToken scheduled task runs in the already logged-in
+  // desktop session, without focus, tray icon or app installation.
+  await startInteractiveQa();
   let timer;
   try{
     const timeout=new Promise((_,reject)=>{
       timer=setTimeout(()=>reject(new Error(
-        "QA_NATIVE_WEBVIEW2_DECODING_TIMEOUT: "+runtimeErrors)),maxPlaybackMs);
+        "QA_NATIVE_WEBVIEW2_DECODING_TIMEOUT_INTERACTIVE_SESSION")),maxPlaybackMs);
     });
-    const result=await Promise.race([reportPromise,ended,timeout]);
+    const result=await Promise.race([reportPromise,timeout]);
     console.log("VYNEO_WEBVIEW2_NATIVE_SCHEME_FIRST_FRAME_PASS",
       JSON.stringify(result.metrics));
     console.log("QA_ZERO_INSTALLER_ZERO_REAL_CREDENTIALS");
@@ -168,6 +191,7 @@ try{
   console.error("VYNEO_WEBVIEW2_NATIVE_QA_FAILED",error?.message||String(error));
   process.exitCode=1;
 }finally{
-  if(qaProcess && !qaProcess.killed)qaProcess.kill();
+  try{await stopInteractiveQa();}
+  catch(error){console.error("QA_SCHEDULED_TASK_CLEANUP_FAILED",String(error));}
   if(server)await new Promise(done=>server.close(done));
 }

@@ -214,3 +214,69 @@ comparaison des ID et des captures *avec le même profil connecté*
 doit être effectuée avant de marquer les deux exigences `real-validated`
 et avant toute nouvelle version stable. Le pipeline publication est
 toujours strictement bloqué.
+
+## Reprise de 18 h : synchronisation après mutation et couverture réelle
+
+Commits `8361c3b`, `8b5ca6e` sur la PR #9 en brouillon.
+
+### Correction de cohérence après lecture
+
+Le code d'origine de Vynéo Desktop rechargeait uniquement `/Shows/NextUp`
+après l'action « Vu / non vu ». Or le rayon « Nouvelles saisons et suites »
+dépend également de la progression de la **série parente** et de la date
+réelle de sortie de sa saison. Une action prise sur un épisode pouvait donc
+laisser affichée la mauvaise nouveauté jusqu'au prochain rafraîchissement.
+
+Un rafraîchissement borné, asynchrone et propre au compte demande maintenant
+`getNextUp`, `getResume`, `getWatched`, `getRecentSeasons`, puis,
+seulement pour les nouveaux résultats de NextUp, `getNextUpSeries`.
+L'actualisation des favoris est indépendante et n'impose pas ce traitement.
+Les réponses arrivent par résultats individuels : une erreur transitoire ne
+vide pas les rayons déjà valides. Les tickets de synchronisation, les
+générations de session et l'invalidation d'un ancien refresh Home empêchent
+une réponse antérieure de remplacer une mutation confirmée plus récente.
+
+Playwright sous COCO vérifie les cinq familles de nouvelles requêtes après
+l'action « Marquer vu », et les tests précédents valident la conservation
+des boutons et des contenus. **Cela ne prouve pas encore les identifiants
+de vrais épisodes d'un profil connecté.**
+
+### Parité de filtrage avec l'injecteur Jellyfin
+
+`belongsToUniverse` applique dorénavant les exclusions globales d'œuvres
+promotionnelles de `inject.js` (avant-premières, coulisses, making-of,
+featurettes, comic-con, tapis rouge), les exclusions spécifiques MCU
+(y compris Werewolf by Night, LEGO, Legends et spéciaux de fêtes) et
+le périmètre initial des studios Disney / DreamWorks. Deux tests Vitest
+additionnels comparent des faux positifs par studio et titres.
+
+### Inventaire réel en lecture seule, sans identité de profil
+
+La base SQLite **de production** Jellyfin (`mode=read-only`) a été
+interrogée sans extraction de token, compte, mot de passe ou historique
+de visionnage. Cet inventaire est **GLOBAL à toutes les bibliothèques
+du serveur** et son contenu peut évoluer pendant les scans :
+
+- 5 536 objets film/série en base au moment du contrôle :
+  4 006 films et 1 530 séries.
+- Les règles `universeItems` réellement exécutées sur leurs tags,
+  studios, titres et dates identifient globalement :
+  MCU 69, Disney 105, Pixar 34, DreamWorks 56, Star Wars 29,
+  DC 55, Nouveau DCU 4.
+- Ces chiffres indiquent des **candidats sur métadonnées**, pas les
+  bibliothèques visibles par le compte propriétaire, ni les fichiers
+  jouables ni les rangées réelles affichées. Ils ne valident donc **aucun
+  des deux critères D**.
+
+### Résultat du cycle tests
+
+Windows COCO, commit `8b5ca6e` : **118/118 Vitest**, **25/25 tests
+Node exécutables**, 6 ignorés POSIX, **0 erreur / 0 avertissement
+Svelte/TypeScript**, build Vite et QA Playwright PASS. Les contrôles du
+modal, des images corrompues et du stockage des identifiants sont toujours
+exécutés, aucune seconde application Vynéo n'a été installée.
+
+Il reste à comparer **les mêmes IDs À suivre et les captures au même
+viewport/scroll d'une session Jellyfin réellement authentifiée** à
+l'application Desktop candidate et à faire vérifier la lecture réelle
+avant de lever les blocages de publication stable du bloc D.

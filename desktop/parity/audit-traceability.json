@@ -89,7 +89,7 @@
       "status": "synthetic-validated",
       "reference": "inject.js:NextUp",
       "automation": "desktop/qa/parity-qa.mjs",
-      "evidence": "Tests synthétiques COCO 2026-10-21 : pagination 600 épisodes, preuve de métadonnées pour 450 séries uniques sans troncature à 300, requêtes bornées à 3, exclusion des reprises terminées à 95%. Parité des ID avec le compte réel reste ouverte."
+      "evidence": "Tests synthétiques COCO 2026-10-21 : pagination à 600, enrichissement 450 séries, lecture confirmée suivie de la réconciliation user-scoped des 5 sources NextUp/Resume/Watched/Seasons/SeriesEvidence ; QA Chromium vérifie les nouveaux appels. La parité des ID exacts avec Jellyfin pour un profil réel reste ouverte."
     },
     {
       "block": "C",
@@ -99,7 +99,7 @@
       "status": "synthetic-validated",
       "reference": "inject.js:vyBadgeNouveaute",
       "automation": "desktop/frontend/tests/new-seasons.test.ts",
-      "evidence": "Tests synthétiques COCO 2026-10-21 : E1 récents isolés, E1 âgés triés fin NextUp, suites TMDb ordonnées, dérivés TVDb conditionnés à un groupe d’au moins 3 œuvres et un tag partagé par >=70%, pas de faux positifs de listes éditoriales ou bonus anime. Le schéma TVDbCollection réel du serveur a été vérifié en lecture seule, sans session utilisateur."
+      "evidence": "Tests synthétiques COCO 2026-10-21 : saisons S2E1 récentes et anciennes, suites TMDb, dérivés TVDb avec cohésion >=70%, retour cohérent après mutation Played. Les comparaisons visuelles et droits de vraie session restent non validés."
     },
     {
       "block": "C",
@@ -109,7 +109,7 @@
       "status": "synthetic-validated",
       "reference": "inject.js:VY_UNIVERS",
       "automation": "desktop/frontend/tests/universes.test.ts",
-      "evidence": "Tests synthétiques COCO 2026-10-21 : 7 logos, phases MCU, chronologie Star Wars, décennies, chapitre DCU, modal 1080 px à scroll préservé, fermeture fond/Escape, aller-retour fiche avec focus et confinement Tab, viewport 390/1280/1920. Source réelle index.html/skin.css/inject.js inspectée en lecture seule. Comparaison pixel et droits du compte réel ouvertes."
+      "evidence": "Tests synthétiques COCO 2026-10-21 : 7 univers avec modal, chronologie et favoris/vu, exclusions globales promotionnelles (Making-of, behind the scenes, comic-con), exclusions Marvel spéciales ; 9 tests Vitest + QA Playwright. Inventaire réel global de 5536 items sur Jellyfin N100 lu sans écriture, mais aucune validation avec droits/compte effectif."
     },
     {
       "block": "C",

@@ -42,7 +42,7 @@ try{
   analyser.connect(zeroGain);
   zeroGain.connect(context.destination);
   const samples=new Float32Array(analyser.fftSize);
-  let audioPeakRms=0,audioSamplesRead=0;
+  let audioPeakRms=0,audioSamplesRead=0,audioUnmuted=false;
   void context.resume().catch(()=>{});
   const ticket=await invoke("create_native_stream_ticket",{
     itemId,mediaSourceId:sourceId,
@@ -75,6 +75,13 @@ try{
   const interval=setInterval(async()=>{
     if(sent){clearInterval(interval);return;}
     const decoded=video.getVideoPlaybackQuality?.().totalVideoFrames??0;
+    if(!audioUnmuted && context.state==="running" &&
+      !video.paused && video.currentTime>=0.2){
+      // The MediaElementAudioSource replaces direct playback audio.
+      // Its only connection to the system sink has gain=0.
+      video.muted=false;
+      audioUnmuted=true;
+    }
     if(context.state==="running"){
       analyser.getFloatTimeDomainData(samples);
       let energy=0;
@@ -117,6 +124,7 @@ try{
       drm:false,
       audioContextState:context.state,
       audioAnalyserSamples:audioSamplesRead,
+      audioUnmuted,
       audioRmsPeak:Number(audioPeakRms.toFixed(6))
     };
     await invoke("stop_native_stream_ticket",{ticket:ticket.ticket});

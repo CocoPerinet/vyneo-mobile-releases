@@ -63,7 +63,11 @@ describe("negotiated Jellyfin HLS is tokenless and constrained",()=>{
   });
   it("refuses untrusted or unplayable negotiated sources",()=>{
     expect(Object.keys(parseNegotiatedPlayback(
-      sample({SupportsTranscoding:false}),ITEM).hlsPaths)).toHaveLength(0);
+      sample({SupportsTranscoding:false,SupportsDirectStream:true}),ITEM)
+      .hlsPaths)).toEqual([SOURCE]);
+    expect(Object.keys(parseNegotiatedPlayback(
+      sample({SupportsTranscoding:false,SupportsDirectStream:false}),ITEM)
+      .hlsPaths)).toHaveLength(0);
     expect(Object.keys(parseNegotiatedPlayback(
       sample({Id:OTHER,TranscodingUrl:url}),ITEM).hlsPaths)).toHaveLength(0);
     expect(Object.keys(parseNegotiatedPlayback(

@@ -84,7 +84,12 @@ export function parseNegotiatedPlayback(payload:unknown,
     if(!source || typeof source!=="object" || Array.isArray(source))continue;
     const row=source as Record<string,unknown>;
     const id=typeof row.Id==="string"?row.Id:"";
-    if(!GUID.test(id) || row.SupportsTranscoding!==true)continue;
+    // Jellyfin can negotiate a safe HLS remux even when video/audio
+    // transcoding is forbidden, provided DirectStream is permitted.
+    // The validated, server-generated HLS URL is still mandatory.
+    if(!GUID.test(id) ||
+      (row.SupportsTranscoding!==true &&
+       row.SupportsDirectStream!==true))continue;
     const path=safeHlsPath(row.TranscodingUrl,itemId,id,
       probe.playSessionId??null);
     if(path)hlsPaths[id]=path;

@@ -477,7 +477,7 @@ export class JellyfinApi {
        (event.playSessionId!==null &&
         !validId(event.playSessionId)) ||
        !["start","progress","stopped"].includes(event.kind) ||
-       !["DirectPlay","Transcode"].includes(event.playMethod) ||
+       !["DirectPlay","DirectStream","Transcode"].includes(event.playMethod) ||
        !Number.isSafeInteger(event.positionTicks) ||
        event.positionTicks<0 || event.positionTicks>864_000_000_000 ||
        !Number.isFinite(event.volumeLevel) ||

@@ -2,7 +2,7 @@
  * "playing". An inspect/probe or a failed native media stream must NOT change
  * the server's resume positions or history. No token is in these objects. */
 export type PlaybackEventKind="start"|"progress"|"stopped";
-export type PlaybackMethod="DirectPlay"|"Transcode";
+export type PlaybackMethod="DirectPlay"|"DirectStream"|"Transcode";
 export interface PlaybackReport{
   kind:PlaybackEventKind;
   itemId:string;

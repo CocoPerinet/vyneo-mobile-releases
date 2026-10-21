@@ -43,7 +43,10 @@ describe("native playback: no false-positive video compatibility",()=>{
     expect(selectDirectMp4(probe([remote]))).toBeNull();
     expect(selectJellyfinHls(probe([remote]))?.id).toBe(id);
     expect(selectJellyfinHls(probe([source({
-      isRemote:true,transcoding:false
+      isRemote:true,transcoding:false,directStream:true
+    })]))?.id).toBe(id);
+    expect(selectJellyfinHls(probe([source({
+      isRemote:true,transcoding:false,directStream:false
     })]))).toBeNull();
     expect(selectDirectMp4(probe([source({isRemote:false})]))?.id)
       .toBe(id);
@@ -53,8 +56,12 @@ describe("native playback: no false-positive video compatibility",()=>{
       track("Video","hevc"),track("Audio","eac3")]});
     expect(selectDirectMp4(probe([hevc]))).toBeNull();
     expect(selectJellyfinHls(probe([hevc]))?.id).toBe(id);
-    expect(selectJellyfinHls(probe([source({transcoding:false})])))
-      .toBeNull();
+    expect(selectJellyfinHls(probe([source({
+      transcoding:false,directStream:true
+    })]))?.id).toBe(id);
+    expect(selectJellyfinHls(probe([source({
+      transcoding:false,directStream:false
+    })]))).toBeNull();
     expect(selectJellyfinHls(probe([hevc],"NotAllowed")))
       .toBeNull();
   });

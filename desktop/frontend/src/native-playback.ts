@@ -23,7 +23,8 @@ export function selectDirectMp4(probe:PlaybackProbe):PlaybackSource|null{
 export function selectJellyfinHls(probe:PlaybackProbe):PlaybackSource|null{
   if(probe.errorCode)return null;
   return probe.sources.find(source=>
-    source.id!==null && source.transcoding===true)??null;
+    source.id!==null &&
+    (source.transcoding===true || source.directStream===true))??null;
 }
 export type NativeStreamTicket={
   ticket:string;

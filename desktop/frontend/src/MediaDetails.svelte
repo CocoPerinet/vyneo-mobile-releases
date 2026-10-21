@@ -265,7 +265,8 @@
       reporter=new PlaybackReporter({
         itemId:target.id,mediaSourceId:source.id,
         playSessionId:probe.playSessionId??null,
-        playMethod:mode==="direct"?"DirectPlay":"Transcode"
+        playMethod:mode==="direct"?"DirectPlay":
+          !source.transcoding && source.directStream?"DirectStream":"Transcode"
       },(event)=>api.reportPlayback(event),()=>{
         reportWarning="Lecture possible, mais la synchronisation "+
           "de la progression avec Jellyfin a échoué.";

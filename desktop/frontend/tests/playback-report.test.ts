@@ -134,6 +134,14 @@ describe("accurate, non-invasive Jellyfin playback lifecycle",()=>{
     // No second write can bypass the refused start, and the controller
     // did not throw an exception into the video playback event handler.
   });
+  it("reports server-authorized HLS remux as DirectStream, not a re-encode",()=>{
+    const report:PlaybackReport={...context,playMethod:"DirectStream",
+      kind:"start",positionTicks:10000000,isPaused:false,isMuted:true,
+      volumeLevel:45,canSeek:true};
+    expect(reportBody(report).PlayMethod).toBe("DirectStream");
+    expect(reportBody({...report,kind:"progress"}).PlayMethod)
+      .toBe("DirectStream");
+  });
   it("POSTs authenticated 204 playback reports without token URLs or JSON response",async()=>{
     const calls:Array<{url:URL,opts:RequestInit}>=[];
     const fetcher=vi.fn(async(input:RequestInfo|URL,opts:RequestInit={})=>{

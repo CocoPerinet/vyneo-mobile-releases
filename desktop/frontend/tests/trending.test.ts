@@ -28,7 +28,8 @@ describe("pinned TMDb trends can only rank previously authorized Jellyfin media"
  it("refuses watched, malformed and incorrectly typed metadata",()=>{
   const entries=[film(1,"Movie",{played:true}),
     film(2,"Movie",{tmdbId:"malicious<script>"}),
-    film(3,"Series"),film(4,"Series",{tmdbId:"3"})];
+    film(3,"Series",{tmdbId:"99"}),
+    film(4,"Series",{tmdbId:"3"})];
   const result=matchTrending(entries,[rank(1),rank(2),
     rank(3),rank(3,"Series")]);
   expect(result.map(x=>x.id)).toEqual([id(4)]);

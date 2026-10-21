@@ -12,7 +12,8 @@
     "test": "node --test --test-concurrency=1 tests/*.test.mjs && npm run test:ui",
     "test:ui": "vitest run --config frontend/vite.config.ts --maxWorkers=1 --pool=forks",
     "qa:parity": "node qa/parity-qa.mjs",
-    "qa:hls-first-frame": "node qa/hls-first-frame-qa.mjs"
+    "qa:hls-first-frame": "node qa/hls-first-frame-qa.mjs",
+    "qa:native-webview2": "node qa/native-webview2-smoke.mjs"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "7.3.0",

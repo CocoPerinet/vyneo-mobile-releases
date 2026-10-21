@@ -4,6 +4,8 @@ mod quality_policy;
 mod credentials;
 mod native_stream;
 mod native_hls;
+#[cfg(feature="native-e2e-qa")]
+mod native_e2e_qa;
 
 use std::time::Duration;
 use tauri::{
@@ -100,6 +102,7 @@ fn main() {
                 || "Vynéo".into()))
             .inner_size(1280.0, 800.0)
             .min_inner_size(860.0, 560.0)
+            .visible(!cfg!(feature="native-e2e-qa"))
             .center()
             .on_navigation(|url| {
                 (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
@@ -121,6 +124,9 @@ fn main() {
                 }
             });
 
+            // QA smoke is a hidden throwaway process: never add a tray icon
+            // or expose a second app surface to the user's live desktop.
+            if !cfg!(feature="native-e2e-qa") {
             let tray_menu = MenuBuilder::new(app)
                 .text("open", "Ouvrir Vynéo")
                 .separator()
@@ -143,7 +149,10 @@ fn main() {
                     })
                     .build(app)?;
             }
-            tauri::async_runtime::spawn(check_signed_update(app.handle().clone()));
+            }
+            if !cfg!(feature="native-e2e-qa") {
+                tauri::async_runtime::spawn(check_signed_update(app.handle().clone()));
+            }
             Ok(())
         })
         .run(tauri::generate_context!())

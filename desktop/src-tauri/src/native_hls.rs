@@ -152,7 +152,7 @@ fn asset_local_url(ticket: &str, id: &str) -> String {
     format!("vyneo-media://localhost/hls/{ticket}/{id}")
 }
 
-fn rewrite_playlist(
+pub(crate) fn rewrite_playlist(
     manifest: &str, base: &reqwest::Url, grant: &StreamGrant,
     ticket: &str
 ) -> Result<String, ()> {
@@ -296,6 +296,11 @@ pub fn handle_request(
     }
     if request.method()!=Method::GET {
         return bad(StatusCode::METHOD_NOT_ALLOWED);
+    }
+    // No QA test data/code reaches a stable release binary.
+    #[cfg(feature="native-e2e-qa")]
+    if crate::native_e2e_qa::is_fixture(&grant) {
+        return crate::native_e2e_qa::serve(&request,&grant,key,origin);
     }
     let url=if chunks[3]=="index.m3u8" {
         match index_url(&grant) {

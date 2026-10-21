@@ -171,6 +171,27 @@ try{
  assert.equal(await page.locator(".vy-shelves .vy-shelf-count").count(),0);
  await page.getByRole("heading",{name:"Nouvelles saisons et suites"})
    .waitFor({timeout:12000});
+ // The old script always captured the scrolled Univers row, not the Hero:
+ // keep a deterministic top-of-home screenshot for Block D side-by-side QA.
+ await page.evaluate(()=>window.scrollTo({top:0,behavior:"instant"}));
+ await page.waitForTimeout(180);
+ await page.screenshot({path:join(out,"home-hero-1650.png"),fullPage:false});
+ const heroTitle=await page.locator(".vy-hero h1").textContent();
+ const heroDots=page.locator(".vy-hero-dots button");
+ assert((await heroDots.count())>=2,"Hero carousel needs multiple slides");
+ await page.getByRole("button",{name:"Bannière suivante"}).click();
+ await page.waitForFunction(before=>
+  document.querySelector(".vy-hero h1")?.textContent!==before,heroTitle);
+ await page.getByRole("button",{name:"Bannière précédente"}).click();
+ await page.waitForFunction(before=>
+  document.querySelector(".vy-hero h1")?.textContent===before,heroTitle);
+ const heroCenter=await page.locator(".vy-hero-dots").evaluate(el=>{
+  const hero=document.querySelector(".vy-hero").getBoundingClientRect();
+  const dots=el.getBoundingClientRect();
+  return Math.abs((dots.left+dots.right)/2-(hero.left+hero.right)/2);
+ });
+ assert(heroCenter<=2,"Hero indicator row must be centered");
+ console.log("JELLYFIN_PARITY_HERO_SLIDES_NAVIGATION_PASS");
  assert.equal(await page.locator(".vy-universe-tile").count(),7);
  assert.equal(await page.locator(".vy-header .vy-nav").getByRole("button",
   {name:"Univers",exact:true}).count(),0,
@@ -261,6 +282,22 @@ try{
   const overflow=await page.evaluate(()=>
    document.documentElement.scrollWidth-document.documentElement.clientWidth);
   assert(overflow<=2,"Home horizontal overflow "+viewport.width+" "+overflow);
+  if(viewport.width>=1200){
+   const responsive=await page.evaluate(()=>{
+    const css=selector=>getComputedStyle(document.querySelector(selector));
+    return {search:document.querySelector(".vy-search-label").getBoundingClientRect().width,
+     header:document.querySelector(".vy-header").getBoundingClientRect().height,
+     heroMin:parseFloat(css(".vy-hero").minHeight),
+     card:document.querySelector(".vy-shelf .vy-card").getBoundingClientRect().width};
+   });
+   assert(Math.abs(responsive.header-visualReference.header.minHeightPx)<=2);
+   assert(Math.abs(responsive.search-Math.min(320,viewport.width*.2))<=1);
+   assert(Math.abs(responsive.heroMin-Math.min(
+    viewport.height*.78,visualReference.hero.maxHeightPx))<=2);
+   assert(Math.abs(responsive.card-visualReference.rails.cardWidthPx)<=1);
+   console.log("JELLYFIN_PARITY_SOURCE_RESPONSIVE_"+viewport.width+"_PASS "+
+    JSON.stringify(responsive));
+  }
   await page.screenshot({path:join(out,"home-"+viewport.width+".png"),fullPage:false});
  }
  await page.setViewportSize({width:1650,height:930});

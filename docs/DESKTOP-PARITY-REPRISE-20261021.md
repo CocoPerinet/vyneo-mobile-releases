@@ -496,3 +496,75 @@ La stable Desktop `0.2.4` n'a pas été mise à jour.
 La PR #9 reste en brouillon. Les attestations obligatoires du bloc D
 `side-by-side` et `real-library` restent **pending** avant une
 version stable signée.
+
+
+## Bloc expérimental du 21 octobre : première lecture native MP4
+
+La candidate apporte un lecteur HTML5 à l'intérieur de la **même** application
+Svelte/Tauri. Il ne réutilise pas Jellyfin Web, ne lance pas de navigateur externe,
+n'installe pas une seconde application et ne modifie pas le coffre de la version
+stable 0.2.4.
+
+### Architecture d'authentification et de streaming
+
+- Le client authentifié demande /Items/{id}/PlaybackInfo et sélectionne
+  exclusivement une source dont l'ID Jellyfin est validé, le conteneur
+  MP4/M4V, la piste vidéo H.264/AVC, les pistes audio AAC/MP3 et le droit
+  SupportsDirectPlay=true. Un HEVC/MKV, DTS/AC3 ou une source non prouvée
+  reçoit un refus explicite ; on ne prétend pas l'avoir rendu lisible.
+- Une commande native Tauri crée un **ticket temporaire aléatoire**
+  détenu en mémoire Rust, lié à un ID de média/source et au jeton de la
+  session courante. Seul le ticket 128 bits figure dans la balise video,
+  jamais le jeton Jellyfin, le chemin du fichier ou la vraie URL
+  du contenu. Sur Windows, l'adresse localisée est
+  http://vyneo-media.localhost/stream/{ticket} (interception native
+  WebView2), **pas un serveur HTTP réellement exposé sur le réseau**.
+- Le handler interne transfère les plages HTTP Range par blocs limités
+  à 2 Mio et à 8 appels simultanés, via HTTPS vers **un seul domaine
+  Jellyfin épinglé**. Il ne suit aucune redirection. Une réponse d'erreur,
+  un contenu non vidéo ou une plage incompatible ne doit pas devenir un
+  flux vidéo accepté.
+- Aucun jeton n'est dans une URL publique, le stockage du navigateur,
+  les logs de QA ou le dépôt. La session arrête son ticket à la fermeture
+  du lecteur et révoque tous les tickets lors de la déconnexion.
+- Le composant tente la lecture après la sélection et laisse les
+  commandes HTML5 faire le démarrage lorsque l'autoplay est refusé.
+  La reprise locale est calculée à partir de
+  UserData.PlaybackPositionTicks si disponible, sinon d'un
+  pourcentage de lecture seulement lorsque celui-ci est crédible.
+
+### Limites bloquantes pour la stable
+
+Ce lecteur constitue un **socle expérimental**, pas encore un produit
+prêt à publier :
+
+- Les tests TypeScript/Playwright sont synthétiques ; ils démontrent
+  entre autres la séparation de la candidate web non native.
+  L'interface WebView2 réelle n'a pas encore rendu de première image
+  validée avec le compte Jellyfin propriétaire.
+- Les sous-titres, pistes audio multiples, qualité adaptative,
+  transcodage HLS et codecs modernes nécessitent encore une
+  implémentation dédiée. L'absence de piste de sous-titres sur ce
+  prototype reste une limite d'accessibilité signalée.
+- Le reporting automatique Sessions/Playing, Progress et
+  Stopped n'est pas encore implémenté. Une lecture dans cette
+  candidate ne doit **pas** être présentée comme synchronisée dans
+  « Reprendre la lecture » côté Jellyfin.
+- Les médias .strm qui demandent un redirect HTTP vers un
+  hébergeur tiers sont volontairement bloqués : aucun jeton ne
+  doit être transmis par redirection. Le support de ce cas
+  nécessitera une analyse et des protections supplémentaires.
+- Les critères du bloc D restent pending, y compris la lecture
+  réelle avec même compte, capture et contrôle des droits.
+  La stable 0.2.4, la clé de mise à jour signée et l'identité
+  de l'application ne changent pas.
+
+### Vérifications
+
+Au commit c57d929, **les tests Rust du protocole sont exécutés et
+validés par le job Windows GitHub Actions** avant la fabrication
+de l'installeur. 139 tests Vitest, 28 tests Node exécutés,
+6 ignorés POSIX, tests Playwright complets PASS sur COCO ;
+le correctif 321791c rétablit 0 erreur et 0 avertissement Svelte.
+La vérification de lecture effective de fichiers locaux ou .strm
+n'est **pas** encore attestée et reste obligatoire.

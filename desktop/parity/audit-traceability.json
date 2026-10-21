@@ -139,7 +139,7 @@
       "status": "pending",
       "reference": "inject.js:Jellyfin API",
       "automation": "desktop/qa/parity-qa.mjs",
-      "evidence": ""
+      "evidence": " Lecteur direct MP4 Svelte/Tauri expérimental ajouté à la PR #9 : sélection strictement compatible, proxy custom-scheme ticket court et plages 2 Mio, tests Rust Windows c57d929 PASS. Lecture WebView2 réelle, synchronisation du visionnage et corpus .strm toujours non testés ; aucune promotion de statut."
     }
   ],
   "auditSha256": "85678039cfbfd6ad84b455b939e8f2543232cb77326d023bf2eb1527ccc5f8ae"

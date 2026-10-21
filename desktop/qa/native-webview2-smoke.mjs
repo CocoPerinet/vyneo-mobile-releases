@@ -30,7 +30,7 @@ async function startInteractiveQa(){
   const create=([
     "$ErrorActionPreference='Stop';",
     "$principal=New-ScheduledTaskPrincipal -UserId",
-    '"$env:COMPUTERNAME\$env:USERNAME" -LogonType Interactive -RunLevel Limited;',
+    "([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited;",
     "$action=New-ScheduledTaskAction -Execute",psQuote(exe)+";",
     "Register-ScheduledTask -TaskName",psQuote(taskName),
     "-Action $action -Principal $principal -Force | Out-Null;",
@@ -43,11 +43,14 @@ async function stopInteractiveQa(){
   if(!taskRegistered)return;
   taskRegistered=false;
   const remove=([
-    "$ErrorActionPreference='Continue';",
+    "$ErrorActionPreference='Stop';",
+    "$task=Get-ScheduledTask -TaskName",psQuote(taskName),
+    "-ErrorAction SilentlyContinue;",
+    "if($null -ne $task){",
     "Stop-ScheduledTask -TaskName",psQuote(taskName),
     "-ErrorAction SilentlyContinue;",
     "Unregister-ScheduledTask -TaskName",psQuote(taskName),
-    "-Confirm:$false -ErrorAction SilentlyContinue"
+    "-Confirm:$false; }"
   ]).join(" ");
   await taskPowerShell(remove);
 }

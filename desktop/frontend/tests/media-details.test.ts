@@ -20,7 +20,8 @@ const mediaSources=()=>({
     Path:"/mnt/secret/movies/film.mkv",
     TranscodingUrl:"https://example.invalid/?api_key=SECRET",
     SupportsDirectPlay:true,SupportsDirectStream:true,
-    SupportsTranscoding:true,IsRemote:true,MediaStreams:[
+    SupportsTranscoding:true,IsRemote:true,
+    RunTimeTicks:13741910000,MediaStreams:[
       {Type:"Video",Index:0,Codec:"hevc",Width:3840,Height:2160,
         DisplayTitle:"4K HEVC"},
       {Type:"Audio",Index:1,Codec:"aac",Channels:6,
@@ -100,6 +101,7 @@ describe("read-only native media details",()=>{
     }).playSessionId).toBe("e".repeat(32));
     expect(parsed.sources[0].container).toBe("MKV");
     expect(parsed.sources[0].isRemote).toBe(true);
+    expect(parsed.sources[0].runtimeTicks).toBe(13741910000);
     expect(parsed.sources[0].tracks.map(t=>t.kind))
       .toEqual(["Video","Audio","Subtitle"]);
     expect(parsed.sources[0].tracks[0].height).toBe(2160);

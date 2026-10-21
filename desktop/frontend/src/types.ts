@@ -39,6 +39,8 @@ export interface PlaybackSource {
   title:string;
   container:string;
   bitrate:number|null;
+  /** Actual media duration may exist only here for remote .strm files. */
+  runtimeTicks:number|null;
   directPlay:boolean;
   directStream:boolean;
   transcoding:boolean;

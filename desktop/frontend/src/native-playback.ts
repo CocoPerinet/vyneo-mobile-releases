@@ -51,6 +51,21 @@ export function validateStreamTicket(value:unknown):NativeStreamTicket{
   return {ticket:row.ticket,url:row.url};
 }
 
+/** .strm items often lack RunTimeTicks at item level. PlaybackInfo probes
+ * the remote file and returns its duration at MediaSource level. Prefer a
+ * finite real media duration, then fall back to that authoritative probe. */
+export function playbackDurationSeconds(
+  browserDuration:number,sourceRuntimeTicks:number|null
+):number{
+  if(Number.isFinite(browserDuration) && browserDuration>0)
+    return browserDuration;
+  if(typeof sourceRuntimeTicks==="number" &&
+    Number.isSafeInteger(sourceRuntimeTicks) &&
+    sourceRuntimeTicks>0 && sourceRuntimeTicks<=864_000_000_000)
+    return sourceRuntimeTicks/10_000_000;
+  return NaN;
+}
+
 /** Exact Jellyfin ticks take priority over lossy whole-percent progress.
  * Avoid unexpected jumps into the final seconds of a finished episode. */
 export function resumeAtSeconds(item:Pick<MediaItem,

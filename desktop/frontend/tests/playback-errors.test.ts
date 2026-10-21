@@ -6,7 +6,7 @@ import {
 import type {PlaybackProbe,PlaybackSource} from "../src/types";
 const source:PlaybackSource={
   id:"a".repeat(32),title:"Remote stream",container:"MP4",
-  bitrate:5000000,directPlay:true,directStream:false,
+  bitrate:5000000,runtimeTicks:null,directPlay:true,directStream:false,
   transcoding:false,isRemote:true,tracks:[]
 };
 const probe=(errorCode:string|null,sources:PlaybackSource[]=[source]):

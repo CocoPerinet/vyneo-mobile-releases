@@ -1,5 +1,6 @@
 import {describe,it,expect} from "vitest";
-import {selectDirectMp4,selectJellyfinHls,validateStreamTicket,resumeAtSeconds} from "../src/native-playback";
+import {selectDirectMp4,selectJellyfinHls,validateStreamTicket,
+  resumeAtSeconds,playbackDurationSeconds} from "../src/native-playback";
 import type {PlaybackProbe,PlaybackSource,PlaybackTrack} from "../src/types";
 const id="a".repeat(32),ticket="b".repeat(32);
 const track=(kind:PlaybackTrack["kind"],codec:string):PlaybackTrack=>({
@@ -8,6 +9,7 @@ const track=(kind:PlaybackTrack["kind"],codec:string):PlaybackTrack=>({
 });
 const source=(overrides:Partial<PlaybackSource>={}):PlaybackSource=>({
   id,title:"MP4",container:"MP4",bitrate:12_000_000,
+  runtimeTicks:1800*10_000_000,
   directPlay:true,directStream:true,transcoding:true,isRemote:false,
   tracks:[track("Video","h264"),track("Audio","aac")],...overrides
 });
@@ -64,6 +66,19 @@ describe("native playback: no false-positive video compatibility",()=>{
     })]))).toBeNull();
     expect(selectJellyfinHls(probe([hevc],"NotAllowed")))
       .toBeNull();
+  });
+  it("uses remote .strm playback source duration when MSE is unbounded",()=>{
+    const sourceSeconds=playbackDurationSeconds(Infinity,1800*10_000_000);
+    expect(sourceSeconds).toBe(1800);
+    expect(resumeAtSeconds({
+      resumeTicks:650_000_000,progress:null
+    },sourceSeconds)).toBe(65);
+    expect(playbackDurationSeconds(NaN,1800*10_000_000)).toBe(1800);
+    expect(playbackDurationSeconds(120,1800*10_000_000)).toBe(120);
+    expect(Number.isNaN(playbackDurationSeconds(NaN,null))).toBe(true);
+    expect(Number.isNaN(playbackDurationSeconds(Infinity,-1))).toBe(true);
+    expect(Number.isNaN(playbackDurationSeconds(NaN,864_000_000_001)))
+      .toBe(true);
   });
   it("resumes at precise Jellyfin ticks, with conservative fallback",()=>{
     expect(resumeAtSeconds({resumeTicks:650_000_000,progress:3},1800))

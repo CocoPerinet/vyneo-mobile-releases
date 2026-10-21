@@ -62,6 +62,7 @@ export function parsePlaybackInfo(payload:unknown):PlaybackProbe{
       title:text(row.Name,120)||"Source vidéo",
       container:text(row.Container,40).toUpperCase(),
       bitrate:whole(row.Bitrate,1,1_000_000_000),
+      runtimeTicks:whole(row.RunTimeTicks,1,864_000_000_000),
       directPlay:row.SupportsDirectPlay===true,
       directStream:row.SupportsDirectStream===true,
       transcoding:row.SupportsTranscoding===true,

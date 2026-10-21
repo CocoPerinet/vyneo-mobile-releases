@@ -1,7 +1,8 @@
 <script lang="ts">
   import {onMount,tick} from "svelte";
   import {isTauri} from "@tauri-apps/api/core";
-  import {selectDirectMp4,selectJellyfinHls,resumeAtSeconds} from "./native-playback";
+  import {selectDirectMp4,selectJellyfinHls,resumeAtSeconds,
+    playbackDurationSeconds} from "./native-playback";
   import type Hls from "hls.js";
   import type {NativeStreamTicket} from "./native-playback";
   import {PlaybackReporter,playbackClock} from "./playback-report";
@@ -46,6 +47,8 @@
   let streamBusy=$state(false);
   let streamError=$state("");
   let streamStarted=$state(false);
+  let streamRuntimeTicks:number|null=null;
+  let resumeApplied=false;
   let videoElement=$state<HTMLVideoElement|undefined>(undefined);
   let streamEpoch=0;
   const nativeAvailable=isTauri();
@@ -211,6 +214,26 @@
       if(api.session)onplaybackchange();
     }).catch(()=>{});
   }
+  function applySavedResume(){
+    if(resumeApplied || !videoElement || videoElement.readyState<1)return;
+    const total=playbackDurationSeconds(
+      videoElement.duration,streamRuntimeTicks);
+    const seconds=resumeAtSeconds(shown,total);
+    if(seconds<=0)return;
+    // HLS MSE may not expose its seekable range at loadedmetadata yet.
+    // Recheck at durationchange/canplay rather than silently losing resume.
+    const ranges=videoElement.seekable;
+    let available=streamKind==="direct";
+    for(let i=0;i<ranges.length;i++){
+      if(seconds>=ranges.start(i) && seconds<=ranges.end(i))
+        available=true;
+    }
+    if(!available)return;
+    try{
+      videoElement.currentTime=seconds;
+      resumeApplied=true;
+    }catch{/* Reattempt when another seekable range becomes available. */}
+  }
   function stopStream(failed=false){
     const current=streamTicket;
     const finished=reporter;
@@ -227,7 +250,8 @@
       videoElement.removeAttribute("src");
       videoElement.load();
     }
-    streamTicket=null;streamKind=null;
+    streamTicket=null;streamKind=null;streamRuntimeTicks=null;
+    resumeApplied=false;
     streamBusy=false;streamStarted=false;
     if(current)void api.endNativePlayback(current.ticket).catch(()=>{});
   }
@@ -272,6 +296,8 @@
           "de la progression avec Jellyfin a échoué.";
       });
       streamKind=mode;streamTicket=ticket;
+      streamRuntimeTicks=source.runtimeTicks;
+      resumeApplied=false;
       await tick();
       if(request!==streamEpoch)return;
       if(!videoElement){
@@ -502,14 +528,9 @@
                     notifyPlaybackOnce(reporter);
                   }
                 }}
-                onloadedmetadata={()=>{
-                  const seconds=resumeAtSeconds(shown,
-                    videoElement?.duration??NaN);
-                  if(seconds>0 && videoElement){
-                    try{videoElement.currentTime=seconds;}
-                    catch{/* Some remote streams cannot seek: start at zero. */}
-                  }
-                }}
+                onloadedmetadata={applySavedResume}
+                ondurationchange={applySavedResume}
+                oncanplay={applySavedResume}
                 onerror={()=>{
                   // Clearing an intentional stop can emit a delayed WebView2
                   // media error. Ignore it once the capability is revoked.

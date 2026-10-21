@@ -690,3 +690,78 @@ La stable desktop-v0.2.4 et son application Windows unique
 restent intactes. La PR #9 reste brouillon jusqu'à la validation
 réelle et une mise à jour signée distribuée par l'application
 existante.
+
+## 21 octobre, suite : négociation serveur et vrai décodage HLS synthétique
+
+### Cause identifiée dans la première voie HLS
+
+Le client employait auparavant GET /Items/{id}/PlaybackInfo sans
+profil codec, puis reconstruisait de manière approximative une URL
+/videos/{id}/main.m3u8 avec des paramètres choisis localement.
+Ce chemin pouvait diverger de la décision réelle de Jellyfin, notamment
+pour les vidéos STRM/Matroska HEVC + E-AC3 nécessitant un transcodage.
+La référence de l'API officielle est PlaybackInfoDto / DeviceProfile
+(Jellyfin SDK), et les exemples de réponses serveur comportent
+une TranscodingUrl vers master.m3u8 avec PlaySessionId, MediaSourceId,
+codec, conteneur et paramètres de transcodage.
+
+### Correctif à identité et installation uniques
+
+- Le bouton de lecture déclenche désormais POST
+  /Items/{id}/PlaybackInfo (la lecture seule du panneau diagnostic
+  continue d'utiliser GET). Ce POST annonce strictement le profil
+  de compatibilité WebView2 + hls.js : DirectPlay MP4 H.264/AAC/MP3 ;
+  HLS MPEG-TS H.264/AAC, 2 canaux, bitrate plafond 8,192 Mb/s.
+  HEVC/E-AC3 et les sous-titres ne sont pas annoncés comme lus
+  directement par WebView2.
+- Le client n'invente plus la playlist HLS. Il exploite l'URL
+  TranscodingUrl NEGOCIÉE par Jellyfin uniquement lorsqu'elle
+  correspond à la source sélectionnée et au PlaySessionId.
+  Les paramètres sensibles ApiKey/access_token sont supprimés
+  en mémoire ; seules des URLs relatives, sans authentification,
+  entrent dans le ticket natif Tauri.
+- Le Rust natif vérifie INDEPENDAMMENT l'origine HTTPS épinglée,
+  l'identité item/source, le master.m3u8, les codecs H.264/AAC,
+  le conteneur TS et l'absence de tout paramètre de jeton avant
+  de conserver l'URL en mémoire. Il conserve les autres paramètres
+  calculés par Jellyfin tels que Tag, PlaySessionId, index audio
+  et raisons de transcodage.
+- Le pipeline de streaming réécrit les manifestes récursivement
+  en capacités temporaires locales, sans charger de scripts
+  externes ni exposer de token dans la balise vidéo.
+- Une initialisation HLS échouée révoque immédiatement les
+  capacités natives, au lieu de laisser un ticket temporaire
+  actif. Aucune modification de l'installateur stable ni du
+  coffre système.
+
+### Tests réels du décodeur, sans fausse validation du serveur
+
+Le 21/10, un flux HLS VOD artificiel a été généré localement avec
+ffmpeg : trois segments MPEG-TS, codec vidéo H.264, piste AAC,
+durée totale 6,04 s. Les fichiers font moins de 300 Kio et ne
+contiennent aucun média privé de l'utilisateur.
+
+Le test Playwright Chromium headless (COCO) a réellement demandé
+le master M3U8, le manifeste VOD, puis les trois segments et
+a décodé les images dans un élément HTMLVideoElement. Son résultat
+est VYNEO_HLS_CHROMIUM_FIRST_FRAME_PASS : 320x180,
+0,77 seconde lue, readyState=4, 22 frames décodées,
+aucune erreur HLS fatale. Capture archivée localement dans
+qa-shots/hls-codec-smoke-first-frame.png, vérifiée visuellement.
+Ce contrôle est lancé par npm run qa:hls-first-frame et ajouté
+au job Windows PR avant la compilation de l'installeur.
+
+La QA UI/contrats du commit 79c45bb a passé 153 tests frontend,
+29 tests Node (+6 SKIP), zéro erreur/avertissement Svelte,
+Vite et Playwright. Les tests Rust de validation d'URL et
+le contrôle CI du dernier commit restent à vérifier avant
+tout statut vert définitif.
+
+**Reste impérativement à valider en réel :** première image
+et son dans l'application Tauri WebView2 connectée au vrai
+compte Jellyfin, comportement des médias STRM accessibles,
+transcodage QSV sous charge, sous-titres/pistes audio,
+consistance des positions réellement enregistrées par
+le serveur et comparaison des captures du même compte.
+Le bloc D reste PENDING. Aucune deuxième application
+n'a été installée ni démarrée sur COCO.

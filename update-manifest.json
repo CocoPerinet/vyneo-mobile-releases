@@ -1,15 +1,15 @@
 {
   "schemaVersion": 1,
-  "version": "0.3.4",
-  "publishedAt": "2026-09-03T00:00:22Z",
+  "version": "0.4.0-rc.1",
+  "publishedAt": "2026-10-21T17:27:11Z",
   "mandatory": false,
-  "releaseNotes": "Cette version active les prochaines mises à jour directement dans Vynéo, conserve la session Jellyfin et ajoute le nouveau logo avec écran de démarrage.",
+  "releaseNotes": "Préversion Android 0.4.0 : nouvelle interface native et nouveau logo. Validation sur téléphone réel en cours. Première connexion nécessaire au passage depuis l’ancienne interface. Mise à jour facultative.",
   "platforms": {
     "android": {
-      "build": 7,
-      "url": "https://github.com/CocoPerinet/vyneo-mobile-releases/releases/download/mobile-v0.3.4/Vyneo-Mobile-0.3.4.apk",
-      "sha256": "1d89ef537722efbeecefc72ccd22f053bbdf0c82ccbacc73ce36be053c6428ca",
-      "size": 70342021
+      "build": 8,
+      "url": "https://github.com/CocoPerinet/vyneo-mobile-releases/releases/download/mobile-v0.4.0-rc.1/Vyneo-Mobile-0.4.0-native-preview.apk",
+      "sha256": "97abb6875c290870da0d2114bdd8b98f1b0536db01c5f070d57f2b07b565a328",
+      "size": 83908308
     }
   }
 }

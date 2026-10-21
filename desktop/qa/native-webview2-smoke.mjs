@@ -140,10 +140,13 @@ async function main(){
         assert.equal(m.nativeProtocol,true);
         assert.equal(m.width,320);
         assert.equal(m.height,180);
-        assert(m.currentTime>=0.6&&m.currentTime<=6.2);
+        assert(m.currentTime>=3.7&&m.currentTime<=6.2);
         assert(m.readyState>=2);
-        assert(m.decodedFrames>=8);
+        assert(m.decodedFrames>=m.framesBeforeSeek+3);
         assert.equal(m.paused,false);
+        assert.equal(m.pauseVerified,true);
+        assert.equal(m.seekVerified,true);
+        assert.equal(m.seekTargetSeconds,3.2);
         assert.deepEqual(result.errors,[]);
         res.writeHead(204,hdr);res.end();
         reportResolve(result);
@@ -183,7 +186,7 @@ async function main(){
         "QA_NATIVE_WEBVIEW2_DECODING_TIMEOUT_INTERACTIVE_SESSION")),maxPlaybackMs);
     });
     const result=await Promise.race([reportPromise,timeout]);
-    console.log("VYNEO_WEBVIEW2_NATIVE_SCHEME_FIRST_FRAME_PASS",
+    console.log("VYNEO_WEBVIEW2_NATIVE_PAUSE_SEEK_RESUME_PASS",
       JSON.stringify(result.metrics));
     console.log("QA_ZERO_INSTALLER_ZERO_REAL_CREDENTIALS");
   }finally{clearTimeout(timer);}

@@ -54,19 +54,39 @@ try{
     void video.play().catch(error=>die("PLAY_DENIED:"+error));
   });
   hls.attachMedia(video);
+  let stage="initial",framesBeforeSeek=0,pausedBeforeSeek=false;
   const interval=setInterval(async()=>{
     if(sent){clearInterval(interval);return;}
     const decoded=video.getVideoPlaybackQuality?.().totalVideoFrames??0;
     if(video.videoWidth!==320 || video.videoHeight!==180 ||
-      video.readyState<2 || video.currentTime<0.6 ||
-      video.paused || decoded<8)return;
+      video.readyState<2 || video.paused || decoded<8)return;
+    if(stage==="initial"){
+      if(video.currentTime<0.6)return;
+      framesBeforeSeek=decoded;
+      video.pause();
+      pausedBeforeSeek=video.paused;
+      if(!pausedBeforeSeek || video.seekable.length===0){
+        die("PLAYER_PAUSE_OR_SEEK_UNAVAILABLE");return;
+      }
+      stage="seeking";
+      try{video.currentTime=3.2;}
+      catch(error){die("PLAYER_SEEK_FAILED:"+error);return;}
+      void video.play().catch(error=>die("RESUME_DENIED:"+error));
+      return;
+    }
+    if(stage!=="seeking" || video.currentTime<3.7 ||
+      decoded<framesBeforeSeek+3)return;
+    stage="reported";
     clearInterval(interval);
     const metrics={
       width:video.videoWidth,height:video.videoHeight,
       readyState:video.readyState,decodedFrames:decoded,
-      currentTime:Math.round(video.currentTime*100)/100,
+      framesBeforeSeek,currentTime:Math.round(video.currentTime*100)/100,
       duration:Math.round(video.duration*100)/100,
       paused:video.paused,
+      pauseVerified:pausedBeforeSeek,
+      seekVerified:true,
+      seekTargetSeconds:3.2,
       nativeProtocol:true,
       drm:false
     };

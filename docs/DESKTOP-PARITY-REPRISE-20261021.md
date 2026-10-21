@@ -280,3 +280,73 @@ Il reste à comparer **les mêmes IDs À suivre et les captures au même
 viewport/scroll d'une session Jellyfin réellement authentifiée** à
 l'application Desktop candidate et à faire vérifier la lecture réelle
 avant de lever les blocages de publication stable du bloc D.
+
+## Reprise soirée : Jellyfin authentifié observé et Hero visuel
+
+Source de la vérification : onglet **Jellyfin** ouvert dans le navigateur
+Brave connecté, sur `https://cocojellyfin.duckdns.org:38443/web/#/home`,
+inspecté **en lecture seule** via le contexte de l'onglet. Aucune interaction
+de lecture, modification de statut, token ni cookie n'a été exporté.
+
+### Référence DOM réelle, non-identifiante
+
+À la date du 21 octobre 2026, la portion d'accueil effectivement rendue
+dans cet onglet contient :
+
+| Structure de l'accueil Jellyfin | Noeuds constatés |
+|---|---:|
+| Contrôles de bannières | 15 |
+| Cartes avec image dans « Reprendre la lecture » | 2 |
+| Cartes avec image dans « À suivre » | 41 |
+| Cartes dans « Nouvelles saisons et suites » | 1 |
+| Boutons Univers distincts | 7 |
+
+Ces décomptes **ne sont ni les totaux API ni des preuves d'identité des
+titres** : le contexte navigateur expose du contenu DOM et pas les ID
+internes complets, les droits de lecture ni une capture comparable à la
+candidate. Ils ne valident pas les deux critères obligatoires du bloc D.
+
+### Correction effective du Hero
+
+L'ancien Vynéo Desktop plafonnait artificiellement la sélection du Hero
+à cinq, avec un maximum forcé de sept titres même si l'appelant demandait
+davantage. Le thème Jellyfin a une cible éditoriale `VY_HERO_TAILLE=16`
+et inclut toutes les nouvelles saisons/suites confirmées au-delà du quota.
+
+Commit `553e5d7` : sélection cible **16**, équilibrée par passages entre
+nouveautés, tendances, recommandations, rayons éditoriaux ; réservation
+des nouveautés réelles même si elles dépassent 16, dédoublonnage par série
+et exclusion des titres déjà vus. En cas de manque d'éléments éligibles,
+fallback borné sur les sources natives « Ma liste », « Reprendre » et « À
+suivre ». Le kicker du Hero dépend de la provenance effective, sans inventer
+une origine IA ou une nouveauté.
+
+### Correction d'un vrai défaut CSS constaté par Playwright
+
+Avec 16 bannières, les indicateurs du carrousel étaient partiellement
+couverts par les premières cartes, conséquence du `margin-top:-150px`
+des rayons et du stacking context de `.vy-shelves` au-dessus du Hero.
+Le test d'un clic réel sur une bannière a échoué malgré la présence de son
+bouton dans le DOM, ce qui a révélé ce problème oublié dans les tests
+précédents.
+
+Commit `f2f716d` : repositionnement des indicateurs **en dehors des
+150 px de chevauchement**, adapté au responsive 390 px / 1280 px / 1920
+px. QA `e1cc7d5` : assertion `document.elementFromPoint` sur le
+premier et le dernier indicateur à ces trois largeurs, navigation
+effective par clic, contrôles labels provenance « Nouveau » et
+« Nouvelle saison ». **PASS.**
+
+Résultat PC COCO après correction : **122/122 Vitest**, 25 tests Node
+réussis, 6 ignorés spécifiques POSIX, zéro erreur/avertissement
+Svelte/TypeScript, build Vite et QA Playwright complète PASS. Les
+contrôles CSS et les interactions sont synthétiques, pas les captures du
+compte Jellyfin réel.
+
+### Blocage D maintenu
+
+Comparer à l'identique les IDs NextUp, les droits propres au compte,
+les images au même contenu/viewport/scroll et la lecture réelle de
+l'installation finale. La candidate n'a pas été installée séparément :
+l'application signée `desktop-v0.2.4` reste intacte. Aucune release
+stable n'est autorisée tant que cette validation n'est pas documentée.

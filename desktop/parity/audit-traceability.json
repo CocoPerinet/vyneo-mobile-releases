@@ -39,7 +39,7 @@
       "status": "synthetic-validated",
       "reference": "skin.css:824-967",
       "automation": "desktop/qa/parity-qa.mjs",
-      "evidence": "Tests synthétiques COCO 2026-10-21 : min(78vh,820px), overlap 150 px, navigation diapos et capture home-hero-1650.png."
+      "evidence": "Jellyfin réel observé en lecture seule via onglet Brave connecté le 21/10 : 15 indicateurs de bannière dans le DOM. Desktop candidate : cible 16, sélection round-robin nouveauté/tendance/recommandation, toutes les nouveautés engagées réservées, sans séries doublonnées ni œuvres vues. Tests synthétiques COCO 2026-10-21 : 122 Vitest, QA Playwright vérifiant 16 points, badges par provenance et hit-test réel des indicateurs à 390/1280/1920 px. Comparaison pixel à pixel des captures Jellyfin/Desktop avec le même profil encore ouverte."
     },
     {
       "block": "A",
@@ -129,7 +129,7 @@
       "status": "pending",
       "reference": "skin.css:index.html",
       "automation": "desktop/qa/parity-qa.mjs",
-      "evidence": ""
+      "evidence": "Étape partielle, sans promotion de statut : lecture seule d'un onglet Brave Jellyfin personnalisé, authentifié et accessible via navigateur connecté. Le DOM réel visible indique 15 bannières, 2 cartes Reprendre, 41 cartes À suivre, 1 carte Nouvelles saisons et suites et 7 Univers. Ces nombres proviennent de la structure DOM visible, pas des comptes d'API ni d'une comparaison identique de profils/captures. Vynéo candidate reste testée en QA synthétique hors compte réel. Critère complet D toujours PENDING."
     },
     {
       "block": "D",

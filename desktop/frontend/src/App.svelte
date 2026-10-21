@@ -1314,6 +1314,7 @@
     {#if selected}
       <MediaDetails item={selected} {api} cache={artwork}
         onaction={changeMediaState}
+        onplaybackchange={()=>void refresh()}
         onclose={closeMediaDetails}/>
     {/if}
   {/if}

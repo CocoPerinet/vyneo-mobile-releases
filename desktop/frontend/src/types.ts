@@ -47,6 +47,8 @@ export interface PlaybackSource {
 export interface PlaybackProbe {
   sources:PlaybackSource[];
   errorCode:string|null;
+  /** Validated Jellyfin playback session identifier, not an access token. */
+  playSessionId?:string|null;
 }
 export type ViewKey="home"|"movies"|"series"|"anime"|"collections"|"playlists"|"favorites";
 export interface MediaItem {

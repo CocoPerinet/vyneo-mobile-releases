@@ -70,5 +70,7 @@ export function parsePlaybackInfo(payload:unknown):PlaybackProbe{
   }
   const allowed=new Set(["NotAllowed","NoCompatibleStream","RateLimitExceeded"]);
   const error=text(root.ErrorCode,40);
-  return {sources,errorCode:allowed.has(error)?error:null};
+  return {sources,errorCode:allowed.has(error)?error:null,
+    playSessionId:typeof root.PlaySessionId==="string" &&
+      ID.test(root.PlaySessionId)?root.PlaySessionId:null};
 }

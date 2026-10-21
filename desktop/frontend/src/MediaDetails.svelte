@@ -4,6 +4,7 @@
   import {selectDirectMp4,selectJellyfinHls,resumeAtSeconds} from "./native-playback";
   import type Hls from "hls.js";
   import type {NativeStreamTicket} from "./native-playback";
+  import {PlaybackReporter,playbackClock} from "./playback-report";
   import type {JellyfinApi} from "./api";
   import type {MediaAction} from "./media-actions";
   import VyIcon from "./VyIcon.svelte";
@@ -17,8 +18,9 @@
     cache:ArtworkCache;
     onaction:(item:MediaItem,action:MediaAction)=>Promise<boolean>;
     onclose:()=>void;
+    onplaybackchange:()=>void;
   };
-  let {item,api,cache,onaction,onclose}:Props=$props();
+  let {item,api,cache,onaction,onclose,onplaybackchange}:Props=$props();
   let media=$state<MediaItem|null>(null);
   let seasons=$state<SeasonSummary[]>([]);
   let seasonsLoading=$state(false);
@@ -36,6 +38,9 @@
   let streamTicket=$state<NativeStreamTicket|null>(null);
   let streamKind=$state<"direct"|"hls"|null>(null);
   let hlsPlayer:Hls|null=null;
+  let reporter:PlaybackReporter|null=null;
+  let playbackNotificationSent=false;
+  let reportWarning=$state("");
   let streamBusy=$state(false);
   let streamError=$state("");
   let streamStarted=$state(false);
@@ -195,8 +200,23 @@
       if(version===epoch && request===playbackEpoch)playbackBusy=false;
     }
   }
-  function stopStream(){
+  function notifyPlaybackOnce(session:PlaybackReporter){
+    if(playbackNotificationSent || !session.didStart)return;
+    playbackNotificationSent=true;
+    void session.drain().then(()=>{
+      // Refresh only the signed-in user's authorized shelves. The server
+      // remains the source of truth for progress and NextUp.
+      if(api.session)onplaybackchange();
+    }).catch(()=>{});
+  }
+  function stopStream(failed=false){
     const current=streamTicket;
+    const finished=reporter;
+    reporter=null;
+    if(finished && videoElement){
+      finished.stop(playbackClock(videoElement),failed);
+      notifyPlaybackOnce(finished);
+    }
     const player=hlsPlayer;
     hlsPlayer=null;
     player?.destroy();
@@ -212,7 +232,8 @@
   async function startNativeVideo(){
     if(streamBusy || !nativeAvailable)return;
     const target=shown,version=epoch,request=++streamEpoch;
-    stopStream();streamBusy=true;streamError="";
+    stopStream();streamBusy=true;streamError="";reportWarning="";
+    playbackNotificationSent=false;
     try{
       const probe=playback??await api.getPlaybackInfo(target.id);
       if(epoch!==version || request!==streamEpoch ||
@@ -235,6 +256,14 @@
         await api.endNativePlayback(ticket.ticket).catch(()=>{});
         return;
       }
+      reporter=new PlaybackReporter({
+        itemId:target.id,mediaSourceId:source.id,
+        playSessionId:probe.playSessionId??null,
+        playMethod:mode==="direct"?"DirectPlay":"Transcode"
+      },(event)=>api.reportPlayback(event),()=>{
+        reportWarning="Lecture possible, mais la synchronisation "+
+          "de la progression avec Jellyfin a échoué.";
+      });
       streamKind=mode;streamTicket=ticket;
       await tick();
       if(request!==streamEpoch || !videoElement)return;
@@ -265,7 +294,7 @@
           if(detail.fatal && request===streamEpoch){
             streamError="Lecture HLS interrompue. "+
               "Vérifiez l'accès au serveur et le transcodage Jellyfin.";
-            streamEpoch++;stopStream();
+            streamEpoch++;stopStream(true);
           }
         });
         engine.attachMedia(videoElement);
@@ -425,6 +454,9 @@
           {#if streamError}
             <p class="vy-detail-warning" role="alert">{streamError}</p>
           {/if}
+          {#if reportWarning}
+            <p class="vy-detail-warning" role="status">{reportWarning}</p>
+          {/if}
           {#if streamTicket}
             <div class="vy-native-player">
               <!-- svelte-ignore a11y_media_has_caption -->
@@ -432,7 +464,29 @@
                 src={streamKind==="direct"?streamTicket.url:undefined}
                 controls playsinline preload="metadata"
                 aria-label={"Lecteur vidéo : "+shown.title}
-                onplaying={()=>{streamStarted=true;}}
+                onplaying={()=>{
+                  streamStarted=true;
+                  if(reporter && videoElement)
+                    reporter.playing(playbackClock(videoElement));
+                }}
+                ontimeupdate={()=>{
+                  if(reporter && videoElement)
+                    reporter.progress(playbackClock(videoElement));
+                }}
+                onpause={()=>{
+                  if(reporter && videoElement)
+                    reporter.pause(playbackClock(videoElement));
+                }}
+                onseeked={()=>{
+                  if(reporter && videoElement)
+                    reporter.progress(playbackClock(videoElement),true);
+                }}
+                onended={()=>{
+                  if(reporter && videoElement){
+                    reporter.ended(playbackClock(videoElement));
+                    notifyPlaybackOnce(reporter);
+                  }
+                }}
                 onloadedmetadata={()=>{
                   const seconds=resumeAtSeconds(shown,
                     videoElement?.duration??NaN);
@@ -441,8 +495,12 @@
                     catch{/* Some remote streams cannot seek: start at zero. */}
                   }
                 }}
-                onerror={()=>{streamError="Flux indisponible ou codec non pris en charge.";
-                  streamEpoch++;stopStream();}}></video>
+                onerror={()=>{
+                  streamError="Flux indisponible ou codec non pris en charge.";
+                  if(reporter && videoElement)
+                    reporter.stop(playbackClock(videoElement),true);
+                  streamEpoch++;stopStream();
+                }}></video>
               {#if !streamStarted}
                 <p class="vy-detail-muted" role="status">
                   En attente de la première image. Utilisez Lecture si le

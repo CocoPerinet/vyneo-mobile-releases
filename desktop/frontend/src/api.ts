@@ -2,6 +2,8 @@ import type {MediaItem,MediaType,SessionPublic,CatalogKind,CatalogPage,CatalogLi
 import {invoke,isTauri} from "@tauri-apps/api/core";
 import {validateStreamTicket} from "./native-playback";
 import type {NativeStreamTicket} from "./native-playback";
+import {reportBody,reportPath} from "./playback-report";
+import type {PlaybackReport} from "./playback-report";
 import {parseSeasons,parsePlaybackInfo} from "./media-details";
 import type {RecentSeason} from "./new-seasons";
 import type {TrendingRank} from "./trending";
@@ -443,6 +445,36 @@ export class JellyfinApi {
     const hasNext=consumed>0 && (total===null
       ?consumed===limit:startIndex+consumed<total);
     return {items,total,nextOffset:hasNext?startIndex+consumed:null};
+  }
+  /** Authenticated Jellyfin session events; 204 No Content is success.
+   * Only a playing native video invokes this, never artwork/probe calls. */
+  async reportPlayback(event:PlaybackReport):Promise<void>{
+    const user=this.requireUser(),generation=this.authGeneration;
+    if(!validId(event.itemId) || !validId(event.mediaSourceId) ||
+       (event.playSessionId!==null &&
+        !validId(event.playSessionId)) ||
+       !["start","progress","stopped"].includes(event.kind) ||
+       !["DirectPlay","Transcode"].includes(event.playMethod) ||
+       !Number.isSafeInteger(event.positionTicks) ||
+       event.positionTicks<0 || event.positionTicks>864_000_000_000 ||
+       !Number.isFinite(event.volumeLevel) ||
+       event.volumeLevel<0 || event.volumeLevel>100)
+      throw new Error("PLAYBACK_REPORT_INVALID");
+    const url=new URL(reportPath(event.kind),this.origin);
+    const headers={...identityHeaders(this.token,this.deviceId),
+      "Content-Type":"application/json"};
+    let response:Response;
+    try{
+      response=await this.fetcher(url,{
+        method:"POST",headers,body:JSON.stringify(reportBody(event)),
+        mode:"cors",credentials:"omit",cache:"no-store",redirect:"error",
+        referrerPolicy:"no-referrer",signal:AbortSignal.timeout(9000)
+      });
+    }catch{throw new Error("PLAYBACK_REPORT_NETWORK");}
+    this.assertSession(user,generation);
+    if(!response.ok || response.redirected)
+      throw new Error(response.status===401?"SESSION_EXPIRED":
+        "PLAYBACK_REPORT_DENIED");
   }
   async getPlaybackInfo(itemId:string):Promise<PlaybackProbe>{
     const uid=this.requireUser(),generation=this.authGeneration;

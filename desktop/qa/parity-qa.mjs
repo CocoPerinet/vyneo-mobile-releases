@@ -862,6 +862,9 @@ try{
  assert(external.some(x=>new URL(x.url).pathname===
    "/Playlists/"+id(8000)+"/Items"));
  assert(external.every(x=>!x.url.includes(token)));
+ assert.equal(external.filter(x=>
+   new URL(x.url).pathname.startsWith("/Sessions/Playing")).length,0,
+   "Read-only browser QA must never fabricate Jellyfin playback progress");
  assert.equal(errors.length,0,"Browser errors "+errors.join("; "));
  console.log("JELLYFIN_PARITY_NATIVE_PLAYLISTS_SCOPED_READ_ONLY_PASS");
  // The original Jellyfin header includes both links. With seven tabs,

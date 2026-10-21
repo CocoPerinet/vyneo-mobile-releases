@@ -94,6 +94,10 @@ describe("read-only native media details",()=>{
     const parsed=parsePlaybackInfo(mediaSources());
     expect(parsed.sources).toHaveLength(1);
     expect(parsed.sources[0].id).toBeNull();
+    expect(parsed.playSessionId).toBeNull();
+    expect(parsePlaybackInfo({
+      PlaySessionId:"e".repeat(32),MediaSources:[]
+    }).playSessionId).toBe("e".repeat(32));
     expect(parsed.sources[0].container).toBe("MKV");
     expect(parsed.sources[0].tracks.map(t=>t.kind))
       .toEqual(["Video","Audio","Subtitle"]);

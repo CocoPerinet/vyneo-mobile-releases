@@ -26,6 +26,7 @@ await new Promise(done=>http.listen(0,"127.0.0.1",done));
 const port=http.address().port;
 const id=n=>n.toString(16).padStart(32,"0");
 const user=id(9999),token="z".repeat(52);
+const quickSecret="q".repeat(64),quickCode="123456";
 const films=Array.from({length:220},(_,n)=>({
  Id:id(n+1),Name:"Film de test "+(n+1),Type:"Movie",
  PremiereDate:"2026-09-15",ProductionYear:2026,
@@ -91,6 +92,15 @@ try{
   external.push({url:request.url(),method});
   if(method==="OPTIONS")
    return route.fulfill({status:204,headers:cors,body:""});
+  if(path==="/QuickConnect/Initiate"&&method==="POST"){
+   assert.equal(qs.size,0,"Quick Connect must not put secrets in the URL");
+   assert(!request.headers().authorization?.includes(token));
+   assert.deepEqual(JSON.parse(request.postData()),{});
+   return route.fulfill({status:200,
+    headers:{"Content-Type":"application/json",...cors},
+    body:bodyJson({Secret:quickSecret,Code:quickCode,
+      Authenticated:false})});
+  }
   if(path==="/tmdb/discover/movie"||path==="/tmdb/discover/tv"){
    assert.equal(request.headers().authorization,undefined,
      "The public popularity proxy must never receive a Jellyfin token");
@@ -208,6 +218,23 @@ try{
  const page=await context.newPage();
  page.on("pageerror",e=>errors.push(String(e)));
  await page.goto("http://127.0.0.1:"+port+"/",{waitUntil:"networkidle"});
+ // Mock Quick Connect initiation and cancellation before password sign-in.
+ // Only a public one-time code may appear in the DOM, never the proof secret.
+ await page.getByRole("button",{
+  name:"Connexion avec Quick Connect",exact:true
+ }).click();
+ await page.locator(".vy-quick-code").waitFor({timeout:7000});
+ assert.equal((await page.locator(".vy-quick-code").innerText()).trim(),
+  quickCode);
+ assert(!(await page.locator(".vy-login-card").innerHTML()).includes(quickSecret));
+ assert.equal(await page.locator("#vy-password").count(),0);
+ await page.getByRole("button",{name:"Retour à la connexion"}).click();
+ await page.locator("#vy-password").waitFor({timeout:4000});
+ assert.equal(await page.locator(".vy-quick-code").count(),0);
+ assert(!external.some(x=>
+  new URL(x.url).pathname==="/Users/AuthenticateWithQuickConnect"),
+  "Cancelling pairing cannot authenticate or alter Jellyfin watch history");
+ console.log("VYNEO_QUICK_CONNECT_CODE_PRIVATE_CANCEL_PASS");
  await page.locator("#vy-username").fill("Alice");
  await page.locator("#vy-password").fill("fictional-password");
  await page.getByRole("button",{name:"Se connecter"}).click();

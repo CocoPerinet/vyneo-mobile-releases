@@ -145,6 +145,8 @@ export interface ApiOptions{
 }
 export class JellyfinApi {
   private authGeneration=0;
+  /** Ephemeral Quick Connect proof, never persisted or returned to the DOM. */
+  private quickSecret:string|null=null;
   private libraryRoots:Promise<CatalogLibraryIds>|null=null;
   private token:string|null=null;
   private userId:string|null=null;
@@ -172,6 +174,7 @@ export class JellyfinApi {
     // Tauri command is idempotent and cannot affect the server's sessions.
     if(isTauri())void invoke("stop_all_native_streams").catch(()=>{});
     this.authGeneration++;
+    this.quickSecret=null;
     this.libraryRoots=null;
     this.token=null;this.userId=null;this.username=null;
   }
@@ -216,6 +219,63 @@ export class JellyfinApi {
   private requireUser():string{
     if(!this.token || !this.userId)throw new Error("AUTH_REQUIRED");
     return this.userId;
+  }
+  /**
+   * Public Jellyfin Quick Connect pairing: only the one-time human code
+   * leaves this method. The secret stays in memory and is exchanged via POST,
+   * not query strings, browser storage, logs or the native credential vault.
+   */
+  async beginQuickConnect():Promise<string>{
+    this.logout();
+    const generation=this.authGeneration;
+    const result=obj(await this.json("/QuickConnect/Initiate",{
+      method:"POST",body:{},token:null,maxBytes:16384,timeoutMs:12000
+    }));
+    if(generation!==this.authGeneration)
+      throw new Error("QUICK_CONNECT_CANCELLED");
+    const code=result.Code,secret=result.Secret;
+    if(typeof code!=="string" || !/^[A-Z0-9-]{4,12}$/i.test(code) ||
+       typeof secret!=="string" ||
+       !/^[a-zA-Z0-9._-]{16,512}$/.test(secret))
+      throw new Error("QUICK_CONNECT_INVALID");
+    this.quickSecret=secret;
+    return code;
+  }
+  cancelQuickConnect():void{
+    this.quickSecret=null;
+    this.authGeneration++;
+  }
+  async completeQuickConnect():Promise<SessionPublic>{
+    const secret=this.quickSecret,generation=this.authGeneration;
+    if(!secret)throw new Error("QUICK_CONNECT_NOT_STARTED");
+    let result:Record<string,unknown>;
+    try{
+      result=obj(await this.json("/Users/AuthenticateWithQuickConnect",{
+        method:"POST",body:{Secret:secret},token:null,
+        maxBytes:98304,timeoutMs:12000
+      }));
+    }catch{
+      if(generation!==this.authGeneration)
+        throw new Error("QUICK_CONNECT_CANCELLED");
+      throw new Error("QUICK_CONNECT_NOT_AUTHORIZED");
+    }
+    if(generation!==this.authGeneration)
+      throw new Error("QUICK_CONNECT_CANCELLED");
+    const user=obj(result.User);
+    const token=result.AccessToken;
+    if(!validId(user.Id) || typeof token!=="string" || !TOKEN.test(token))
+      throw new Error("QUICK_CONNECT_INVALID");
+    const me=obj(await this.json("/Users/Me",{
+      token,maxBytes:98304
+    }));
+    if(generation!==this.authGeneration)
+      throw new Error("QUICK_CONNECT_CANCELLED");
+    if(me.Id!==user.Id || obj(me.Policy).IsDisabled===true ||
+       typeof me.Name!=="string" || !me.Name.trim())
+      throw new Error("QUICK_CONNECT_INVALID");
+    this.userId=user.Id;this.username=string(me.Name,96);
+    this.token=token;this.quickSecret=null;
+    return this.session!;
   }
   async login(username:string,password:string):Promise<SessionPublic>{
     this.logout();

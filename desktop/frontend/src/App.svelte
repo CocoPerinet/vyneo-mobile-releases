@@ -47,6 +47,9 @@
   let loginPassword=$state("");
   let loginBusy=$state(false);
   let loginError=$state("");
+  let quickCode=$state<string|null>(null);
+  let quickError=$state("");
+  let quickRequest=0;
   let vaultNotice=$state("");
   let rememberMe=$state(true);
   let credentialStored=$state(false);
@@ -708,26 +711,66 @@
     }finally{restoreBusy=false;}
   }
   onMount(()=>{void restoreSaved();});
+  async function persistLogin(authenticated:SessionPublic){
+    const credential=api.savedCredential();
+    if(rememberMe && credential && nativeVault.available){
+      try{await nativeVault.save(credential);credentialStored=true;}catch{
+        vaultNotice="Connexion réussie, mais la mémorisation sécurisée est indisponible.";
+      }
+    }else if(nativeVault.available){
+      await nativeVault.clear().catch(()=>{});
+    }
+    quickCode=null;quickError="";loginPassword="";
+    acceptSession(authenticated);
+  }
   async function login(event:SubmitEvent){
     event.preventDefault();
-    if(loginBusy || restoreBusy)return;
+    if(loginBusy || restoreBusy || quickCode)return;
     loginBusy=true;loginError="";vaultNotice="";credentialStored=false;
     const password=loginPassword;
     loginPassword="";
     try{
       const authenticated=await api.login(loginName,password);
-      const credential=api.savedCredential();
-      if(rememberMe && credential && nativeVault.available){
-        try{await nativeVault.save(credential);credentialStored=true;}catch{
-          vaultNotice="Connexion réussie, mais la mémorisation sécurisée est indisponible.";
-        }
-      }else if(nativeVault.available){
-        await nativeVault.clear().catch(()=>{});
-      }
-      acceptSession(authenticated);
+      await persistLogin(authenticated);
     }catch{
       loginError="Connexion impossible. Vérifiez vos identifiants et le serveur.";
     }finally{loginBusy=false;}
+  }
+  async function beginQuickConnect(){
+    if(loginBusy || restoreBusy || session)return;
+    const request=++quickRequest;
+    loginBusy=true;loginError="";quickError="";vaultNotice="";
+    credentialStored=false;
+    try{
+      const code=await api.beginQuickConnect();
+      if(request===quickRequest && !session)quickCode=code;
+    }catch{
+      if(request===quickRequest)
+        loginError="Quick Connect indisponible. Réessayez ou connectez-vous avec votre mot de passe.";
+    }finally{
+      if(request===quickRequest)loginBusy=false;
+    }
+  }
+  function cancelQuickConnect(){
+    quickRequest++;api.cancelQuickConnect();
+    quickCode=null;quickError="";loginBusy=false;
+  }
+  async function completeQuickConnect(){
+    if(!quickCode || loginBusy || restoreBusy || session)return;
+    const request=quickRequest;
+    loginBusy=true;quickError="";loginError="";vaultNotice="";
+    try{
+      const authenticated=await api.completeQuickConnect();
+      if(request!==quickRequest){
+        api.logout();return;
+      }
+      await persistLogin(authenticated);
+    }catch{
+      if(request===quickRequest)
+        quickError="Code non encore autorisé ou expiré. Vérifiez Jellyfin, puis réessayez.";
+    }finally{
+      if(request===quickRequest)loginBusy=false;
+    }
   }
   async function refresh(generation=epoch){
     const version=++refreshVersion;
@@ -870,13 +913,22 @@
       <form class="vy-login-card" onsubmit={login}>
         <h2>Bienvenue sur Vynéo</h2>
         <p>Connectez-vous avec votre compte Jellyfin.</p>
-        <label for="vy-username">Utilisateur</label>
-        <input id="vy-username" type="text" autocomplete="username"
-          bind:value={loginName} maxlength="96" required />
-        <label for="vy-password">Mot de passe</label>
-        <input id="vy-password" type="password"
-          autocomplete="current-password" bind:value={loginPassword}
-          maxlength="256" required />
+        {#if !quickCode}
+          <label for="vy-username">Utilisateur</label>
+          <input id="vy-username" type="text" autocomplete="username"
+            bind:value={loginName} maxlength="96" required />
+          <label for="vy-password">Mot de passe</label>
+          <input id="vy-password" type="password"
+            autocomplete="current-password" bind:value={loginPassword}
+            maxlength="256" required />
+        {:else}
+          <p class="vy-quick-instructions">
+            Ouvrez Jellyfin sur un appareil déjà connecté, puis
+            Paramètres du compte → Quick Connect et saisissez ce code :
+          </p>
+          <output class="vy-quick-code" aria-label="Code Quick Connect">{quickCode}</output>
+          {#if quickError}<p class="vy-auth-error" role="alert">{quickError}</p>{/if}
+        {/if}
         {#if loginError}<p class="vy-auth-error" role="alert">{loginError}</p>{/if}
         {#if vaultNotice}<p class="vy-auth-hint" role="status">{vaultNotice}</p>{/if}
         {#if nativeVault.available}
@@ -885,9 +937,25 @@
             <span>Rester connecté sur cet appareil</span>
           </label>
         {/if}
-        <button type="submit" class="vy-primary" disabled={loginBusy || restoreBusy}>
-          {restoreBusy?"Restauration de la session…":loginBusy?"Connexion…":"Se connecter"}
-        </button>
+        {#if quickCode}
+          <button type="button" class="vy-primary"
+            disabled={loginBusy || restoreBusy}
+            onclick={()=>void completeQuickConnect()}>
+            {loginBusy?"Vérification…":"J'ai autorisé le code"}
+          </button>
+          <button type="button" class="vy-quick-secondary"
+            onclick={cancelQuickConnect}>Retour à la connexion</button>
+        {:else}
+          <button type="submit" class="vy-primary"
+            disabled={loginBusy || restoreBusy}>
+            {restoreBusy?"Restauration de la session…":loginBusy?"Connexion…":"Se connecter"}
+          </button>
+          <button type="button" class="vy-quick-secondary"
+            disabled={loginBusy || restoreBusy}
+            onclick={()=>void beginQuickConnect()}>
+            Se connecter avec Quick Connect
+          </button>
+        {/if}
         <span class="vy-auth-hint">
           {nativeVault.available
             ?"Session enregistrée dans le coffre sécurisé de votre système."

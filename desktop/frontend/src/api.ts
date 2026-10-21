@@ -383,9 +383,11 @@ export class JellyfinApi {
   async getUniverseCatalog():Promise<MediaItem[]>{
     const uid=this.requireUser(),generation=this.authGeneration;
     const result:MediaItem[]=[],seen=new Set<string>();
-    // 2400 silently omitted part of larger Jellyfin libraries (films,
-    // anime and series). Scan up to 6000 scoped records, on demand only.
-    for(let offset=0;offset<6000;offset+=200){
+    // The entire authorized Movie/Series library may span thousands
+    // of items. Keep the old 6000 safety bound, but fetch the remaining
+    // pages in groups of at most three after learning the first page's
+    // authoritative TotalRecordCount (much faster on a large catalogue).
+    const readPage=async(offset:number)=>{
       const path=this.userItems({
         IncludeItemTypes:"Movie,Series",SortBy:"PremiereDate",
         SortOrder:"Descending",Limit:200,StartIndex:offset,
@@ -397,17 +399,38 @@ export class JellyfinApi {
       this.assertSession(uid,generation);
       if(!Array.isArray(reply.Items) || reply.Items.length>200)
         throw new Error("UNIVERSE_SCOPE_INVALID");
-      const permitted=parseItems(reply,200);
-      for(const item of permitted){
-        if((item.type==="Movie" || item.type==="Series") &&
-          !seen.has(item.id.toLowerCase())){
-          seen.add(item.id.toLowerCase());result.push(item);
+      return {items:parseItems(reply,200),rawLength:reply.Items.length,
+        count:typeof reply.TotalRecordCount==="number" &&
+          Number.isSafeInteger(reply.TotalRecordCount) &&
+          reply.TotalRecordCount>=0?reply.TotalRecordCount:null};
+    };
+    const append=(items:MediaItem[])=>{
+      for(const item of items){
+        const key=item.id.toLowerCase();
+        if((item.type==="Movie" || item.type==="Series") && !seen.has(key)){
+          seen.add(key);result.push(item);
         }
       }
-      const count=reply.TotalRecordCount;
-      if(reply.Items.length<200 ||
-         (typeof count==="number" && Number.isSafeInteger(count) &&
-          offset+reply.Items.length>=count))break;
+    };
+    const first=await readPage(0);
+    append(first.items);
+    if(first.rawLength<200 || (first.count!==null &&
+      first.count<=first.rawLength))return result;
+    const limit=first.count!==null?
+      Math.min(6000,first.count):6000;
+    for(let start=200;start<limit;start+=600){
+      const offsets=[start,start+200,start+400].filter(x=>x<limit);
+      const pages=await Promise.all(offsets.map(readPage));
+      this.assertSession(uid,generation);
+      let finished=false;
+      for(let i=0;i<pages.length;i++){
+        if(finished)break;
+        const page=pages[i];
+        append(page.items);
+        if(page.rawLength<200 || (page.count!==null &&
+          offsets[i]+page.rawLength>=page.count))finished=true;
+      }
+      if(finished)break;
     }
     this.assertSession(uid,generation);
     return result;

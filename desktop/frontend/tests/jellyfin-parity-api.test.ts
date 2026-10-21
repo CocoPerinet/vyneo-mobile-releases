@@ -19,10 +19,13 @@ function series(n:number){
     ProductionYear:2024,Studios:[{Name:"Marvel Studios"}],
     PremiereDate:"2024-01-01",ImageTags:{Primary:"tag"}};
 }
-function fixture({nextUpCount=275,failSecond=false,seriesMatchSelection=false}:{
-  nextUpCount?:number;failSecond?:boolean;seriesMatchSelection?:boolean
+function fixture({nextUpCount=275,failSecond=false,seriesMatchSelection=false,
+  universeCount=201,universeDelayMs=0,universePageDeniedAt=-1}:{
+  nextUpCount?:number;failSecond?:boolean;seriesMatchSelection?:boolean;
+  universeCount?:number;universeDelayMs?:number;universePageDeniedAt?:number
 }={}){
   const calls:Array<{url:URL;options:RequestInit}>=[];
+  let activeUniverse=0,peakUniverse=0;
   const fetcher=vi.fn(async(u:RequestInfo|URL,options:RequestInit={})=>{
     const url=new URL(String(u)),path=url.pathname;
     calls.push({url,options});
@@ -60,13 +63,18 @@ function fixture({nextUpCount=275,failSecond=false,seriesMatchSelection=false}:{
       }
       if(types==="Movie,Series"){
         const start=Number(url.searchParams.get("StartIndex"));
+        if(start===universePageDeniedAt)return output({error:"Denied"},403);
+        activeUniverse++;peakUniverse=Math.max(peakUniverse,activeUniverse);
+        if(universeDelayMs)await new Promise(resolve=>
+          setTimeout(resolve,universeDelayMs));
+        activeUniverse--;
         return output({Items:Array.from(
-          {length:start===0?200:1},(_,i)=>({
+          {length:Math.max(0,Math.min(200,universeCount-start))},(_,i)=>({
             Id:id(start+i+5000),Type:"Movie",Name:"Film "+(start+i),
             PremiereDate:"2025-01-01",
             ProviderIds:{TmdbCollection:"4455"},
             Studios:[{Name:"Pixar"}]
-          })),TotalRecordCount:201});
+          })),TotalRecordCount:universeCount});
       }
     }
     if(path.startsWith("/Users/"+USER+"/FavoriteItems/") ||
@@ -74,7 +82,8 @@ function fixture({nextUpCount=275,failSecond=false,seriesMatchSelection=false}:{
       return new Response(null,{status:204});
     return output({Items:[]});
   }) as typeof fetch;
-  return {api:new JellyfinApi({fetcher}),calls,fetcher};
+  return {api:new JellyfinApi({fetcher}),calls,fetcher,
+    peakUniverse:()=>peakUniverse};
 }
 describe("Jellyfin UI parity uses real scoped API metadata",()=>{
  it("retrieves all 275 NextUp cards, not the former 24-item cap",async()=>{
@@ -155,6 +164,30 @@ describe("Jellyfin UI parity uses real scoped API metadata",()=>{
    expect(calls.filter(x=>x.url.searchParams.get("IncludeItemTypes")==="Movie,Series")
      .map(x=>x.url.searchParams.get("StartIndex"))).toEqual(["0","200"]);
    expect(calls.every(x=>x.url.origin===SERVER_ORIGIN)).toBe(true);
+ });
+ it("scans 1450 universe titles in at most 3 simultaneous scoped pages",async()=>{
+   const {api,calls,peakUniverse}=fixture({
+     universeCount:1450,universeDelayMs:12});
+   await api.login("Alice","password");
+   const films=await api.getUniverseCatalog();
+   expect(films).toHaveLength(1450);
+   expect(films[0].id).toBe(id(5000));
+   expect(films.at(-1)?.id).toBe(id(6449));
+   expect(new Set(films.map(x=>x.id)).size).toBe(1450);
+   expect(peakUniverse()).toBe(3);
+   const pages=calls.filter(x=>x.url.searchParams.get(
+     "IncludeItemTypes")==="Movie,Series");
+   expect(pages.map(x=>x.url.searchParams.get("StartIndex"))).toEqual(
+     ["0","200","400","600","800","1000","1200","1400"]);
+   expect(pages.every(x=>x.url.origin===SERVER_ORIGIN &&
+     !x.url.href.includes(TOKEN) &&
+     x.options.credentials==="omit")).toBe(true);
+ });
+ it("fails closed when a universe page is denied by the server",async()=>{
+   const {api}=fixture({universeCount:800,
+     universePageDeniedAt:400});
+   await api.login("Alice","password");
+   await expect(api.getUniverseCatalog()).rejects.toThrow("REQUEST_DENIED");
  });
  it("updates favorite/played only for current account with POST/DELETE",async()=>{
    const {api,calls}=fixture();await api.login("Alice","password");

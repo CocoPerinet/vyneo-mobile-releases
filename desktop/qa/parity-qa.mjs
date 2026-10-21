@@ -13,6 +13,8 @@ const mime={".html":"text/html",".js":"application/javascript",
 const image=readFileSync(join(root,"assets","icon.png"));
 const visualReference=JSON.parse(readFileSync(join(root,"desktop",
   "parity","reference-geometry.json"),"utf8"));
+const liveHomeReference=JSON.parse(readFileSync(join(root,"desktop",
+  "parity","live-home-reference.json"),"utf8"));
 const http=createServer((req,res)=>{
  const name=decodeURIComponent(new URL(req.url??"/","http://127.0.0.1").pathname);
  const full=resolve(dist,"."+name.replace(/^\/$/,"/index.html"));
@@ -221,11 +223,10 @@ try{
   "True TMDb rankings must match user-authorized Jellyfin films");
  const sectionOrder=await page.locator(".vy-shelves h2").allTextContents();
  const order=(title)=>sectionOrder.indexOf(title);
- assert.deepEqual(sectionOrder.slice(0,5),[
-   "Reprendre la lecture","À suivre","Nouvelles saisons et suites",
-   "Univers","Tendances"
- ],"Core shelf order must match the authenticated Jellyfin Home, not merely "+
-   "appear somewhere later: "+JSON.stringify(sectionOrder.slice(0,8)));
+ assert.deepEqual(sectionOrder.slice(0,6),
+   liveHomeReference.homeSequence.map(row=>row.label),
+   "Core shelf headings and order must match the dated authenticated "+
+   "Jellyfin Home baseline: "+JSON.stringify(sectionOrder.slice(0,8)));
  const forYou=page.locator('[data-vy-section="for-you"]');
  await forYou.waitFor({timeout:5000});
  const allSections=await page.locator(
@@ -233,6 +234,8 @@ try{
    nodes.map(node=>node.dataset.vySection));
  assert(allSections.indexOf("for-you")>allSections.indexOf("trending"),
   "Recommendations belong after real trends, just like Jellyfin");
+ assert.equal(await forYou.locator("h2").textContent(),"Pour vous",
+  "Jellyfin does not append a marketing subtitle to the home rail");
  console.log("JELLYFIN_PARITY_REAL_HOME_SHELF_SEQUENCE_PASS "+JSON.stringify(
    sectionOrder.slice(0,8)));
  const publicProxy=external.filter(x=>

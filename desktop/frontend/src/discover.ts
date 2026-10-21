@@ -50,7 +50,9 @@ export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):She
   };
   put("resume","Reprendre la lecture",resume);
   put("next-up","À suivre",nextUp);
-  put("for-you",recommendations.personalized?"Pour vous · Des histoires qui vous ressemblent":
+  // The active Jellyfin skin titles its recommendation rail exactly
+  // "Pour vous". Keep the non-personalized fallback honest and explicit.
+  put("for-you",recommendations.personalized?"Pour vous":
     "À explorer dans votre bibliothèque",
     recommendations.items.map(r=>r.item));
   const forYou=rows.find(row=>row.id==="for-you");

@@ -35,3 +35,17 @@ test("stable release refuses an unverified real-library comparison",()=>{
   }
   assert.doesNotThrow(()=>verifyReleaseParityReadiness(approved));
 });
+
+test("live Home DOM reference is dated and never mistaken for per-user item parity",()=>{
+  const snapshot=JSON.parse(readFileSync(resolve(auditRoot,
+    "desktop/parity/live-home-reference.json"),"utf8"));
+  assert.equal(snapshot.capturedDate,"2026-10-21");
+  assert.equal(snapshot.sameUserAsCandidateVerified,false);
+  assert.equal(snapshot.screenshotsCompared,false);
+  assert.equal(snapshot.jellyfinItemIdsCompared,false);
+  assert.deepEqual(snapshot.homeSequence.map(x=>x.id),[
+    "resume","next-up","new-seasons","universe-rail","trending","for-you"
+  ]);
+  assert.equal(snapshot.visibleDomNodeCounts.universeButtons,7);
+  assert.equal(snapshot.visibleDomNodeCounts.heroIndicators,15);
+});

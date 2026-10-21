@@ -72,6 +72,7 @@ export interface MediaItem {
   seasonNumber?:number|null;
   episodeNumber?:number|null;
   runtimeTicks?:number|null;
+  seasonCount?:number|null;
   seriesName:string;
 }
 export interface SessionPublic {

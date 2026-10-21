@@ -34,6 +34,12 @@ const films=Array.from({length:220},(_,n)=>({
  ImageTags:{Primary:"png"},BackdropImageTags:["png"],
  UserData:{Played:n<20,IsFavorite:n<5}
 }));
+// Historical titles prove that an authorized Pixar universe is grouped
+// into decades rather than displayed in the former undifferentiated grid.
+for(const [index,year] of [[30,2014],[32,2005]]){
+ films[index].ProductionYear=year;
+ films[index].PremiereDate=year+"-06-15";
+}
 const nextUp=Array.from({length:270},(_,n)=>({
  Id:id(3000+n),Name:"Épisode de test "+(n+1),Type:"Episode",
  SeriesName:"Série "+(n%50+1),SeriesId:id(100+n%50),
@@ -510,15 +516,45 @@ try{
    "Universe tiles should align with the content heading");
  await page.screenshot({path:join(out,"universe-tiles-1650.png"),fullPage:false});
  await page.getByRole("button",{name:"Explorer l'univers Pixar"}).click();
- await page.locator(".vy-universes-page .vy-catalog-grid .vy-card").first()
+ await page.locator(".vy-universes-page .vy-universe-entry").first()
    .waitFor({timeout:10000});
- await page.waitForTimeout(1700);
- const artStatus=await page.locator(".vy-universes-page .vy-card img")
-   .evaluateAll(imgs=>({total:imgs.length,loaded:imgs.filter(img=>img.complete&&img.naturalWidth>0).length,
+ const tabs=page.locator(".vy-universes-page .vy-universe-tabs [role=tab]");
+ assert.deepEqual(await tabs.allTextContents(),
+  ["Années 2000","Années 2010","Années 2020"],
+  "Universe tabs must follow the original Jellyfin decade grouping");
+ assert.equal(await page.locator(".vy-universe-entry").count(),1);
+ await tabs.nth(1).click();
+ assert.equal(await page.locator(".vy-universe-entry").count(),1);
+ await tabs.nth(2).click();
+ assert((await page.locator(".vy-universe-entry").count())>100);
+ await tabs.nth(1).focus();
+ await page.keyboard.press("ArrowLeft");
+ assert.equal(await tabs.nth(0).getAttribute("aria-selected"),"true");
+ await page.keyboard.press("End");
+ assert.equal(await tabs.nth(2).getAttribute("aria-selected"),"true");
+ const first=page.locator(
+  '.vy-universe-entry:has(button[aria-label="Ajouter à ma liste"]):has(button[aria-label="Marquer vu"])'
+ ).first();
+ const firstId=await first.getAttribute("data-vy-universe-item");
+ await first.getByRole("button",{name:"Ajouter à ma liste"}).click();
+ assert(actions.some(x=>x.method==="POST" &&
+  x.path==="/Users/"+user+"/FavoriteItems/"+firstId));
+ await first.getByRole("button",{name:"Retirer de ma liste"})
+  .waitFor({timeout:3000});
+ await first.getByRole("button",{name:"Marquer vu"}).click();
+ assert(actions.some(x=>x.method==="POST" &&
+  x.path==="/Users/"+user+"/PlayedItems/"+firstId));
+ await first.getByRole("button",{name:"Marquer non vu"})
+  .waitFor({timeout:3000});
+ await page.waitForTimeout(750);
+ const artStatus=await page.locator(".vy-universes-page .vy-universe-entry img")
+   .evaluateAll(imgs=>({total:imgs.length,
+     loaded:imgs.filter(img=>img.complete&&img.naturalWidth>0).length,
      broken:imgs.filter(img=>img.complete&&img.naturalWidth===0&&!!img.src).length}));
+ assert.equal(artStatus.broken,0);
  console.log("JELLYFIN_PARITY_IMAGE_STATUS "+JSON.stringify(artStatus));
  await page.screenshot({path:join(out,"universes-1650.png"),fullPage:false});
- console.log("JELLYFIN_PARITY_UNIVERSE_JELLYFIN_SCOPE_PASS");
+ console.log("JELLYFIN_PARITY_UNIVERSE_CHRONOLOGY_AND_ACTIONS_PASS");
  assert(external.every(x=>!x.url.includes(token)));
  assert.equal(errors.length,0,"Unexpected browser errors: "+errors.join("; "));
  for(const viewport of [{width:390,height:844},{width:1280,height:800},

@@ -7,13 +7,14 @@
   import {buildShelves,featuredSlides} from "./discover";
   import {newBadge,classifyNewReleases,includeNewReleaseShelf} from "./new-seasons";
   import type {RecentSeason} from "./new-seasons";
-  import {UNIVERSES,universeItems} from "./universes";
+  import {UNIVERSES,universeItems,groupUniverseItems} from "./universes";
   import type {UniverseId} from "./universes";
   import ShelfRail from "./ShelfRail.svelte";
   import UniverseRail from "./UniverseRail.svelte";
   import HoverPreview from "./HoverPreview.svelte";
   import VyIcon from "./VyIcon.svelte";
   import MediaCard from "./MediaCard.svelte";
+  import UniverseEntry from "./UniverseEntry.svelte";
   import MediaDetails from "./MediaDetails.svelte";
   import {planMediaMutation,projectMediaMutation} from "./media-actions";
   import type {MediaAction} from "./media-actions";
@@ -58,6 +59,7 @@
   let hiddenCards=$state<string[]>([]);
   let universeCatalog=$state<MediaItem[]>([]);
   let activeUniverse=$state<UniverseId|null>(null);
+  let universeGroupIndex=$state(0);
   let universeLoading=$state(false);
   let universeError=$state("");
   let hover=$state<{
@@ -132,6 +134,8 @@
     return [];
   });
   let searchActive=$derived(searchText.trim().length>=2);
+  let activeUniverseGroups=$derived(activeUniverse?
+    groupUniverseItems(activeUniverse,universeCatalog):[]);
   // Hero episodes inherit the parent series favorite state. Never guess
   // from the episode's UserData or a stale NextUp snapshot.
   $effect(()=>{
@@ -325,6 +329,10 @@
         .map(([key,value])=>[key,{...value,items:value.items.map(rewrite)}])
       ) as Record<CatalogKind,CatalogState>;
       if(selected)selected=rewrite(selected);
+      // Universe rows must reflect API-confirmed favorite/played mutations
+      // immediately; the catalogue is a distinct, on-demand data snapshot.
+      if(universeCatalog.length)
+        universeCatalog=universeCatalog.map(rewrite);
       if(hover)hover={...hover,item:rewrite(hover.item)};
       if(verifiedHeroFavorite?.id===shown.id && action==="favorite")
         verifiedHeroFavorite={id:shown.id,favorite:enabled};
@@ -385,6 +393,7 @@
   function openUniverse(next:UniverseId){
     selectTab("universes");
     activeUniverse=next;
+    universeGroupIndex=0;
     void loadUniverse();
   }
   function moveHero(step:number){
@@ -408,7 +417,7 @@
     searchBusy=false;searchSequence++;
     if(searchTimer!==null)clearTimeout(searchTimer);
     profileOpen=false;
-    activeUniverse=null;
+    activeUniverse=null;universeGroupIndex=0;
     if(next==="movies" && !catalogs.Movie.loaded)void loadCatalog("Movie");
     if(next==="series" && !catalogs.Series.loaded)void loadCatalog("Series");
     if(next==="anime" && !catalogs.Anime.loaded)void loadCatalog("Anime");
@@ -855,7 +864,10 @@
               onclick={()=>{activeUniverse=null;closeHover();}}>
               ‹ Tous les univers
             </button>
-            <div class="vy-browser-heading">
+            <div class="vy-browser-heading vy-universe-heading">
+              <img class="vy-universe-page-logo" data-vy-universe={activeUniverse}
+                src={UNIVERSES.find(u=>u.id===activeUniverse)?.logo??""}
+                alt={UNIVERSES.find(u=>u.id===activeUniverse)?.label??"Univers"}/>
               <h1>{UNIVERSES.find(u=>u.id===activeUniverse)?.label??"Univers"}</h1>
             </div>
             {#if universeLoading}
@@ -864,19 +876,49 @@
               <p class="vy-empty" role="alert">{universeError}</p>
               <button type="button" class="vy-universe-retry"
                 onclick={()=>void loadUniverse()}>Réessayer</button>
-            {:else}
-              <div class="vy-catalog-grid">
-                {#each gridItems as item (item.id)}
-                  <MediaCard {item} cache={artwork} onclick={openMedia}
-                    novelty={badgeFor(item)}
-                    onhover={(element)=>requestHover(item,element,"universe")}
-                    onleave={requestHideHover} />
+            {:else if activeUniverseGroups.length}
+              <div class="vy-universe-tabs" role="tablist"
+                aria-label={"Époques de "+(UNIVERSES.find(u=>
+                  u.id===activeUniverse)?.label??"cet univers")}>
+                {#each activeUniverseGroups as group,index (group.name)}
+                  <button type="button" role="tab"
+                    data-vy-universe-group={group.name}
+                    class:active={universeGroupIndex===index}
+                    aria-selected={universeGroupIndex===index}
+                    aria-controls="vy-universe-current-list"
+                    tabindex={universeGroupIndex===index?0:-1}
+                    onclick={()=>universeGroupIndex=index}
+                    onkeydown={(event)=>{
+                      const key=event.key;
+                      if(!["ArrowLeft","ArrowRight","Home","End"].includes(key))return;
+                      event.preventDefault();
+                      const count=activeUniverseGroups.length;
+                      universeGroupIndex=key==="Home"?0:
+                        key==="End"?count-1:
+                        (universeGroupIndex+(key==="ArrowRight"?1:count-1))%count;
+                      requestAnimationFrame(()=>
+                        document.querySelectorAll<HTMLButtonElement>(
+                          ".vy-universe-tabs [role=tab]")[universeGroupIndex]
+                          ?.focus({preventScroll:true}));
+                    }}>{group.name}</button>
                 {/each}
               </div>
-              {#if !gridItems.length}
-                <p class="vy-empty">Aucun titre de cet univers n'est présent dans
-                  votre bibliothèque accessible.</p>
-              {/if}
+              {#each activeUniverseGroups as group,index (group.name)}
+                {#if universeGroupIndex===index}
+                  <div class="vy-universe-list" role="tabpanel"
+                    id="vy-universe-current-list" aria-label={group.name}>
+                    {#each group.items as item (item.id)}
+                      <UniverseEntry {item} cache={artwork} busy={hoverBusy}
+                        onopen={openMedia}
+                        onfavorite={(media)=>void changeMediaState(media,"favorite")}
+                        onplayed={(media)=>void changeMediaState(media,"played")}/>
+                    {/each}
+                  </div>
+                {/if}
+              {/each}
+            {:else}
+              <p class="vy-empty">Aucun titre de cet univers n'est présent dans
+                votre bibliothèque accessible.</p>
             {/if}
           {:else}
             <h1>Univers</h1>

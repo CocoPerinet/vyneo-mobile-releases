@@ -7,7 +7,7 @@ export const SERVER_ORIGIN="https://cocojellyfin.duckdns.org:38443";
 const ID=/^[a-f0-9]{32}$/i;
 const TOKEN=/^[a-z0-9._\-]{12,2048}$/i;
 const TYPES=new Set<MediaType>(["Movie","Series","Episode","BoxSet"]);
-const FIELDS="Overview,Genres,Tags,Studios,CommunityRating,DateCreated,PremiereDate,UserData,ImageTags,BackdropImageTags,ProviderIds";
+const FIELDS="Overview,Genres,Tags,Studios,CommunityRating,DateCreated,PremiereDate,UserData,ImageTags,BackdropImageTags,ProviderIds,ChildCount,RunTimeTicks";
 const obj=(v:unknown):Record<string,unknown>=>
   v && typeof v==="object" && !Array.isArray(v)
     ?v as Record<string,unknown>:{};
@@ -74,6 +74,9 @@ export function normalizeItem(v:unknown):MediaItem|null {
     runtimeTicks:typeof row.RunTimeTicks==="number" &&
       Number.isSafeInteger(row.RunTimeTicks) &&
       row.RunTimeTicks>0?row.RunTimeTicks:null,
+    seasonCount:typeof row.ChildCount==="number" &&
+      Number.isSafeInteger(row.ChildCount) &&
+      row.ChildCount>=0 && row.ChildCount<=1000?row.ChildCount:null,
     seriesName:string(row.SeriesName,120)
   };
 }

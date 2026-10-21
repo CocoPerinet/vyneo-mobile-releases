@@ -348,6 +348,21 @@ try{
  const popup=page.locator(".vy-hover-popup");
  await popup.waitFor({timeout:4000});
  await popup.getByRole("button",{name:"Ajouter à ma liste"}).waitFor({timeout:5000});
+ // Wait for the real 140ms entrance animation. During scale(.97),
+ // getBoundingClientRect() is deliberately smaller than its CSS width.
+ await popup.evaluate(el=>Promise.all(el.getAnimations().map(animation=>
+  animation.finished.catch(()=>{}))));
+ const hoverDimensions=await popup.evaluate(el=>{
+  const button=el.querySelector(".vy-icon-primary");
+  return {width:el.getBoundingClientRect().width,
+    actionWidth:button.getBoundingClientRect().width};
+ });
+ console.log("JELLYFIN_PARITY_HOVER_MEASURE "+JSON.stringify(hoverDimensions));
+ assert(approximate(hoverDimensions.width,visualReference.hover.widthPx,1));
+ assert(approximate(hoverDimensions.actionWidth,
+  visualReference.hover.actionDiameterPx,1));
+ console.log("JELLYFIN_PARITY_HOVER_SOURCE_GEOMETRY_PASS "+
+   JSON.stringify(hoverDimensions));
  assert.equal(await popup.getByRole("button",
    {name:"Téléchargement bientôt disponible"}).isDisabled(),true);
  const circles=await popup.locator(".vy-icon-button").all();
@@ -369,21 +384,6 @@ try{
    "The hover must read the series favorite state");
  await page.screenshot({path:join(out,"hover-1650.png"),fullPage:false});
  console.log("JELLYFIN_PARITY_HOVER_ACTIONS_PASS");
- // Wait for the real 140ms entrance animation. During scale(.97),
- // getBoundingClientRect() is deliberately smaller than its CSS width.
- await popup.evaluate(el=>Promise.all(el.getAnimations().map(animation=>
-  animation.finished.catch(()=>{}))));
- const hoverDimensions=await popup.evaluate(el=>{
-  const button=el.querySelector(".vy-icon-primary");
-  return {width:el.getBoundingClientRect().width,
-    actionWidth:button.getBoundingClientRect().width};
- });
- console.log("JELLYFIN_PARITY_HOVER_MEASURE "+JSON.stringify(hoverDimensions));
- assert(approximate(hoverDimensions.width,visualReference.hover.widthPx,1));
- assert(approximate(hoverDimensions.actionWidth,
-  visualReference.hover.actionDiameterPx,1));
- console.log("JELLYFIN_PARITY_HOVER_SOURCE_GEOMETRY_PASS "+
-   JSON.stringify(hoverDimensions));
  await popup.getByRole("button",{name:"Marquer vu"}).click();
  assert(actions.some(x=>x.method==="POST" &&
   x.path==="/Users/"+user+"/PlayedItems/"+hoveredEpisode.Id));

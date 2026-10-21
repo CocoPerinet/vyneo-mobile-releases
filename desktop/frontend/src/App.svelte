@@ -101,8 +101,7 @@
     {key:"anime",label:"Animés"},
     {key:"movies",label:"Films"},
     {key:"series",label:"Séries"},
-    {key:"favorites",label:"Ma liste"},
-    {key:"universes",label:"Univers"}
+    {key:"favorites",label:"Ma liste"}
   ];
   let catalogKind=$derived<CatalogKind|null>(
     tab==="movies"?"Movie":tab==="series"?"Series":tab==="anime"?"Anime":null);
@@ -619,8 +618,11 @@
         aria-label="Retour à l'accueil" onclick={()=>selectTab("home")}>Vynéo</button>
       <nav class="vy-nav" aria-label="Navigation principale">
         {#each tabs as entry (entry.key)}
-          <button type="button" class:active={tab===entry.key}
-            aria-current={tab===entry.key?"page":undefined}
+          <button type="button"
+            class:active={tab===entry.key ||
+              (tab==="universes" && entry.key==="home")}
+            aria-current={tab===entry.key ||
+              (tab==="universes" && entry.key==="home")?"page":undefined}
             onclick={()=>selectTab(entry.key)}>{entry.label}</button>
         {/each}
       </nav>

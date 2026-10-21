@@ -65,7 +65,11 @@ try{
   if(method==="OPTIONS")
    return route.fulfill({status:204,headers:cors,body:""});
   if(path.includes("/Images/")||path.includes("/Images/Primary")){
-   return route.fulfill({status:200,contentType:"image/png",body:image,
+   // A corrupt Jellyfin response exercises the browser's actual image
+   // decode error path, not only the API's missing-thumbnail fallback.
+   const corrupt=path.includes("/Items/"+id(1)+"/Images/");
+   return route.fulfill({status:200,contentType:"image/png",
+    body:corrupt?Buffer.from("invalid-png-bytes"):image,
     headers:{"Access-Control-Allow-Origin":"*"}});
   }
   if(method==="POST"||method==="DELETE"){
@@ -165,7 +169,18 @@ try{
  assert.equal(await page.locator(".vy-shelves .vy-shelf-count").count(),0);
  await page.getByRole("heading",{name:"Nouvelles saisons et suites"})
    .waitFor({timeout:12000});
- assert.equal(await page.locator(".vy-universe-tile").count(),6);
+ assert.equal(await page.locator(".vy-universe-tile").count(),7);
+ assert.equal(await page.locator(".vy-header .vy-nav").getByRole("button",
+  {name:"Univers",exact:true}).count(),0,
+  "Univers must remain a home rail, never a header tab");
+ await page.locator('[data-vy-universe="dcu"] img')
+  .evaluate(img=>img.decode());
+ const newDcu=await page.locator('[data-vy-universe="dcu"] img')
+  .evaluate(img=>({loaded:img.complete&&img.naturalWidth>0,
+   filter:getComputedStyle(img).filter}));
+ assert(newDcu.loaded && newDcu.filter==="none",
+  "New DCU logo must load in its original color");
+ console.log("JELLYFIN_PARITY_7_UNIVERSES_AND_HEADER_PASS");
  const search=await page.locator(".vy-search-icon").boundingBox();
  const input=await page.locator(".vy-search-label input").boundingBox();
  assert(search&&input);
@@ -193,6 +208,28 @@ try{
  }
  await page.setViewportSize({width:1650,height:930});
  console.log("JELLYFIN_PARITY_HOME_390_1280_1920_PASS nextup="+total);
+ const ranked=page.locator(".vy-card-ranking:has(.vy-novelty)").first();
+ await ranked.waitFor({timeout:4000});
+ const badgeGeometry=await ranked.evaluate(el=>{
+  const rank=el.querySelector(".vy-rank").getBoundingClientRect();
+  const badge=el.querySelector(".vy-novelty").getBoundingClientRect();
+  const overlaps=!(badge.right<=rank.left || badge.left>=rank.right ||
+    badge.bottom<=rank.top || badge.top>=rank.bottom);
+  return {rankTop:rank.top,badgeBottom:badge.bottom,overlaps};
+ });
+ assert(!badgeGeometry.overlaps && badgeGeometry.badgeBottom<
+   badgeGeometry.rankTop,
+   "Top 10 number and new-release badge must occupy separate corners");
+ console.log("JELLYFIN_PARITY_TOP10_BADGE_NO_COLLISION_PASS");
+ const brokenCard=page.locator(".vy-card[data-vy-card='"+id(1)+"']").first();
+ await brokenCard.scrollIntoViewIfNeeded();
+ await brokenCard.locator(".vy-card-picture img").waitFor();
+ await page.waitForFunction(mediaId=>{
+  const img=document.querySelector(".vy-card[data-vy-card='"+mediaId+"'] .vy-card-picture img");
+  return img?.dataset.vyArtReady==="false" &&
+    !img.hasAttribute("src") && getComputedStyle(img).visibility==="hidden";
+ },id(1),{timeout:4500});
+ console.log("JELLYFIN_PARITY_CORRUPT_IMAGE_PLACEHOLDER_PASS");
  const card=page.locator(".vy-shelf[aria-label='À suivre'] .vy-card").first();
  await card.scrollIntoViewIfNeeded();
  await card.hover();
@@ -292,8 +329,10 @@ try{
  await page.waitForTimeout(600);
  assert((await rail.evaluate(x=>x.scrollLeft))>prior);
  console.log("JELLYFIN_PARITY_CAROUSEL_ARROW_PASS");
- await page.getByRole("button",{name:"Univers",exact:true}).first().click();
+ await page.getByRole("button",{name:"Explorer l'univers Pixar"}).click();
+ await page.getByRole("button",{name:/Tous les univers/}).click();
  await page.locator(".vy-universe-tile").first().waitFor();
+ assert.equal(await page.locator(".vy-universe-tile").count(),7);
  assert.equal(await page.locator(".vy-universes-page h1").count(),1);
  const universeLeft=await page.locator(".vy-universes-page .vy-universe-tile")
    .first().evaluate(el=>el.getBoundingClientRect().left);
@@ -324,9 +363,10 @@ try{
     return {label:selected.textContent,hostRight:host.right,activeRight:item.right,
      hostLeft:host.left,activeLeft:item.left};
    });
-   assert(navVisibility.activeRight<=navVisibility.hostRight+2 &&
-    navVisibility.activeLeft>=navVisibility.hostLeft-2,
-    "Active mobile navigation tab must remain visible: "+JSON.stringify(navVisibility));
+   assert(navVisibility.label==="Accueil" &&
+     navVisibility.activeRight<=navVisibility.hostRight+2 &&
+     navVisibility.activeLeft>=navVisibility.hostLeft-2,
+    "Navigation remains on Accueil when viewing Univers: "+JSON.stringify(navVisibility));
    console.log("JELLYFIN_PARITY_ACTIVE_MOBILE_TAB_PASS "+
     JSON.stringify(navVisibility));
   }

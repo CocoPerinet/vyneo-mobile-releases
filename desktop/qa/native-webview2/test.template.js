@@ -29,6 +29,21 @@ try{
   const hlsPath="/Videos/"+itemId+"/master.m3u8?MediaSourceId="+sourceId+
     "&VideoCodec=h264&AudioCodec=aac&SegmentContainer=ts"+
     "&PlaySessionId=cccccccccccccccccccccccccccccccc";
+  // Observe decoded PCM from the real WebView2 media pipeline. A zero-gain
+  // sink prevents any audio reaching the user's speakers during hidden QA.
+  // This does not claim an audible user-session test.
+  const context=new window.AudioContext();
+  const audioSource=context.createMediaElementSource(video);
+  const analyser=context.createAnalyser();
+  analyser.fftSize=2048;
+  const zeroGain=context.createGain();
+  zeroGain.gain.value=0;
+  audioSource.connect(analyser);
+  analyser.connect(zeroGain);
+  zeroGain.connect(context.destination);
+  const samples=new Float32Array(analyser.fftSize);
+  let audioPeakRms=0,audioSamplesRead=0;
+  void context.resume().catch(()=>{});
   const ticket=await invoke("create_native_stream_ticket",{
     itemId,mediaSourceId:sourceId,
     userId:"dddddddddddddddddddddddddddddddd",
@@ -60,6 +75,14 @@ try{
   const interval=setInterval(async()=>{
     if(sent){clearInterval(interval);return;}
     const decoded=video.getVideoPlaybackQuality?.().totalVideoFrames??0;
+    if(context.state==="running"){
+      analyser.getFloatTimeDomainData(samples);
+      let energy=0;
+      for(const value of samples)energy+=value*value;
+      audioPeakRms=Math.max(audioPeakRms,
+        Math.sqrt(energy/samples.length));
+      audioSamplesRead++;
+    }
     if(video.videoWidth!==320 || video.videoHeight!==180 ||
       video.readyState<2 || video.paused || decoded<8)return;
     if(stage==="initial"){
@@ -91,7 +114,10 @@ try{
       seekTargetSeconds:3.2,
       hlsWorkerConfigured:true,
       nativeProtocol:true,
-      drm:false
+      drm:false,
+      audioContextState:context.state,
+      audioAnalyserSamples:audioSamplesRead,
+      audioRmsPeak:Number(audioPeakRms.toFixed(6))
     };
     await invoke("stop_native_stream_ticket",{ticket:ticket.ticket});
     await report("PASS",metrics);

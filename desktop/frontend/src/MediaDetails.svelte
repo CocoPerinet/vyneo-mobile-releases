@@ -271,7 +271,12 @@
       });
       streamKind=mode;streamTicket=ticket;
       await tick();
-      if(request!==streamEpoch || !videoElement)return;
+      if(request!==streamEpoch)return;
+      if(!videoElement){
+        streamError="Le lecteur vidéo n'a pas pu être initialisé.";
+        stopStream(true);
+        return;
+      }
       if(mode==="hls"){
         const {default:Hls}=await import("hls.js");
         if(request!==streamEpoch)return;
@@ -308,8 +313,12 @@
         catch{/* Autoplay may be denied; native controls stay visible. */}
       }
     }catch{
-      if(epoch===version && request===streamEpoch)
+      if(epoch===version && request===streamEpoch){
         streamError="Lecture impossible. Vérifiez le format et l'accès à Jellyfin.";
+        // A rejected dynamic HLS import or WebView2 initialization must
+        // never leave a valid server-media capability in memory.
+        stopStream(true);
+      }
     }finally{
       if(epoch===version && request===streamEpoch)streamBusy=false;
     }

@@ -44,6 +44,8 @@ test("HLS uses local capability assets with pinned Jellyfin origin",()=>{
   assert.match(page,/selectJellyfinHls\(\{/);
   assert.match(page,/negotiatePlaybackInfo\(target\.id\)/);
   assert.match(page,/negotiation\.hlsPaths\[source\.id\]/);
+  assert.match(page,/if\(!videoElement\)/);
+  assert.match(page,/stopStream\(true\)/);
   assert.match(page,/player\?\.destroy\(\)/);
 });
 test("video CSP allows only Tauri custom media and no token-bearing URLs",()=>{

@@ -97,7 +97,17 @@ try{
     {Id:id(8102),Name:"Animes",CollectionType:"tvshows"}
    ]};
   }else if(path==="/UserItems/Resume"){
-   payload={Items:films.slice(0,8),TotalRecordCount:8};
+   // Resume has genuine partial playback; the prior QA accidentally
+   // served eight already-watched films and hid the missing-stale fix.
+   const partial=films.slice(0,8).map((film,n)=>({
+    ...film,RunTimeTicks:100000000000,
+    UserData:{...film.UserData,Played:false,
+     PlaybackPositionTicks:(n+1)*8000000000}
+   }));
+   const stale={...films[8],RunTimeTicks:100000000000,
+    UserData:{...films[8].UserData,Played:false,
+     PlaybackPositionTicks:99000000000}};
+   payload={Items:[...partial,stale],TotalRecordCount:9};
   }else if(path==="/Shows/NextUp"){
    const start=Number(qs.get("StartIndex")??0);
    const limit=Number(qs.get("Limit")??300);
@@ -160,6 +170,13 @@ try{
  await page.waitForFunction(()=>
    document.querySelectorAll(".vy-shelf[aria-label='À suivre'] .vy-card").length>=260);
  const total=await page.locator(".vy-shelf[aria-label='À suivre'] .vy-card").count();
+ const resumeCardIds=await page.locator(
+  ".vy-shelf[aria-label='Reprendre la lecture'] .vy-card"
+ ).evaluateAll(cards=>cards.map(card=>card.dataset.vyCard));
+ assert.equal(resumeCardIds.length,8);
+ assert(!resumeCardIds.includes(id(9)),
+  "A stale 99%-finished .strm must never remain in Resume");
+ console.log("JELLYFIN_PARITY_RESUME_FILTERS_STALE_99PCT_PASS");
  const shape=await page.locator(".vy-shelf[aria-label='À suivre']").evaluate(el=>({
   total:el.querySelectorAll(".vy-card").length,
   railItems:el.querySelector(".vy-rail")?.children.length,

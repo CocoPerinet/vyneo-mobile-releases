@@ -9,7 +9,7 @@ use std::{
 };
 use serde::Serialize;
 use tauri::{
-    http::{self, header, Method, Request, Response, StatusCode},
+    http::{header, Method, Request, Response, StatusCode},
     State,
 };
 
@@ -18,19 +18,24 @@ const CHUNK: u64 = 2 * 1024 * 1024;
 const MAX_PARALLEL: usize = 8;
 const TICKET_LIFETIME: Duration = Duration::from_secs(4 * 60 * 60);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StreamKind { DirectMp4, Hls }
+
 #[derive(Clone)]
-struct StreamGrant {
-    item: String,
-    source: String,
-    token: String,
-    device: String,
-    expires: Instant,
+pub(crate) struct StreamGrant {
+    pub(crate) item: String,
+    pub(crate) source: String,
+    pub(crate) token: String,
+    pub(crate) device: String,
+    pub(crate) kind: StreamKind,
+    pub(crate) assets: Arc<Mutex<HashMap<String, reqwest::Url>>>,
+    pub(crate) expires: Instant,
 }
 
 pub struct Tickets {
-    grants: Mutex<HashMap<String, StreamGrant>>,
-    active: AtomicUsize,
-    client: reqwest::blocking::Client,
+    pub(crate) grants: Mutex<HashMap<String, StreamGrant>>,
+    pub(crate) active: AtomicUsize,
+    pub(crate) client: reqwest::blocking::Client,
 }
 
 impl Tickets {
@@ -55,6 +60,7 @@ pub struct NativeStreamTicket {
 fn guid(value: &str) -> bool {
     value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
+pub(crate) fn valid_guid(value: &str) -> bool { guid(value) }
 fn safe_device(value: &str) -> bool {
     (5..=80).contains(&value.len()) &&
         value.bytes().all(|byte| byte.is_ascii_alphanumeric()
@@ -74,16 +80,23 @@ pub fn create_native_stream_ticket(
     user_id: String,
     access_token: String,
     device_id: String,
+    kind: String,
 ) -> Result<NativeStreamTicket, String> {
     if !guid(&item_id) || !guid(&media_source_id) || !guid(&user_id)
         || !safe_token(&access_token) || !safe_device(&device_id)
     {
         return Err("STREAM_SCOPE_INVALID".into());
     }
+    let stream_kind = match kind.as_str() {
+        "direct" => StreamKind::DirectMp4,
+        "hls" => StreamKind::Hls,
+        _ => return Err("STREAM_KIND_INVALID".into()),
+    };
     let key = uuid::Uuid::new_v4().simple().to_string();
     let grant = StreamGrant {
         item: item_id, source: media_source_id,
-        token: access_token, device: device_id,
+        token: access_token, device: device_id, kind: stream_kind,
+        assets: Arc::new(Mutex::new(HashMap::new())),
         expires: Instant::now() + TICKET_LIFETIME,
     };
     let mut map = state.grants.lock().map_err(|_| "STREAM_STATE_ERROR")?;
@@ -97,7 +110,17 @@ pub fn create_native_stream_ticket(
     let prefix = "http://vyneo-media.localhost/stream/";
     #[cfg(not(target_os = "windows"))]
     let prefix = "vyneo-media://localhost/stream/";
-    Ok(NativeStreamTicket { url: format!("{prefix}{key}"), ticket: key })
+    let url = match stream_kind {
+        StreamKind::DirectMp4 => format!("{prefix}{key}"),
+        StreamKind::Hls => {
+            #[cfg(target_os = "windows")]
+            let prefix = "http://vyneo-media.localhost/hls/";
+            #[cfg(not(target_os = "windows"))]
+            let prefix = "vyneo-media://localhost/hls/";
+            format!("{prefix}{key}/index.m3u8")
+        }
+    };
+    Ok(NativeStreamTicket { url, ticket: key })
 }
 
 #[tauri::command]
@@ -163,6 +186,9 @@ fn accepted_video_content_type(value: &str) -> bool {
 }
 
 fn media_request(state: Arc<Tickets>, request: Request<Vec<u8>>) -> Response<Vec<u8>> {
+    if request.uri().path().starts_with("/hls/") {
+        return crate::native_hls::handle_request(state, request);
+    }
     let origin = request.headers().get(header::ORIGIN)
         .and_then(|value| value.to_str().ok());
     if origin.is_some() && origin != Some("http://tauri.localhost")
@@ -188,6 +214,9 @@ fn media_request(state: Arc<Tickets>, request: Request<Vec<u8>>) -> Response<Vec
     let Some(grant) = grant else {
         return plain_status(StatusCode::NOT_FOUND);
     };
+    if grant.kind != StreamKind::DirectMp4 {
+        return plain_status(StatusCode::NOT_FOUND);
+    }
     if request.method() == Method::OPTIONS {
         return Response::builder().status(StatusCode::NO_CONTENT)
             .header("access-control-allow-origin", "http://tauri.localhost")

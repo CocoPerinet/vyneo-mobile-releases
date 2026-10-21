@@ -21,14 +21,35 @@ test("native player is scoped to a fixed TLS Jellyfin origin",()=>{
   assert.match(api, /SESSION_CHANGED/);
   assert.match(api, /validateStreamTicket\(raw\)/);
 });
+test("HLS uses local capability assets with pinned Jellyfin origin",()=>{
+  const hls=get("src-tauri/src/native_hls.rs");
+  const native=get("src-tauri/src/native_stream.rs");
+  assert.match(hls,/const UPSTREAM: &str = "https:\/\/cocojellyfin\.duckdns\.org:38443"/);
+  assert.match(hls,/VideoCodec", "h264"/);
+  assert.match(hls,/AudioCodec", "aac"/);
+  assert.match(hls,/MAX_PLAYLIST: usize = 512 \* 1024/);
+  assert.match(hls,/MAX_SEGMENT: usize = 16 \* 1024 \* 1024/);
+  assert.match(hls,/access_token/);
+  assert.match(hls,/api_key/);
+  assert.match(hls,/sanitized_upstream/);
+  assert.match(hls,/rewrite_playlist/);
+  assert.match(hls,/StreamKind::Hls/);
+  assert.match(native,/StreamKind::Hls/);
+  assert.match(native,/"hls" => StreamKind::Hls/);
+  const page=get("frontend/src/MediaDetails.svelte");
+  assert.match(page,/import\("hls.js"\)/);
+  assert.match(page,/selectJellyfinHls\(probe\)/);
+  assert.match(page,/player\?\.destroy\(\)/);
+});
 test("video CSP allows only Tauri custom media and no token-bearing URLs",()=>{
   const html=get("frontend/index.html");
   assert.match(html, /media-src 'self' http:\/\/vyneo-media\.localhost vyneo-media:/);
+  assert.match(html, /connect-src[^;]+http:\/\/vyneo-media\.localhost vyneo-media:/);
   assert.match(html,/connect-src 'self' https:\/\/cocojellyfin\.duckdns\.org:38443/);
   assert.doesNotMatch(html,/upgrade-insecure-requests/);
   const ui=get("frontend/src/MediaDetails.svelte");
   assert.match(ui, /selectDirectMp4\(probe\)/);
-  assert.match(ui, /src=\{streamTicket\.url\}/);
+  assert.match(ui, /src=\{streamKind==="direct"\?streamTicket\.url:undefined\}/);
   assert.match(ui, /onerror=/);
   assert.match(ui, /stopStream\(\)/);
   assert.doesNotMatch(ui,/\/Videos\//);

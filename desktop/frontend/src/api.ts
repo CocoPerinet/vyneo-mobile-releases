@@ -460,13 +460,21 @@ export class JellyfinApi {
    * Never put the Jellyfin bearer token in a media URL or localStorage. */
   async beginNativeDirectPlayback(itemId:string,mediaSourceId:string):
     Promise<NativeStreamTicket>{
+    return this.beginNativeMediaPlayback(itemId,mediaSourceId,"direct");
+  }
+  async beginNativeHlsPlayback(itemId:string,mediaSourceId:string):
+    Promise<NativeStreamTicket>{
+    return this.beginNativeMediaPlayback(itemId,mediaSourceId,"hls");
+  }
+  private async beginNativeMediaPlayback(itemId:string,mediaSourceId:string,
+    kind:"direct"|"hls"):Promise<NativeStreamTicket>{
     const uid=this.requireUser(),epoch=this.authGeneration;
     if(!validId(itemId) || !validId(mediaSourceId))
       throw new Error("STREAM_SCOPE_INVALID");
     if(!isTauri())throw new Error("NATIVE_PLAYER_REQUIRED");
     const raw=await invoke<unknown>("create_native_stream_ticket",{
       itemId,mediaSourceId,userId:uid,
-      accessToken:this.token,deviceId:this.deviceId
+      accessToken:this.token,deviceId:this.deviceId,kind
     });
     const ticket=validateStreamTicket(raw);
     if(epoch!==this.authGeneration || this.userId!==uid){

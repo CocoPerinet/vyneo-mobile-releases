@@ -3,6 +3,7 @@
 mod quality_policy;
 mod credentials;
 mod native_stream;
+mod native_hls;
 
 use std::time::Duration;
 use tauri::{

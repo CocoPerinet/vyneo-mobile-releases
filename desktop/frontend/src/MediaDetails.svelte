@@ -1,7 +1,8 @@
 <script lang="ts">
   import {onMount,tick} from "svelte";
   import {isTauri} from "@tauri-apps/api/core";
-  import {selectDirectMp4,resumeAtSeconds} from "./native-playback";
+  import {selectDirectMp4,selectJellyfinHls,resumeAtSeconds} from "./native-playback";
+  import type Hls from "hls.js";
   import type {NativeStreamTicket} from "./native-playback";
   import type {JellyfinApi} from "./api";
   import type {MediaAction} from "./media-actions";
@@ -33,6 +34,8 @@
   let playbackBusy=$state(false);
   let playbackError=$state("");
   let streamTicket=$state<NativeStreamTicket|null>(null);
+  let streamKind=$state<"direct"|"hls"|null>(null);
+  let hlsPlayer:Hls|null=null;
   let streamBusy=$state(false);
   let streamError=$state("");
   let streamStarted=$state(false);
@@ -194,9 +197,16 @@
   }
   function stopStream(){
     const current=streamTicket;
+    const player=hlsPlayer;
+    hlsPlayer=null;
+    player?.destroy();
     videoElement?.pause();
-    if(videoElement)videoElement.removeAttribute("src");
-    streamTicket=null;streamBusy=false;streamStarted=false;
+    if(videoElement){
+      videoElement.removeAttribute("src");
+      videoElement.load();
+    }
+    streamTicket=null;streamKind=null;
+    streamBusy=false;streamStarted=false;
     if(current)void api.endNativePlayback(current.ticket).catch(()=>{});
   }
   async function startNativeVideo(){
@@ -208,23 +218,61 @@
       if(epoch!==version || request!==streamEpoch ||
         shown.id!==target.id)return;
       playback=probe;
-      const source=selectDirectMp4(probe);
+      const direct=selectDirectMp4(probe);
+      const hls=direct?null:selectJellyfinHls(probe);
+      const source=direct??hls;
       if(!source?.id){
-        streamError="Aucune source MP4 H.264/AAC en lecture directe. "+
-          "Le transcodage Jellyfin n'est pas encore intégré.";
+        streamError="Jellyfin ne propose ni lecture MP4 compatible "+
+          "ni transcodage autorisé pour ce média.";
         return;
       }
-      const ticket=await api.beginNativeDirectPlayback(target.id,source.id);
+      const mode=direct?"direct":"hls";
+      const ticket=mode==="direct"
+        ?await api.beginNativeDirectPlayback(target.id,source.id)
+        :await api.beginNativeHlsPlayback(target.id,source.id);
       if(epoch!==version || request!==streamEpoch ||
         shown.id!==target.id){
         await api.endNativePlayback(ticket.ticket).catch(()=>{});
         return;
       }
-      streamTicket=ticket;
+      streamKind=mode;streamTicket=ticket;
       await tick();
-      if(request!==streamEpoch)return;
-      try{await videoElement?.play();}
-      catch{/* Autoplay may be refused after async negotiation: use controls. */}
+      if(request!==streamEpoch || !videoElement)return;
+      if(mode==="hls"){
+        const {default:Hls}=await import("hls.js");
+        if(request!==streamEpoch)return;
+        if(!Hls.isSupported()){
+          streamError="Le navigateur intégré ne prend pas en charge MSE/HLS.";
+          stopStream();
+          return;
+        }
+        const engine=new Hls({
+          enableWorker:true,maxBufferLength:24,
+          maxMaxBufferLength:48,maxBufferSize:48*1024*1024,
+          manifestLoadingMaxRetry:2,
+          levelLoadingMaxRetry:2,
+          fragLoadingMaxRetry:2,
+        });
+        hlsPlayer=engine;
+        engine.on(Hls.Events.MEDIA_ATTACHED,()=>{
+          if(request===streamEpoch)engine.loadSource(ticket.url);
+        });
+        engine.on(Hls.Events.MANIFEST_PARSED,()=>{
+          if(request===streamEpoch)
+            void videoElement?.play().catch(()=>{});
+        });
+        engine.on(Hls.Events.ERROR,(_event,detail)=>{
+          if(detail.fatal && request===streamEpoch){
+            streamError="Lecture HLS interrompue. "+
+              "Vérifiez l'accès au serveur et le transcodage Jellyfin.";
+            streamEpoch++;stopStream();
+          }
+        });
+        engine.attachMedia(videoElement);
+      }else{
+        try{await videoElement.play();}
+        catch{/* Autoplay may be denied; native controls stay visible. */}
+      }
     }catch{
       if(epoch===version && request===streamEpoch)
         streamError="Lecture impossible. Vérifiez le format et l'accès à Jellyfin.";
@@ -354,9 +402,9 @@
         <section class="vy-playback-check" aria-label="Compatibilité du média">
           <h3>Lecture et qualité</h3>
           <p class="vy-detail-muted">
-            Un premier lecteur natif prend en charge les sources MP4
-            compatibles H.264/AAC. Les autres formats exigent encore le
-            transcodage du serveur Jellyfin.
+            Lecture directe MP4 compatible, sinon transcodage HLS via
+            Jellyfin pour les médias distants, dont les fichiers STRM.
+            Cette fonction est encore expérimentale.
           </p>
           {#if nativeAvailable}
             <div class="vy-direct-play-actions">
@@ -364,7 +412,7 @@
                 disabled={streamBusy || playbackBusy}
                 onclick={()=>void startNativeVideo()}>
                 <VyIcon kind="play" size={17}/>
-                {streamBusy?"Ouverture…":"Lire dans Vynéo (MP4)"}
+                {streamBusy?"Ouverture…":"Lire dans Vynéo"}
               </button>
               {#if streamTicket}
                 <button type="button" class="vy-detail-action"
@@ -381,7 +429,8 @@
             <div class="vy-native-player">
               <!-- svelte-ignore a11y_media_has_caption -->
               <video bind:this={videoElement}
-                src={streamTicket.url} controls playsinline preload="metadata"
+                src={streamKind==="direct"?streamTicket.url:undefined}
+                controls playsinline preload="metadata"
                 aria-label={"Lecteur vidéo : "+shown.title}
                 onplaying={()=>{streamStarted=true;}}
                 onloadedmetadata={()=>{
@@ -453,14 +502,14 @@
           {/if}
           <div class="vy-unavailable">
             {nativeAvailable
-              ?"Version expérimentale : le lecteur MP4 est intégré, mais le suivi de progression, la qualité automatique, les sous-titres et les autres codecs restent à valider avant publication stable."
-              :"La lecture MP4 intégrée nécessite la version native Tauri. Ce diagnostic seul ne lance aucune lecture."}
+              ?"Version expérimentale : HLS utilise le transcodage Jellyfin. Le suivi de progression, les sous-titres et la qualité automatique restent à valider avant publication stable."
+              :"La lecture intégrée nécessite la version native Tauri. Ce diagnostic seul ne lance aucune lecture."}
           </div>
         </section>
       {:else if item.type==="Series"}
         <div class="vy-unavailable">
           Choisissez un épisode pour vérifier ses pistes vidéo, audio et sous-titres.
-          Le lecteur MP4 expérimental apparaît après sélection d'un épisode
+          Le lecteur expérimental apparaît après sélection d'un épisode
           dans l'application native.
         </div>
       {/if}

@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {selectDirectMp4,validateStreamTicket,resumeAtSeconds} from "../src/native-playback";
+import {selectDirectMp4,selectJellyfinHls,validateStreamTicket,resumeAtSeconds} from "../src/native-playback";
 import type {PlaybackProbe,PlaybackSource,PlaybackTrack} from "../src/types";
 const id="a".repeat(32),ticket="b".repeat(32);
 const track=(kind:PlaybackTrack["kind"],codec:string):PlaybackTrack=>({
@@ -38,6 +38,16 @@ describe("native playback: no false-positive video compatibility",()=>{
     expect(selectDirectMp4(probe([]))).toBeNull();
     expect(selectDirectMp4(probe([source()],"NotAllowed"))).toBeNull();
   });
+  it("chooses an authorized Jellyfin transcoding source for STRM MKV/HEVC",()=>{
+    const hevc=source({container:"MKV",tracks:[
+      track("Video","hevc"),track("Audio","eac3")]});
+    expect(selectDirectMp4(probe([hevc]))).toBeNull();
+    expect(selectJellyfinHls(probe([hevc]))?.id).toBe(id);
+    expect(selectJellyfinHls(probe([source({transcoding:false})])))
+      .toBeNull();
+    expect(selectJellyfinHls(probe([hevc],"NotAllowed")))
+      .toBeNull();
+  });
   it("resumes at precise Jellyfin ticks, with conservative fallback",()=>{
     expect(resumeAtSeconds({resumeTicks:650_000_000,progress:3},1800))
       .toBe(65);
@@ -58,6 +68,12 @@ describe("native playback: no false-positive video compatibility",()=>{
     })).toEqual({ticket,url:"http://vyneo-media.localhost/stream/"+ticket});
     expect(validateStreamTicket({
       ticket,url:"vyneo-media://localhost/stream/"+ticket
+    }).ticket).toBe(ticket);
+    expect(validateStreamTicket({
+      ticket,url:"http://vyneo-media.localhost/hls/"+ticket+"/index.m3u8"
+    }).ticket).toBe(ticket);
+    expect(validateStreamTicket({
+      ticket,url:"vyneo-media://localhost/hls/"+ticket+"/index.m3u8"
     }).ticket).toBe(ticket);
     for(const url of [
       "https://cocojellyfin.duckdns.org/Videos/id?api_key=x",

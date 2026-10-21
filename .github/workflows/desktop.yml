@@ -103,7 +103,9 @@ jobs:
           ./vyneo-quality-tests.exe
       - name: Verify native Tauri media grant and byte-range tests
         working-directory: desktop/src-tauri
-        run: cargo test --bin vyneo-desktop native_stream::tests
+        run: |
+          cargo test --bin vyneo-desktop native_stream::tests
+          cargo test --bin vyneo-desktop native_hls::tests
       - name: Build unsigned PR or manual Windows installer
         if: github.ref_type != 'tag'
         working-directory: desktop
@@ -149,7 +151,9 @@ jobs:
           ./vyneo-quality-tests.exe
       - name: Verify native Tauri media grant and byte-range tests
         working-directory: desktop/src-tauri
-        run: cargo test --bin vyneo-desktop native_stream::tests
+        run: |
+          cargo test --bin vyneo-desktop native_stream::tests
+          cargo test --bin vyneo-desktop native_hls::tests
       - name: Build signed Windows updater and NSIS installer
         if: github.ref_type == 'tag'
         working-directory: desktop

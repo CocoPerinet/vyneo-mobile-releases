@@ -895,7 +895,7 @@
                       const count=activeUniverseGroups.length;
                       universeGroupIndex=key==="Home"?0:
                         key==="End"?count-1:
-                        (universeGroupIndex+(key==="ArrowRight"?1:count-1))%count;
+                        (index+(key==="ArrowRight"?1:count-1))%count;
                       requestAnimationFrame(()=>
                         document.querySelectorAll<HTMLButtonElement>(
                           ".vy-universe-tabs [role=tab]")[universeGroupIndex]

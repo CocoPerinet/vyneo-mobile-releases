@@ -89,7 +89,7 @@
       "status": "synthetic-validated",
       "reference": "inject.js:NextUp",
       "automation": "desktop/qa/parity-qa.mjs",
-      "evidence": "Audit source 2026-10-20 / tests synthétiques 0.2.4 (pas de capture Jellyfin réelle)"
+      "evidence": "Tests synthétiques COCO 2026-10-21 : pagination 600 épisodes, preuve de métadonnées pour 450 séries uniques sans troncature à 300, requêtes bornées à 3, exclusion des reprises terminées à 95%. Parité des ID avec le compte réel reste ouverte."
     },
     {
       "block": "C",
@@ -99,17 +99,17 @@
       "status": "synthetic-validated",
       "reference": "inject.js:vyBadgeNouveaute",
       "automation": "desktop/frontend/tests/new-seasons.test.ts",
-      "evidence": "Audit source 2026-10-20 / tests synthétiques 0.2.4 (pas de capture Jellyfin réelle)"
+      "evidence": "Tests synthétiques COCO 2026-10-21 : saisons S2E1 réellement récentes isolées, anciens E1 repoussés en fin d'À suivre, suites TMDb sans sauter un épisode de saga non vu. Dates de sortie, jamais DateCreated."
     },
     {
       "block": "C",
       "id": "universes",
       "title": "Univers et métadonnées/LLM",
       "acceptance": "Respecter les 7 univers, phases/chronologies et classement justifié via métadonnées Jellyfin",
-      "status": "source-reviewed",
+      "status": "synthetic-validated",
       "reference": "inject.js:VY_UNIVERS",
       "automation": "desktop/frontend/tests/universes.test.ts",
-      "evidence": "Audit source 2026-10-20 / tests synthétiques 0.2.4 (pas de capture Jellyfin réelle)"
+      "evidence": "Tests synthétiques COCO 2026-10-21 : 7 logos, onglets MCU phases 1-6, chronologie Star Wars, décennies Disney/Pixar/DreamWorks/DC, chapitre DCU ; lignes détaillées, actions favoris/vu, scan simulé 1450 œuvres à concurrence bornée. Pas de validation réelle Jellyfin ni LLM."
     },
     {
       "block": "C",
@@ -119,7 +119,7 @@
       "status": "synthetic-validated",
       "reference": "inject.js:vyBadgeNouveaute",
       "automation": "desktop/frontend/tests/new-seasons.test.ts",
-      "evidence": "Audit source 2026-10-20 / tests synthétiques 0.2.4 (pas de capture Jellyfin réelle)"
+      "evidence": "Tests synthétiques COCO 2026-10-21 : badges limités aux dates de première, aucune saison inventée sans SeasonId, collision Top 10 absente. Les cas réels Jellyfin restent à comparer."
     },
     {
       "block": "D",

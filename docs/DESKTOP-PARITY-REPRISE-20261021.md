@@ -87,3 +87,71 @@ ignorés), 0 erreur/avertissement Svelte/TypeScript, build Vite OK,
 QA Playwright complète au 21 octobre. Le compte Jellyfin du propriétaire
 n'a pas été utilisé par ces tests ; images fictives, serveur simulé.
 `0.2.4` installée et publication stable inchangées.
+
+## Suite du 21 octobre : NextUp, nouveauté et vrais groupes Univers
+
+Source incrémentale : commits `92630c8` à `482a47d` sur
+`feature/desktop-audit-parity-v025`, sans modifier la release signée
+`desktop-v0.2.4`.
+
+### Bloc C : progression et saisons
+
+- Métadonnées parentales vérifiées pour **600 séries autorisées distinctes**
+  au lieu de 300 ; requêtes `Ids` par groupes de 60 et **concurrence limitée
+  à 3**. Test de bout en bout API simulé à 450 séries réelles distinctes.
+- Les saisons S2E1 sorties récemment (60 jours, série engagée au moins 15 %)
+  restent dans « Nouvelles saisons et suites », tandis que les saisons E1
+  anciennes sont repoussées en **fin** de « À suivre ».
+- `DateCreated` ne sert pas à identifier une nouvelle saison. Un épisode
+  sans `SeasonId` ne peut hériter arbitrairement du dernier badge série.
+- Une saga TMDb ne propose pas le volet le plus récent si un film antérieur
+  de la même collection reste non vu dans le catalogue **déjà autorisé
+  et chargé**. La couverture des unions Tvdb et liens de titres du thème
+  Jellyfin avancé reste un travail distinct.
+- « Reprendre la lecture » : interroger jusqu'à 100 positions Jellyfin
+  puis exclure côté client les objets déjà vus ou ≥95 %, même si leur état
+  backend n'a pas été actualisé par un lecteur STRM. Aucun marquage serveur
+  automatique de « vu » n'est ajouté.
+
+### Bloc C : reprise des Univers tels que Jellyfin les présente
+
+- Le système de regroupement vient de la vraie fonction `groupesUnivers`
+  de `inject.js:13480-13775`, pas de la feuille de style hypothétique.
+- Les 7 univers ont maintenant leurs listes détaillées (vignette, date,
+  durée de film/nb de saisons quand disponible, note, synopsis, états),
+  actions favoris/vu et **onglets accessibles au clavier**.
+- MCU : phases 1-6 avec coupure du **1er juin 2025** entre les phases 5
+  et 6, pas une approximation par année. Chronologie Star Wars fondée sur
+  la liste d'œuvres explicites du thème ; les œuvres reconnues mais sans
+  classification sont conservées dans « Autres aventures Star Wars ».
+- Disney/Pixar/DreamWorks/DC : décennies. DCU : chapitre 1. Une œuvre
+  dont l'année est inconnue n'est pas supprimée du catalogue.
+- L'affichage Univers reste pour l'instant une page native indépendante,
+  **pas encore la popup modale exactement calquée** sur Jellyfin : le
+  mécanisme d'ouverture/fermeture, les animations et la conservation de la
+  ligne à la réouverture font encore partie du bloc D visuel.
+- Le catalogue autorisé (jusqu'à 6000 objets) est demandé à concurrence
+  maximale de 3 pages, au lieu de 30 pages séquentielles possibles.
+  Cas synthétique : 1450 titres, 8 pages, aucun doublon ou ID extérieur
+  et rejet quand Jellyfin refuse une page. Gain réel de latence non mesuré.
+
+### Revalidation Windows
+
+Au 21 octobre, commit `482a47d` : **112/112 Vitest** et **25 tests Node
+réussis** (6 réservés à POSIX ignorés), contrôle Svelte/TypeScript
+**0 erreur/0 avertissement**, build Vite OK et QA Playwright complète
+PASS. Scénario du navigateur avec 264 cartes « À suivre » et liste Pixar
+multi-décennies, clics favoris/vu, onglets clavier, affiches manquantes
+et responsive 390/1280/1920 : PASS.
+
+Ces chiffres attestent la version de développement testée sur données
+**synthétiques** ; ils ne constituent pas une validation de parité réelle
+contre la bibliothèque connectée et la UI Jellyfin en direct.
+
+### Prochain verrou avant release
+
+Captures Jellyfin actif vs Vynéo (même profil, même contenu, viewport, scroll),
+contrôles sur ID réels « À suivre », règles Tvdb des suites, groupes avancés
+et interactions de modale. Les items `side-by-side` et `real-library`
+restent `pending`. La stable 0.2.4 et son système de mise à jour restent
+intacts ; aucune seconde app n'est installée.

@@ -139,7 +139,7 @@
       "status": "pending",
       "reference": "inject.js:Jellyfin API",
       "automation": "desktop/qa/parity-qa.mjs",
-      "evidence": " Lecteur direct MP4 Svelte/Tauri expérimental ajouté à la PR #9 : sélection strictement compatible, proxy custom-scheme ticket court et plages 2 Mio, tests Rust Windows c57d929 PASS. Lecture WebView2 réelle, synchronisation du visionnage et corpus .strm toujours non testés ; aucune promotion de statut."
+      "evidence": " Lecteur direct MP4 Svelte/Tauri expérimental ajouté à la PR #9 : sélection strictement compatible, proxy custom-scheme ticket court et plages 2 Mio, tests Rust Windows c57d929 PASS. Lecture WebView2 réelle, synchronisation du visionnage et corpus .strm toujours non testés ; aucune promotion de statut. Read-only 2026-10-21 global Jellyfin audit: 49896 Movies/Episodes point to .strm, with 18 sampled STRM URLs under the pinned HTTPS /proxy origin; three HEAD probes returned Matroska and one ffprobe showed HEVC/EAC3. QSV enabled in encoding config, not independently performance-tested. The experimental HLS route in PR #9 rewrites manifests to token-free local capabilities and prefers server H264/AAC transcoding, with bounded native Rust proxy and lazy hls.js. Real WebView2 first frame, true account-specific scope, subtitles, audio and progress reporting remain unverified and must NOT be promoted to real-validated."
     }
   ],
   "auditSha256": "85678039cfbfd6ad84b455b939e8f2543232cb77326d023bf2eb1527ccc5f8ae"

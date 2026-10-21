@@ -568,3 +568,57 @@ de l'installeur. 139 tests Vitest, 28 tests Node exécutés,
 le correctif 321791c rétablit 0 erreur et 0 avertissement Svelte.
 La vérification de lecture effective de fichiers locaux ou .strm
 n'est **pas** encore attestée et reste obligatoire.
+
+## Suite : HLS Jellyfin pour la bibliothèque STRM, sans deuxième application
+
+### Audit réel et non intrusif du serveur (21 octobre 2026)
+
+- Base Jellyfin consultée en lecture seule : **49 896 objets vidéo .strm** de
+  type film ou épisode, soit 4 010 films et 45 886 épisodes. Ces chiffres
+  ne sont pas les contenus autorisés d'un utilisateur particulier.
+- Les **18 références STRM examinées** pointent vers l'endpoint
+  HTTPS du proxy cocojellyfin.duckdns.org:38443/proxy. Trois contrôles
+  HEAD renvoient video/x-matroska. Une sonde ffprobe avec limite de temps
+  confirme HEVC et E-AC3 sur un exemple, les autres ne concluent pas.
+- L'accélération Intel QSV est activée dans encoding.xml et le périphérique
+  /dev/dri est visible dans Jellyfin. Il s'agit de configuration,
+  **pas de la preuve d'un encodage fonctionnel en lecture utilisateur**.
+
+### Nouvelle voie de lecture HLS, candidate uniquement
+
+- La lecture directe MP4/H.264/AAC reste disponible pour les sources
+  compatibles et autorisées. Les MKV, HEVC et STRM dont Jellyfin
+  autorise le transcodage peuvent désormais prendre une seconde voie HLS.
+- hls.js 1.7.3 est épinglé et chargé sur demande, sans charger le
+  lecteur sur le premier écran d'accueil.
+- Le client crée un ticket temporaire de type HLS dans le même programme
+  Tauri ; la playlist main.m3u8 est demandée au domaine Jellyfin
+  épinglé, avec une cible H.264/AAC, 1080p et 8 Mb/s vidéo. Jellyfin
+  réalise le transcodage et décide de son utilisation matérielle.
+- Le Rust natif réécrit les playlists et les sous-ressources en URLs
+  locales aléatoires. Les URLs de segments en amont restent uniquement
+  dans la mémoire native, **sans exposer le jeton Jellyfin dans le DOM,
+  l'adresse du média ou les logs**.
+- Sont refusés : domaines/schémas/ports externes, chemins sortant de
+  l'item, clés HLS AES/DRM, redirections, réponses HTML/JSON,
+  marqueurs de jeton restants dans une playlist, segments anormalement
+  volumineux et playlists exigeant des BYTERANGE non gérés.
+- Bornes : 512 Kio de manifeste, 16 Mio par fragment, 4 096 références
+  au maximum, 8 requêtes simultanées, tickets expirant au bout de 4 h
+  et révocation à la déconnexion.
+- Il s'agit d'un protocole interne WebView2/Tauri, **pas d'un serveur
+  HTTP supplémentaire ouvert sur le réseau**.
+
+### Ce qui reste obligatoire pour la publication
+
+Les tests frontend et Rust peuvent valider la cohérence du client,
+les règles de sécurité du proxy et la compilation. Ils ne valident
+pas encore **la première image avec une session Jellyfin réelle**,
+les sous-titres, les multiples pistes audio, les flux .strm défaillants,
+la qualité automatique, le son ni le suivi de lecture Jellyfin via
+Sessions/Playing et Progress et Stopped.
+
+La version stable desktop-v0.2.4 n'est pas modifiée. Une seule
+application reste installée sur COCO. La PR #9 demeure en brouillon,
+les critères D side-by-side et real-library restent PENDING,
+et le pipeline refuse une publication stable sans preuves réelles.

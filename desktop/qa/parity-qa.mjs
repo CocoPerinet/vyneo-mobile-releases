@@ -229,7 +229,8 @@ try{
  console.log("JELLYFIN_PARITY_TOP10_BADGE_NO_COLLISION_PASS");
  const brokenCard=page.locator(".vy-card[data-vy-card='"+id(1)+"']").first();
  await brokenCard.scrollIntoViewIfNeeded();
- await brokenCard.locator(".vy-card-picture img").waitFor();
+ await brokenCard.locator(".vy-card-picture img")
+  .waitFor({state:"attached",timeout:4000});
  await page.waitForFunction(mediaId=>{
   const img=document.querySelector(".vy-card[data-vy-card='"+mediaId+"'] .vy-card-picture img");
   return img?.dataset.vyArtReady==="false" &&

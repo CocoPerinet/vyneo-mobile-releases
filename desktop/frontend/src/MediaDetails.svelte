@@ -5,6 +5,8 @@
   import type Hls from "hls.js";
   import type {NativeStreamTicket} from "./native-playback";
   import {PlaybackReporter,playbackClock} from "./playback-report";
+  import {unavailablePlaybackMessage,nativeHlsFailureMessage,
+    htmlVideoFailureMessage} from "./playback-errors";
   import type {JellyfinApi} from "./api";
   import type {MediaAction} from "./media-actions";
   import VyIcon from "./VyIcon.svelte";
@@ -247,8 +249,7 @@
       });
       const source=direct??hls;
       if(!source?.id){
-        streamError="Jellyfin ne propose ni lecture MP4 compatible "+
-          "ni transcodage autorisé pour ce média.";
+        streamError=unavailablePlaybackMessage(probe);
         return;
       }
       const mode=direct?"direct":"hls";
@@ -302,8 +303,7 @@
         });
         engine.on(Hls.Events.ERROR,(_event,detail)=>{
           if(detail.fatal && request===streamEpoch){
-            streamError="Lecture HLS interrompue. "+
-              "Vérifiez l'accès au serveur et le transcodage Jellyfin.";
+            streamError=nativeHlsFailureMessage(detail.type,detail.details);
             streamEpoch++;stopStream(true);
           }
         });
@@ -513,7 +513,8 @@
                   // Clearing an intentional stop can emit a delayed WebView2
                   // media error. Ignore it once the capability is revoked.
                   if(!streamTicket)return;
-                  streamError="Flux indisponible ou codec non pris en charge.";
+                  streamError=htmlVideoFailureMessage(
+                    videoElement?.error?.code??null);
                   if(reporter && videoElement)
                     reporter.stop(playbackClock(videoElement),true);
                   streamEpoch++;stopStream();

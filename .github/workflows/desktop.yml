@@ -118,6 +118,13 @@ jobs:
         if: github.ref_type != 'tag'
         working-directory: desktop
         run: npm run tauri -- build --bundles nsis --config src-tauri/tauri.preview.conf.json
+      - name: Verify stable NSIS upgrades in place without installing on COCO
+        if: github.event_name == 'pull_request'
+        working-directory: desktop
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./qa/nsis-in-place-upgrade.ps1
 
   windows_release:
     name: Windows x64 / release signée

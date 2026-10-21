@@ -101,6 +101,9 @@ jobs:
         run: |
           rustc --edition=2021 --test src-tauri/src/quality_policy.rs -o ./vyneo-quality-tests.exe
           ./vyneo-quality-tests.exe
+      - name: Verify native Tauri media grant and byte-range tests
+        working-directory: desktop/src-tauri
+        run: cargo test --bin vyneo-desktop native_stream::tests
       - name: Build unsigned PR or manual Windows installer
         if: github.ref_type != 'tag'
         working-directory: desktop
@@ -144,6 +147,9 @@ jobs:
         run: |
           rustc --edition=2021 --test src-tauri/src/quality_policy.rs -o ./vyneo-quality-tests.exe
           ./vyneo-quality-tests.exe
+      - name: Verify native Tauri media grant and byte-range tests
+        working-directory: desktop/src-tauri
+        run: cargo test --bin vyneo-desktop native_stream::tests
       - name: Build signed Windows updater and NSIS installer
         if: github.ref_type == 'tag'
         working-directory: desktop

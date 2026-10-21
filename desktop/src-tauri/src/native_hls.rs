@@ -142,6 +142,13 @@ fn rewrite_playlist(
     let mut output=String::with_capacity(manifest.len()*2);
     for line in manifest.lines() {
         let line=line.trim_end_matches('\r');
+        if line.starts_with("#EXT-X-BYTERANGE:")
+            || (line.starts_with("#EXT-X-MAP:") && line.contains("BYTERANGE="))
+        {
+            // Our HLS asset proxy serves entire segments. Do not silently
+            // hand MSE the wrong bytes for a byte-range-only playlist.
+            return Err(());
+        }
         if line.starts_with("#EXT-X-KEY:")
             && !line.contains("METHOD=NONE") {
             // AES-128 / DRM playlists need an explicit key model.
@@ -384,6 +391,8 @@ mod tests {
             "#EXTM3U\nhttps://evil.example/0.ts\n",
             "#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"key\"\n",
             "#EXTM3U\n#EXT-X-SESSION-KEY:METHOD=AES-128,URI=\"key\"\n",
+            "#EXTM3U\n#EXT-X-BYTERANGE:100@0\nhls1/main/0.mp4\n",
+            "#EXTM3U\n#EXT-X-MAP:URI=\"init.mp4\",BYTERANGE=\"100@0\"\n",
             "<html>login</html>"
         ] {
             assert!(rewrite_playlist(input,&base,&grant,&"d".repeat(32)).is_err());

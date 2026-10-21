@@ -43,7 +43,8 @@ test("HLS uses local capability assets with pinned Jellyfin origin",()=>{
 });
 test("video CSP allows only Tauri custom media and no token-bearing URLs",()=>{
   const html=get("frontend/index.html");
-  assert.match(html, /media-src 'self' http:\/\/vyneo-media\.localhost vyneo-media:/);
+  assert.match(html, /media-src 'self' blob: http:\/\/vyneo-media\.localhost vyneo-media:/);
+  assert.match(html, /worker-src 'self' blob:/);
   assert.match(html, /connect-src[^;]+http:\/\/vyneo-media\.localhost vyneo-media:/);
   assert.match(html,/connect-src 'self' https:\/\/cocojellyfin\.duckdns\.org:38443/);
   assert.doesNotMatch(html,/upgrade-insecure-requests/);

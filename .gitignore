@@ -1,0 +1,6 @@
+# Local QA dependencies and generated bundles
+**/node_modules/
+**/dist/
+**/target/
+*.log
+desktop/node_modules

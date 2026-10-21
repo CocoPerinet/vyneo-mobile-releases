@@ -13,7 +13,9 @@ const unique=(items:MediaItem[],limit=30):MediaItem[]=>{
 export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):Shelf[]{
   const recent=unique(data.recent,96);
   const resume=unique(data.resume,16);
-  const nextUp=unique(data.nextUp,22);
+  // Do not arbitrarily discard NextUp after 22 titles. The rail can
+  // scroll through every authorized continuation returned by Jellyfin.
+  const nextUp=unique(data.nextUp,600);
   const favorites=unique(data.favorites,30);
   const collections=unique(data.collections,36);
   const recommendations=recommendNative(data,now,18);
@@ -38,7 +40,10 @@ export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):She
   const rows:Shelf[]=[];
   const put=(id:string,title:string,items:MediaItem[],
     kind:Shelf["kind"]="standard")=>{
-    if(items.length)rows.push({id,title,items:unique(items),kind});
+    // Preserve the full, already bounded NextUp shelf instead of applying
+    // the default 30-item limit a second time.
+    if(items.length)rows.push({id,title,items:unique(items,
+      id==="next-up"?600:30),kind});
   };
   put("resume","Reprendre la lecture",resume);
   put("next-up","À suivre",nextUp);

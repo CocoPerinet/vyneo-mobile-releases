@@ -1,0 +1,16 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Vynéo Jellyfin QA",
+  "version": "0.2.3-qa.2",
+  "identifier": "fr.visyren.vyneo.desktop.jellyfinqa",
+  "bundle": {
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://127.0.0.1:9/qa-updates-disabled.json"
+      ]
+    }
+  }
+}

@@ -1,12 +1,13 @@
 import type {MediaItem,MediaType,SessionPublic,CatalogKind,CatalogPage,CatalogLibraryIds,SeasonSummary,EpisodePage,PlaybackProbe} from "./types";
 import {parseSeasons,parsePlaybackInfo} from "./media-details";
+import type {RecentSeason} from "./new-seasons";
 import {candidateOffsets,CANDIDATE_BATCH_SIZE} from "./candidate-pages";
 
 export const SERVER_ORIGIN="https://cocojellyfin.duckdns.org:38443";
 const ID=/^[a-f0-9]{32}$/i;
 const TOKEN=/^[a-z0-9._\-]{12,2048}$/i;
 const TYPES=new Set<MediaType>(["Movie","Series","Episode","BoxSet"]);
-const FIELDS="Overview,Genres,Tags,Studios,CommunityRating,DateCreated,PremiereDate,UserData,ImageTags,BackdropImageTags";
+const FIELDS="Overview,Genres,Tags,Studios,CommunityRating,DateCreated,PremiereDate,UserData,ImageTags,BackdropImageTags,ProviderIds";
 const obj=(v:unknown):Record<string,unknown>=>
   v && typeof v==="object" && !Array.isArray(v)
     ?v as Record<string,unknown>:{};
@@ -20,6 +21,7 @@ export function normalizeItem(v:unknown):MediaItem|null {
   if(!validId(id) || !TYPES.has(type as MediaType) ||
      typeof row.Name!=="string" || !row.Name.trim())return null;
   const ud=obj(row.UserData),imageTags=obj(row.ImageTags);
+  const providers=obj(row.ProviderIds);
   const duration=typeof row.RunTimeTicks==="number"?row.RunTimeTicks:0;
   const position=typeof ud.PlaybackPositionTicks==="number"
     ?ud.PlaybackPositionTicks:0;
@@ -42,7 +44,8 @@ export function normalizeItem(v:unknown):MediaItem|null {
     played:ud.Played===true,
     progress:duration>0 && position>0
       ?Math.max(0,Math.min(100,Math.round(position/duration*100))):null,
-    premiereDate:string(row.PremiereDate || row.DateCreated,32),
+    // DateCreated is an import date, never evidence of a new release.
+    premiereDate:string(row.PremiereDate,32),
     hasPrimary:typeof imageTags.Primary==="string",
     hasBackdrop:Array.isArray(row.BackdropImageTags) &&
       row.BackdropImageTags.length>0,
@@ -52,6 +55,14 @@ export function normalizeItem(v:unknown):MediaItem|null {
     hasParentBackdrop:Array.isArray(row.ParentBackdropImageTags) &&
       row.ParentBackdropImageTags.length>0,
     seriesId:validId(row.SeriesId)?row.SeriesId:null,
+    seasonId:validId(row.SeasonId)?row.SeasonId:null,
+    playedPercentage:typeof ud.PlayedPercentage==="number" &&
+      Number.isFinite(ud.PlayedPercentage) &&
+      ud.PlayedPercentage>=0 && ud.PlayedPercentage<=100
+      ?ud.PlayedPercentage:null,
+    franchiseId:typeof providers.TmdbCollection==="string" &&
+      /^\d{1,16}$/.test(providers.TmdbCollection)
+      ?providers.TmdbCollection:null,
     seasonNumber:typeof row.ParentIndexNumber==="number" &&
       Number.isSafeInteger(row.ParentIndexNumber) &&
       row.ParentIndexNumber>=0 && row.ParentIndexNumber<=1000
@@ -70,7 +81,7 @@ export function parseItems(payload:unknown,limit:number):MediaItem[]{
   const data=obj(payload);
   if(!Array.isArray(data.Items))throw new Error("CATALOG_INVALID");
   const seen=new Set<string>(),items:MediaItem[]=[];
-  for(const row of data.Items.slice(0,Math.min(limit,200))){
+  for(const row of data.Items.slice(0,Math.min(limit,300))){
     const item=normalizeItem(row);
     if(item && !seen.has(item.id)){seen.add(item.id);items.push(item);}
   }
@@ -366,6 +377,60 @@ export class JellyfinApi {
     this.assertSession(uid,generation);
     return parsePlaybackInfo(raw);
   }
+  async getUniverseCatalog():Promise<MediaItem[]>{
+    const uid=this.requireUser(),generation=this.authGeneration;
+    const result:MediaItem[]=[],seen=new Set<string>();
+    // 2400 silently omitted part of larger Jellyfin libraries (films,
+    // anime and series). Scan up to 6000 scoped records, on demand only.
+    for(let offset=0;offset<6000;offset+=200){
+      const path=this.userItems({
+        IncludeItemTypes:"Movie,Series",SortBy:"PremiereDate",
+        SortOrder:"Descending",Limit:200,StartIndex:offset,
+        EnableTotalRecordCount:"true"
+      });
+      const reply=obj(await this.json(path,{
+        maxBytes:1048576,timeoutMs:12000
+      }));
+      this.assertSession(uid,generation);
+      if(!Array.isArray(reply.Items) || reply.Items.length>200)
+        throw new Error("UNIVERSE_SCOPE_INVALID");
+      const permitted=parseItems(reply,200);
+      for(const item of permitted){
+        if((item.type==="Movie" || item.type==="Series") &&
+          !seen.has(item.id.toLowerCase())){
+          seen.add(item.id.toLowerCase());result.push(item);
+        }
+      }
+      const count=reply.TotalRecordCount;
+      if(reply.Items.length<200 ||
+         (typeof count==="number" && Number.isSafeInteger(count) &&
+          offset+reply.Items.length>=count))break;
+    }
+    this.assertSession(uid,generation);
+    return result;
+  }
+  async getUserAvatar():Promise<Blob|null>{
+    const uid=this.requireUser(),generation=this.authGeneration;
+    const url=new URL("/Users/"+uid+"/Images/Primary",this.origin);
+    let response:Response;
+    try{
+      response=await this.fetcher(url,{
+        method:"GET",headers:identityHeaders(this.token,this.deviceId),
+        credentials:"omit",cache:"no-store",mode:"cors",redirect:"error",
+        referrerPolicy:"no-referrer",signal:AbortSignal.timeout(8000)
+      });
+    }catch{return null;}
+    this.assertSession(uid,generation);
+    if(!response.ok || response.redirected)return null;
+    if(!/image\/(jpeg|png|webp)/i.test(response.headers.get("Content-Type")??""))
+      return null;
+    const length=Number(response.headers.get("Content-Length")??0);
+    if(length>524288)return null;
+    const content=await response.blob();
+    this.assertSession(uid,generation);
+    if(content.size>524288 || content.size===0)return null;
+    return content;
+  }
   async getRecent():Promise<MediaItem[]>{
     return this.items(this.userItems({
       IncludeItemTypes:"Movie,Series",SortBy:"DateCreated",
@@ -380,11 +445,118 @@ export class JellyfinApi {
     }),24);
   }
   async getNextUp():Promise<MediaItem[]>{
-    const uid=this.requireUser();
-    return this.items("/Shows/NextUp?"+new URLSearchParams({
-      userId:uid,StartIndex:"0",Limit:"24",
-      Fields:"DateCreated,PremiereDate"
-    }),24);
+    const uid=this.requireUser(),generation=this.authGeneration;
+    const result:MediaItem[]=[],seen=new Set<string>();
+    // The Jellyfin skin fetches up to 300 NextUp records; continue a
+    // second page for larger collections instead of silently losing shows.
+    for(let offset=0;offset<600;offset+=300){
+      const query=new URLSearchParams({
+        userId:uid,StartIndex:String(offset),Limit:"300",
+        Fields:"DateCreated,PremiereDate",EnableUserData:"true"
+      });
+      let raw:Record<string,unknown>;
+      try{
+        raw=obj(await this.json("/Shows/NextUp?"+query,{
+          maxBytes:2097152,timeoutMs:12000
+        }));
+      }catch(error){
+        this.assertSession(uid,generation);
+        if(offset===0)throw error;
+        break; // Keep already authorized episodes if the later page times out.
+      }
+      this.assertSession(uid,generation);
+      if(!Array.isArray(raw.Items) || raw.Items.length>300)
+        throw new Error("NEXT_UP_INVALID");
+      for(const item of parseItems(raw,300)){
+        const key=item.id.toLowerCase();
+        if(!seen.has(key)){seen.add(key);result.push(item);}
+      }
+      const count=raw.TotalRecordCount;
+      if(raw.Items.length<300 ||
+        (typeof count==="number" && Number.isSafeInteger(count) &&
+         count<=offset+raw.Items.length))break;
+    }
+    return result;
+  }
+  async getRecentSeasons(now=new Date()):Promise<RecentSeason[]>{
+    const uid=this.requireUser(),generation=this.authGeneration;
+    const path=this.userItems({
+      IncludeItemTypes:"Season",SortBy:"PremiereDate",
+      SortOrder:"Descending",Limit:300,
+      Fields:"PremiereDate,SeriesId,IndexNumber"
+    });
+    const response=obj(await this.json(path,{maxBytes:1048576}));
+    this.assertSession(uid,generation);
+    if(!Array.isArray(response.Items) || response.Items.length>300)
+      throw new Error("SEASONS_INVALID");
+    const today=now.getTime();
+    const dedup=new Map<string,RecentSeason>();
+    for(const raw of response.Items){
+      const row=obj(raw);
+      if(!validId(row.Id) || !validId(row.SeriesId) ||
+        !Number.isSafeInteger(row.IndexNumber) ||
+        (row.IndexNumber as number)<1 ||
+        (row.IndexNumber as number)>1000 ||
+        typeof row.PremiereDate!=="string")continue;
+      const release=Date.parse(row.PremiereDate);
+      if(!Number.isFinite(release) || release<today-60*86400000 ||
+        release>today+86400000)continue;
+      const season:RecentSeason={
+        seriesId:row.SeriesId,seasonId:row.Id,
+        number:row.IndexNumber as number,
+        premiereDate:row.PremiereDate.slice(0,32)
+      };
+      const old=dedup.get(season.seriesId.toLowerCase());
+      if(!old || Date.parse(old.premiereDate)<release)
+        dedup.set(season.seriesId.toLowerCase(),season);
+    }
+    return [...dedup.values()];
+  }
+  async getNextUpSeries(next:readonly MediaItem[]):Promise<MediaItem[]>{
+    const uid=this.requireUser(),generation=this.authGeneration;
+    this.assertSession(uid,generation);
+    const seen=new Set<string>();
+    const ids=next.map(ep=>ep.seriesId).filter((id):id is string=>
+      !!id && validId(id) && !seen.has(id.toLowerCase()) &&
+      !!seen.add(id.toLowerCase())).slice(0,300);
+    const rows:MediaItem[]=[];
+    for(let i=0;i<ids.length;i+=60){
+      const selection=ids.slice(i,i+60);
+      const path=this.userItems({
+        Ids:selection.join(","),IncludeItemTypes:"Series",Limit:60
+      });
+      const response=obj(await this.json(path,{maxBytes:786432}));
+      this.assertSession(uid,generation);
+      if(!Array.isArray(response.Items) || response.Items.length>60)
+        throw new Error("SERIES_SCOPE_INVALID");
+      const authorized=new Set(selection.map(x=>x.toLowerCase()));
+      for(const media of parseItems(response,60)){
+        if(media.type==="Series" && authorized.has(media.id.toLowerCase()))
+          rows.push(media);
+      }
+    }
+    return rows;
+  }
+  async updateMediaState(itemId:string,action:"favorite"|"played",
+    enabled:boolean):Promise<void>{
+    const uid=this.requireUser(),generation=this.authGeneration;
+    if(!validId(itemId) || !["favorite","played"].includes(action) ||
+      typeof enabled!=="boolean")throw new Error("MEDIA_ACTION_DENIED");
+    const resource=action==="favorite"?"FavoriteItems":"PlayedItems";
+    const url=new URL("/Users/"+uid+"/"+resource+"/"+itemId,this.origin);
+    if(url.origin!==this.origin)throw new Error("URL_DENIED");
+    let response:Response;
+    try{
+      response=await this.fetcher(url,{
+        method:enabled?"POST":"DELETE",
+        headers:identityHeaders(this.token,this.deviceId),
+        credentials:"omit",cache:"no-store",mode:"cors",redirect:"error",
+        referrerPolicy:"no-referrer",signal:AbortSignal.timeout(12000)
+      });
+    }catch{throw new Error("NETWORK_UNAVAILABLE");}
+    this.assertSession(uid,generation);
+    if(!response.ok || response.redirected)
+      throw new Error("MEDIA_ACTION_DENIED");
   }
   async getFavorites():Promise<MediaItem[]>{
     return this.items(this.userItems({
@@ -450,10 +622,39 @@ export class JellyfinApi {
     return result;
   }
   async getWatched():Promise<MediaItem[]>{
-    return this.items(this.userItems({
-      IncludeItemTypes:"Movie,Series",Filters:"IsPlayed",
-      SortBy:"DatePlayed",SortOrder:"Descending",Limit:96
-    }),96);
+    const uid=this.requireUser(),generation=this.authGeneration;
+    const items:MediaItem[]=[],seen=new Set<string>();
+    // Franchise evidence must not be limited to the 96 latest watches.
+    // Work is background-only, bounded at 600 items and per-user scoped.
+    for(let offset=0;offset<600;offset+=200){
+      const path=this.userItems({
+        IncludeItemTypes:"Movie,Series",Filters:"IsPlayed",
+        SortBy:"DatePlayed",SortOrder:"Descending",
+        Limit:200,StartIndex:offset
+      });
+      let raw:Record<string,unknown>;
+      try{
+        raw=obj(await this.json(path,{
+          maxBytes:1572864,timeoutMs:12000
+        }));
+      }catch(error){
+        this.assertSession(uid,generation);
+        if(offset===0)throw error;
+        break; // Later history pages must not erase already read favorites.
+      }
+      this.assertSession(uid,generation);
+      if(!Array.isArray(raw.Items) || raw.Items.length>200)
+        throw new Error("WATCH_HISTORY_INVALID");
+      for(const entry of parseItems(raw,200)){
+        const key=entry.id.toLowerCase();
+        if(!seen.has(key)){seen.add(key);items.push(entry);}
+      }
+      const count=raw.TotalRecordCount;
+      if(raw.Items.length<200 ||
+        (typeof count==="number" && Number.isSafeInteger(count) &&
+         count<=offset+raw.Items.length))break;
+    }
+    return items;
   }
   async getCollections():Promise<MediaItem[]>{
     return this.items(this.userItems({

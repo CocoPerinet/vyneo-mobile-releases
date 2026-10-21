@@ -10,6 +10,10 @@ fn service(identifier: &str) -> Result<&'static str, String> {
             Ok("fr.visyren.vyneo.desktop.jellyfin"),
         "fr.visyren.vyneo.desktop.preview" =>
             Ok("fr.visyren.vyneo.desktop.preview.jellyfin"),
+        // Dedicated parity-QA identity: never reuse the installed stable
+        // or the separate G7z Preview Windows Credential Manager record.
+        "fr.visyren.vyneo.desktop.jellyfinqa" =>
+            Ok("fr.visyren.vyneo.desktop.jellyfinqa.jellyfin"),
         _ => Err("VAULT_SCOPE_DENIED".to_string())
     }
 }
@@ -78,6 +82,11 @@ mod tests {
     fn rejects_malformed_credentials() {
         assert!(service("fr.visyren.vyneo.desktop").is_ok());
         assert_ne!(service("fr.visyren.vyneo.desktop").unwrap(),
+            service("fr.visyren.vyneo.desktop.preview").unwrap());
+        assert!(service("fr.visyren.vyneo.desktop.jellyfinqa").is_ok());
+        assert_ne!(service("fr.visyren.vyneo.desktop.jellyfinqa").unwrap(),
+            service("fr.visyren.vyneo.desktop").unwrap());
+        assert_ne!(service("fr.visyren.vyneo.desktop.jellyfinqa").unwrap(),
             service("fr.visyren.vyneo.desktop.preview").unwrap());
         assert!(service("https://attacker.example").is_err());
         assert!(id_valid("0123456789abcdef0123456789abcdef"));

@@ -76,7 +76,9 @@ fn main() {
                 "main",
                 WebviewUrl::App("index.html".into()),
             )
-            .title("Vynéo")
+            // Keep the QA window distinguishable from installed Stable/Preview.
+            .title(app.config().product_name.clone().unwrap_or_else(
+                || "Vynéo".into()))
             .inner_size(1280.0, 800.0)
             .min_inner_size(860.0, 560.0)
             .center()

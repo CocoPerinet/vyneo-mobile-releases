@@ -62,6 +62,8 @@ export interface MediaItem {
   isFavorite:boolean;
   played:boolean;
   progress:number|null;
+  /** Jellyfin PlaybackPositionTicks (100 ns units) for precise resume. */
+  resumeTicks?:number|null;
   premiereDate:string;
   hasPrimary:boolean;
   hasBackdrop:boolean;

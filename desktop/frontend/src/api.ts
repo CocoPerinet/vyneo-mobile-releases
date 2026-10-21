@@ -52,6 +52,8 @@ export function normalizeItem(v:unknown):MediaItem|null {
     played:ud.Played===true,
     progress:duration>0 && position>0
       ?Math.max(0,Math.min(100,Math.round(position/duration*100))):null,
+    resumeTicks:Number.isSafeInteger(position) && position>0 &&
+      position<864_000_000_000?position:null,
     // DateCreated is an import date, never evidence of a new release.
     premiereDate:string(row.PremiereDate,32),
     hasPrimary:typeof imageTags.Primary==="string",

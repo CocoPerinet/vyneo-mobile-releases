@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {selectDirectMp4,validateStreamTicket} from "../src/native-playback";
+import {selectDirectMp4,validateStreamTicket,resumeAtSeconds} from "../src/native-playback";
 import type {PlaybackProbe,PlaybackSource,PlaybackTrack} from "../src/types";
 const id="a".repeat(32),ticket="b".repeat(32);
 const track=(kind:PlaybackTrack["kind"],codec:string):PlaybackTrack=>({
@@ -37,6 +37,20 @@ describe("native playback: no false-positive video compatibility",()=>{
     }
     expect(selectDirectMp4(probe([]))).toBeNull();
     expect(selectDirectMp4(probe([source()],"NotAllowed"))).toBeNull();
+  });
+  it("resumes at precise Jellyfin ticks, with conservative fallback",()=>{
+    expect(resumeAtSeconds({resumeTicks:650_000_000,progress:3},1800))
+      .toBe(65);
+    expect(resumeAtSeconds({resumeTicks:null,progress:20},1800))
+      .toBe(360);
+    expect(resumeAtSeconds({resumeTicks:null,progress:99},1800))
+      .toBe(0);
+    expect(resumeAtSeconds({resumeTicks:17_999_000_000,progress:30},1800))
+      .toBe(0);
+    expect(resumeAtSeconds({resumeTicks:100_000_000,progress:1},1800))
+      .toBe(0);
+    expect(resumeAtSeconds({resumeTicks:123_000_000,progress:5},NaN))
+      .toBe(0);
   });
   it("accepts only a ticket-scoped local media URL, never a Jellyfin token URL",()=>{
     expect(validateStreamTicket({

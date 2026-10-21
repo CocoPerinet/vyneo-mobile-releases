@@ -70,6 +70,10 @@ describe("read-only native media details",()=>{
     expect([ep.seasonNumber,ep.episodeNumber,ep.runtimeTicks])
       .toEqual([1,3,1_200_000_000]);
     expect(ep.seriesId).toBe(SHOW);
+    expect(normalizeItem({Id:FILM,Name:"Film",Type:"Movie",
+      RunTimeTicks:1800*10_000_000,
+      UserData:{PlaybackPositionTicks:650_000_000}})?.resumeTicks)
+      .toBe(650_000_000);
   });
   it("parses bounded season lists without duplicate ids",()=>{
     expect(parseSeasons({Items:[

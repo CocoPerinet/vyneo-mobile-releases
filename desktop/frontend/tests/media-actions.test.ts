@@ -6,7 +6,8 @@ const id=(n:number)=>n.toString(16).padStart(32,"0");
 const make=(n:number,type:MediaItem["type"],seriesId?:string):MediaItem=>({
   id:id(n),type,title:"Titre "+n,year:2026,overview:"",
   genres:[],communityRating:null,isFavorite:false,played:false,
-  progress:22,premiereDate:"",hasPrimary:false,hasBackdrop:false,
+  progress:22,resumeTicks:65_000_000,
+  premiereDate:"",hasPrimary:false,hasBackdrop:false,
   seriesName:"",seriesId
 });
 describe("parent-safe media actions",()=>{
@@ -33,7 +34,8 @@ describe("parent-safe media actions",()=>{
     const mutation=planMediaMutation(episode,"played")!;
     expect(mutation).toEqual({targetId:episode.id,enabled:true});
     const updated=projectMediaMutation(episode,episode,mutation,"played");
-    expect([updated.played,updated.progress]).toEqual([true,null]);
+    expect([updated.played,updated.progress,updated.resumeTicks])
+      .toEqual([true,null,null]);
     expect(projectMediaMutation(other,episode,mutation,"played")).toBe(other);
   });
   it("allows toggling parent favorites and clearing watched state",()=>{

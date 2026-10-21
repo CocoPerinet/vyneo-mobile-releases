@@ -33,5 +33,6 @@ export function projectMediaMutation(
   }
   if(item.id.toLowerCase()!==original.id.toLowerCase())return item;
   return {...item,played:mutation.enabled,
-    progress:mutation.enabled?null:item.progress};
+    progress:mutation.enabled?null:item.progress,
+    resumeTicks:mutation.enabled?null:item.resumeTicks};
 }

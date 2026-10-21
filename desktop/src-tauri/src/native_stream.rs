@@ -157,6 +157,10 @@ fn plain_status(status: StatusCode) -> Response<Vec<u8>> {
 fn safe_header_value(value: &reqwest::header::HeaderValue) -> Option<String> {
     value.to_str().ok().map(ToOwned::to_owned)
 }
+fn accepted_video_content_type(value: &str) -> bool {
+    matches!(value.split(';').next().unwrap_or("").trim().to_ascii_lowercase().as_str(),
+        "video/mp4" | "video/x-m4v" | "application/octet-stream" | "")
+}
 
 fn media_request(state: Arc<Tickets>, request: Request<Vec<u8>>) -> Response<Vec<u8>> {
     let origin = request.headers().get(header::ORIGIN)
@@ -215,8 +219,8 @@ fn media_request(state: Arc<Tickets>, request: Request<Vec<u8>>) -> Response<Vec
         grant.item, grant.source
     );
     let auth = format!(
-        "MediaBrowser Client=\"Vynéo\", Device=\"Desktop\", DeviceId=\"{}\", Version=\"0.2.4\", Token=\"{}\"",
-        grant.device, grant.token
+        "MediaBrowser Client=\"Vyneo\", Device=\"Desktop\", DeviceId=\"{}\", Version=\"{}\", Token=\"{}\"",
+        grant.device, env!("CARGO_PKG_VERSION"), grant.token
     );
     let method_is_head = request.method() == Method::HEAD;
     let call = if method_is_head {
@@ -235,6 +239,14 @@ fn media_request(state: Arc<Tickets>, request: Request<Vec<u8>>) -> Response<Vec
     }
     if code == 416 { return plain_status(StatusCode::RANGE_NOT_SATISFIABLE); }
     if code != 200 && code != 206 {
+        return plain_status(StatusCode::BAD_GATEWAY);
+    }
+    // A reverse-proxy login page or a JSON error served with HTTP 200
+    // must never masquerade as an HTML5 video resource.
+    if !accepted_video_content_type(upstream.headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok()).unwrap_or(""))
+    {
         return plain_status(StatusCode::BAD_GATEWAY);
     }
     let total = upstream.headers().get(reqwest::header::CONTENT_LENGTH)
@@ -312,6 +324,15 @@ mod tests {
                     "bytes=-0","bytes=a-b","bytes=0-NaN"] {
             assert!(limited_range(Some(bad)).is_err());
         }
+    }
+    #[test]
+    fn never_accept_html_or_json_disguised_as_video() {
+        for mime in ["application/json","text/html; charset=utf-8",
+                     "application/vnd.apple.mpegurl","text/plain"] {
+            assert!(!accepted_video_content_type(mime));
+        }
+        assert!(accepted_video_content_type("video/mp4; charset=binary"));
+        assert!(accepted_video_content_type("application/octet-stream"));
     }
     #[test]
     fn unknown_capability_never_uses_network() {

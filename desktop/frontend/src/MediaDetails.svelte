@@ -1,7 +1,7 @@
 <script lang="ts">
   import {onMount,tick} from "svelte";
   import {isTauri} from "@tauri-apps/api/core";
-  import {selectDirectMp4} from "./native-playback";
+  import {selectDirectMp4,resumeAtSeconds} from "./native-playback";
   import type {NativeStreamTicket} from "./native-playback";
   import type {JellyfinApi} from "./api";
   import type {MediaAction} from "./media-actions";
@@ -165,7 +165,8 @@
         const next=!target.played;
         const apply=(entry:MediaItem):MediaItem=>
           entry.id===targetId?{...entry,played:next,
-            progress:next?null:entry.progress}:entry;
+            progress:next?null:entry.progress,
+            resumeTicks:next?null:entry.resumeTicks}:entry;
         if(media)media=apply(media);
         if(focusedEpisode)focusedEpisode=apply(focusedEpisode);
         episodes=episodes.map(apply);
@@ -383,6 +384,14 @@
                 src={streamTicket.url} controls playsinline preload="metadata"
                 aria-label={"Lecteur vidéo : "+shown.title}
                 onplaying={()=>{streamStarted=true;}}
+                onloadedmetadata={()=>{
+                  const seconds=resumeAtSeconds(shown,
+                    videoElement?.duration??NaN);
+                  if(seconds>0 && videoElement){
+                    try{videoElement.currentTime=seconds;}
+                    catch{/* Some remote streams cannot seek: start at zero. */}
+                  }
+                }}
                 onerror={()=>{streamError="Flux indisponible ou codec non pris en charge.";
                   streamEpoch++;stopStream();}}></video>
               {#if !streamStarted}

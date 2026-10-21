@@ -20,7 +20,9 @@ export function verifyParityAudit(root=auditRoot,providedMatrix){
   assert.equal(matrix.audit,"docs/AUDIT-PARITE-JELLYFIN-20261020.md");
   const original=resolve(root,matrix.audit);
   assert.ok(existsSync(original),"The 2026-10-20 audit is mandatory");
-  const source=readFileSync(original,"utf8");
+  // Git may check Markdown out as CRLF on Windows; pin the canonical text
+  // rather than operating-system-specific line-ending bytes.
+  const source=readFileSync(original,"utf8").replace(/\r\n/g,"\n");
   assert.match(source,/^# Vynéo Desktop : audit de parité/);
   const hash=createHash("sha256").update(source).digest("hex");
   assert.equal(hash,matrix.auditSha256,"Audit changed without review");

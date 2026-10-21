@@ -193,8 +193,10 @@
 .vy-universe-tile{
   flex:0 0 clamp(220px,19vw,255px);
   height:135px;
-  display:grid;
-  place-items:center;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
   padding:20px;
   border:1px solid #ffffff1a;
   border-radius:12px;
@@ -207,8 +209,14 @@
 /* The new DCU has a full-color blue logo, unlike the monochrome wordmarks. */
 .vy-universe-tile[data-vy-universe="dcu"] img{filter:none}
 .vy-universe-tile img{
-  max-width:90%;
-  max-height:82%;
+  display:block;
+  flex:0 1 auto;
+  width:100%;
+  height:100%;
+  min-width:0;
+  min-height:0;
+  max-width:100%;
+  max-height:100%;
   object-fit:contain;
   filter:brightness(0) invert(1);
 }

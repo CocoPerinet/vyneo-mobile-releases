@@ -186,6 +186,20 @@ try{
    filter:getComputedStyle(img).filter}));
  assert(newDcu.loaded && newDcu.filter==="none",
   "New DCU logo must load in its original color");
+ const logoGeometry=await page.locator(".vy-universe-tile").evaluateAll(tiles=>
+  tiles.map(tile=>{
+   const tileRect=tile.getBoundingClientRect();
+   const imgRect=tile.querySelector("img").getBoundingClientRect();
+   return {id:tile.dataset.vyUniverse,
+    inside:imgRect.top>=tileRect.top-1 &&
+      imgRect.bottom<=tileRect.bottom+1 &&
+      imgRect.left>=tileRect.left-1 &&
+      imgRect.right<=tileRect.right+1};
+  }));
+ assert(logoGeometry.every(x=>x.inside),
+  "Universe logos must fit entirely inside their cards: "+
+  JSON.stringify(logoGeometry));
+ console.log("JELLYFIN_PARITY_UNIVERSE_LOGOS_FIT_PASS");
  console.log("JELLYFIN_PARITY_7_UNIVERSES_AND_HEADER_PASS");
  const search=await page.locator(".vy-search-icon").boundingBox();
  const input=await page.locator(".vy-search-label input").boundingBox();

@@ -4,7 +4,7 @@
   import {nativeVault} from "./credential-vault";
   import {JellyfinApi} from "./api";
   import {ArtworkCache,hasArtwork,lazyArtwork} from "./artwork";
-  import {buildShelves,featuredSlides} from "./discover";
+  import {buildShelves,featuredSlides,orderHomeShelves} from "./discover";
   import {matchTrending} from "./trending";
   import {newBadge,classifyNewReleases,includeNewReleaseShelf} from "./new-seasons";
   import type {RecentSeason} from "./new-seasons";
@@ -131,10 +131,10 @@
         id:"trending",title:"Tendances",items:trending,kind:"standard"
       });
     }
-    return rows.filter(row=>row.id!=="universes").map(row=>
+    return orderHomeShelves(rows.filter(row=>row.id!=="universes").map(row=>
       row.id==="next-up" || row.id==="resume"?
       {...row,items:row.items.filter(item=>!hiddenCards.includes(item.id))}:row
-    ).filter(row=>row.items.length>0);
+    ).filter(row=>row.items.length>0));
   });
   let seasonBadges=$derived([
     ...recentSeasons,

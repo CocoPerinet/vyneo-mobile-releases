@@ -63,6 +63,23 @@ export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):She
   put("universes","Sagas et collections",collections,"universe");
   return rows;
 }
+/** Stable order from the authenticated Jellyfin custom Home (2026-10-21):
+ * Reprendre -> À suivre -> Nouvelles saisons -> Univers (separate logo rail)
+ * -> Tendances -> Pour vous. Optional editorial shelves follow afterward.
+ *
+ * This keeps fallback shelves rather than hiding them and is insensitive to
+ * the order in which asynchronous recommendations or popularity arrive.
+ */
+export function orderHomeShelves(rows:readonly Shelf[]):Shelf[]{
+  const first=new Map([
+    ["resume",0],["next-up",1],["new-seasons",2],
+    ["trending",3],["for-you",4],["top-ten",5],["favorites",6]
+  ]);
+  return rows.map((shelf,index)=>({shelf,index})).sort((a,b)=>
+    (first.get(a.shelf.id)??100)-(first.get(b.shelf.id)??100) ||
+    a.index-b.index
+  ).map(({shelf})=>shelf);
+}
 // The Jellyfin skin's curated hero targets sixteen titles and preserves
 // *all* confirmed new seasons/suite releases (inject.js:15240-15320).
 // The prior five-slide Desktop shortcut hid most of the real banner pool.

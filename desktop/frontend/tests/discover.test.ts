@@ -1,5 +1,6 @@
 import {describe,it,expect} from "vitest";
-import {buildShelves,featuredMedia,featuredSlides} from "../src/discover";
+import {buildShelves,featuredMedia,featuredSlides,
+  orderHomeShelves} from "../src/discover";
 import type {MediaItem,LibrarySnapshot} from "../src/types";
 
 const id=(n:number)=>n.toString(16).padStart(32,"0");
@@ -37,6 +38,29 @@ describe("Vynéo native shelves are metadata-driven and deterministic",()=>{
     expect(rows.find(r=>r.id==="top-ten")?.items.every(i=>(i.year??0)>=2024)).toBe(true);
     expect(featuredMedia(rows)?.id).toMatch(/^[a-f0-9]{32}$/);
     expect(names.join("|")).not.toMatch(/IA locale|LLM|ChatGPT/);
+  });
+  it("keeps the verified Jellyfin home order despite out-of-order async shelves",()=>{
+    const mk=(id:string)=>({id,title:id,items:[media(900,[])]});
+    const shuffled=[
+      mk("top-ten"),mk("editorial-b"),mk("for-you"),
+      mk("new-seasons"),mk("trending"),mk("next-up"),
+      mk("favorites"),mk("resume"),mk("editorial-a")
+    ];
+    const sorted=orderHomeShelves(shuffled);
+    expect(sorted.map(x=>x.id)).toEqual([
+      "resume","next-up","new-seasons","trending","for-you",
+      "top-ten","favorites","editorial-b","editorial-a"
+    ]);
+    expect(shuffled[0].id).toBe("top-ten");
+    expect(orderHomeShelves(sorted).map(x=>x.id))
+      .toEqual(sorted.map(x=>x.id));
+  });
+  it("never creates missing core shelves or reorders editorial shelves",()=>{
+    const mk=(id:string)=>({id,title:id,items:[media(900,[])]});
+    const rows=[mk("editorial-z"),mk("for-you"),
+      mk("editorial-a"),mk("favorites")];
+    expect(orderHomeShelves(rows).map(x=>x.id))
+      .toEqual(["for-you","favorites","editorial-z","editorial-a"]);
   });
   it("is stable within a day and never incorporates unrelated items",()=>{
     const data=sample(),user="b".repeat(32);

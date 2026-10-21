@@ -221,11 +221,20 @@ try{
   "True TMDb rankings must match user-authorized Jellyfin films");
  const sectionOrder=await page.locator(".vy-shelves h2").allTextContents();
  const order=(title)=>sectionOrder.indexOf(title);
- assert(order("À suivre")<order("Nouvelles saisons et suites") &&
-   order("Nouvelles saisons et suites")<order("Univers") &&
-   order("Univers")<order("Tendances"),
-   "True popularity must follow the Univers rail as in Jellyfin: "+
-    JSON.stringify(sectionOrder.slice(0,7)));
+ assert.deepEqual(sectionOrder.slice(0,5),[
+   "Reprendre la lecture","À suivre","Nouvelles saisons et suites",
+   "Univers","Tendances"
+ ],"Core shelf order must match the authenticated Jellyfin Home, not merely "+
+   "appear somewhere later: "+JSON.stringify(sectionOrder.slice(0,8)));
+ const forYou=page.locator('[data-vy-section="for-you"]');
+ await forYou.waitFor({timeout:5000});
+ const allSections=await page.locator(
+   ".vy-shelves [data-vy-section]").evaluateAll(nodes=>
+   nodes.map(node=>node.dataset.vySection));
+ assert(allSections.indexOf("for-you")>allSections.indexOf("trending"),
+  "Recommendations belong after real trends, just like Jellyfin");
+ console.log("JELLYFIN_PARITY_REAL_HOME_SHELF_SEQUENCE_PASS "+JSON.stringify(
+   sectionOrder.slice(0,8)));
  const publicProxy=external.filter(x=>
   new URL(x.url).pathname.startsWith("/tmdb/discover/"));
  assert.equal(publicProxy.length,6);

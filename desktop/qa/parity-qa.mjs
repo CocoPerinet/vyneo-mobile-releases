@@ -350,7 +350,26 @@ try{
  for(const viewport of [{width:390,height:844},{width:1280,height:800},
   {width:1920,height:1080}]){
   await page.setViewportSize(viewport);
+  await page.evaluate(()=>window.scrollTo({top:0,behavior:"instant"}));
   await page.waitForTimeout(160);
+  const clickableDots=await page.locator(".vy-hero-dots button")
+    .evaluateAll(buttons=>[buttons[0],buttons[buttons.length-1]]
+      .filter(Boolean).map(button=>{
+        const rect=button.getBoundingClientRect();
+        const point=[(rect.left+rect.right)/2,
+          (rect.top+rect.bottom)/2];
+        const hit=document.elementFromPoint(point[0],point[1]);
+        return {point,inside:rect.left>=0 &&
+          rect.right<=document.documentElement.clientWidth &&
+          rect.top>=0 && rect.bottom<=window.innerHeight,
+          hit:hit===button || button.contains(hit)};
+      }));
+  assert(clickableDots.length===2 &&
+     clickableDots.every(dot=>dot.inside && dot.hit),
+    "Hero pagination is not actionable on "+viewport.width+"px: "+
+    JSON.stringify(clickableDots));
+  console.log("JELLYFIN_PARITY_HERO_DOTS_CLICKABLE_"+
+    viewport.width+"_PASS");
   const overflow=await page.evaluate(()=>
    document.documentElement.scrollWidth-document.documentElement.clientWidth);
   assert(overflow<=2,"Home horizontal overflow "+viewport.width+" "+overflow);

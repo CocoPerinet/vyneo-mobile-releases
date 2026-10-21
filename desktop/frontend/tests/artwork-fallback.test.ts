@@ -119,7 +119,7 @@ describe("shared lazy artwork observer",()=>{
     const node=()=>({
       isConnected:true,dataset:{} as Record<string,string>,
       src:"",naturalWidth:100,naturalHeight:60,complete:true,
-      getAttribute(name:string){return name==="src"?this.src:null;},
+      getAttribute(name:string){return name==="src"?"blob:poster":null;},
       addEventListener:vi.fn(),removeEventListener:vi.fn(),
       removeAttribute:vi.fn()
     }) as unknown as HTMLImageElement;

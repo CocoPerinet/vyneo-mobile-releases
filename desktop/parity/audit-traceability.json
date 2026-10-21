@@ -99,7 +99,7 @@
       "status": "synthetic-validated",
       "reference": "inject.js:vyBadgeNouveaute",
       "automation": "desktop/frontend/tests/new-seasons.test.ts",
-      "evidence": "Tests synthétiques COCO 2026-10-21 : saisons S2E1 réellement récentes isolées, anciens E1 repoussés en fin d'À suivre, suites TMDb sans sauter un épisode de saga non vu. Dates de sortie, jamais DateCreated."
+      "evidence": "Tests synthétiques COCO 2026-10-21 : E1 récents isolés, E1 âgés triés fin NextUp, suites TMDb ordonnées, dérivés TVDb conditionnés à un groupe d’au moins 3 œuvres et un tag partagé par >=70%, pas de faux positifs de listes éditoriales ou bonus anime. Le schéma TVDbCollection réel du serveur a été vérifié en lecture seule, sans session utilisateur."
     },
     {
       "block": "C",
@@ -109,7 +109,7 @@
       "status": "synthetic-validated",
       "reference": "inject.js:VY_UNIVERS",
       "automation": "desktop/frontend/tests/universes.test.ts",
-      "evidence": "Tests synthétiques COCO 2026-10-21 : 7 logos, onglets MCU phases 1-6, chronologie Star Wars, décennies Disney/Pixar/DreamWorks/DC, chapitre DCU ; lignes détaillées, actions favoris/vu, scan simulé 1450 œuvres à concurrence bornée. Pas de validation réelle Jellyfin ni LLM."
+      "evidence": "Tests synthétiques COCO 2026-10-21 : 7 logos, phases MCU, chronologie Star Wars, décennies, chapitre DCU, modal 1080 px à scroll préservé, fermeture fond/Escape, aller-retour fiche avec focus et confinement Tab, viewport 390/1280/1920. Source réelle index.html/skin.css/inject.js inspectée en lecture seule. Comparaison pixel et droits du compte réel ouvertes."
     },
     {
       "block": "C",

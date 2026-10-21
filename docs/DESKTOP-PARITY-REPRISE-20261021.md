@@ -155,3 +155,62 @@ contrôles sur ID réels « À suivre », règles Tvdb des suites, groupes avanc
 et interactions de modale. Les items `side-by-side` et `real-library`
 restent `pending`. La stable 0.2.4 et son système de mise à jour restent
 intacts ; aucune seconde app n'est installée.
+
+## Suite du 21 octobre : modal Univers et franchise TVDb
+
+Commits `0d96e1b` à `6dd4319` sur la branche de parité.
+
+### Modal Univers identique en structure au thème Jellyfin
+
+L'ancien écran indépendant Vynéo « Univers » ne reproduisait pas l'usage
+réel : `inject.js` affiche un **modal centré** sur le Home. Il a été
+remplacé par une fenêtre Svelte indépendante, sans dépendance au DOM
+Jellyfin Web, fond `rgba(6,4,3,.88)`, panneau max 1080 px / hauteur
+86vh, fermeture extérieure, Échap, titre sous forme de logo et mêmes
+onglets chronologiques. Le Home derrière reste intact : aucun changement
+de tab, aucun retour à scroll=0. Les états/onglets et la ligne sélectionnée
+sont restaurés après ouverture/fermeture d'une fiche media.
+
+Accessibilité vérifiée : focus initial sur la fermeture, Tab/Shift-Tab
+confinés au modal, navigation clavier des onglets, Escape pour refermer
+la fiche sans fermer le modal sous-jacent, retour du focus sur la tuile
+d'origine après fermeture. Repli mobile à 390 px, sans débordement.
+
+### Réels identifiants TVDbCollection, prudence sur les fausses franchises
+
+L'audit de la base Jellyfin en lecture seule (sans lecture des tokens, noms
+d'utilisateurs ou journaux de lecture) a confirmé l'existence de collections
+`TvdbCollection` sur films et séries, avec **valeurs multiples séparées
+par point-virgule**. Le Desktop ne normalisait que `TmdbCollection` :
+c'était une raison structurelle à l'absence de certaines suites/dérivés.
+
+La nouvelle logique reprend la sauvegarde du faux-positif du thème :
+association TVDb non suffisante, au moins trois membres observés dans
+le catalogue autorisé, tag dominant commun à au moins 70 %, fréquence
+globale limitée, et tag commun porté **à la fois** par une œuvre vue et la
+suite candidate. Le système ne propose pas de film bonus non tagué Anime
+sur la seule base d'une série Anime engagée ; quatre propositions au plus
+par groupe et au plus une par sous-saga TMDb.
+
+Ce regroupement exploite seulement les éléments **déjà récupérés du
+compte Jellyfin** : il ne prétend pas reconstituer un catalogue complet
+sans droit et n'ajoute aucun appel tiers. Les liens par titre, plus
+risqués, du thème original ne sont toujours pas repris par défaut.
+
+### Validation
+
+Sur PC Windows COCO, commit `ad4a130` : **116 tests Vitest réussis,
+25 tests Node réussis, 6 ignorés POSIX**, 0 erreur/avertissement
+Svelte/TypeScript, build Vite et QA Chromium Playwright PASS.
+Le test navigateur `e4416a0` démontre aussi l'affichage effectif d'un
+dérivé TVDb cohérent dans la section « Nouvelles saisons et suites ».
+Le scénario `6dd4319` vérifie le focus Tab/Shift-Tab et Échap.
+Les vrais contenus Jellyfin sont seulement inventoriés en lecture seule ;
+les résultats Playwright demeurent **synthétiques**.
+
+**Bloc D : toujours non validé.** On n'a ni utilisé la session chiffrée
+d'un compte pour contourner le login, ni installé une 2e app. La
+comparaison des ID et des captures *avec le même profil connecté*
+doit être effectuée avant de marquer les deux exigences `real-validated`
+et avant toute nouvelle version stable. Le pipeline publication est
+toujours strictement bloqué.

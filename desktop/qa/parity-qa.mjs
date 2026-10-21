@@ -221,7 +221,7 @@ try{
  // A real spin-off can precede an engaged S2E1 when both are recent.
  // Assert the source-specific badge on each relevant slide, not a fabricated
  // claim that every carousel must start with the same category.
- const seriesHero=heroDots.getByRole("button",{
+ const seriesHero=page.getByRole("button",{
   name:/Bannière \d+ : Série 1$/
  }).first();
  await seriesHero.waitFor({timeout:2500});
@@ -229,7 +229,7 @@ try{
  assert.equal(await page.locator(".vy-hero .vy-kicker").textContent(),
   "NOUVELLE SAISON",
   "An engaged S2E1 must retain its own new-season hero badge");
- const freshFilmHero=heroDots.getByRole("button",{
+ const freshFilmHero=page.getByRole("button",{
   name:/Bannière \d+ : Film de test 36$/
  }).first();
  await freshFilmHero.waitFor({timeout:2500});

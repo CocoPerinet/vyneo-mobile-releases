@@ -148,6 +148,12 @@ async function main(){
         assert.equal(m.seekVerified,true);
         assert.equal(m.seekTargetSeconds,3.2);
         assert.equal(m.hlsWorkerConfigured,true);
+        assert.equal(m.audioContextState,"running");
+        assert.equal(m.audioUnmuted,true);
+        assert(m.audioAnalyserSamples>=3,
+          "WebView2 must deliver samples to the audio analyzer");
+        assert(m.audioRmsPeak>=0.008,
+          "WebView2 must decode non-silent AAC PCM without speaker output");
         assert.deepEqual(result.errors,[]);
         res.writeHead(204,hdr);res.end();
         reportResolve(result);
@@ -187,7 +193,7 @@ async function main(){
         "QA_NATIVE_WEBVIEW2_DECODING_TIMEOUT_INTERACTIVE_SESSION")),maxPlaybackMs);
     });
     const result=await Promise.race([reportPromise,timeout]);
-    console.log("VYNEO_WEBVIEW2_NATIVE_PAUSE_SEEK_RESUME_PASS",
+    console.log("VYNEO_WEBVIEW2_NATIVE_VIDEO_AND_AAC_AUDIO_PASS",
       JSON.stringify(result.metrics));
     console.log("QA_ZERO_INSTALLER_ZERO_REAL_CREDENTIALS");
   }finally{clearTimeout(timer);}

@@ -10,6 +10,7 @@ test("synthetic WebView2 media QA is compile-time isolated from production",()=>
   const cfg=JSON.parse(read("src-tauri/tauri.jellyfin-qa.conf.json"));
   const stable=JSON.parse(read("src-tauri/tauri.conf.json"));
   const runner=read("qa/native-webview2-smoke.mjs");
+  const fixtureJs=read("qa/native-webview2/test.template.js");
   assert.match(cargo,/\[features\]\s*#[^\n]*\nnative-e2e-qa = \[\]/);
   assert.doesNotMatch(cargo,/^default = \[[^\]]*native-e2e-qa/m);
   assert.match(entry,/\#\[cfg\(feature="native-e2e-qa"\)\]\s*mod native_e2e_qa;/);
@@ -22,6 +23,11 @@ test("synthetic WebView2 media QA is compile-time isolated from production",()=>
   assert.match(runner,/--debug --no-bundle --features native-e2e-qa/);
   assert.match(runner,/windowsHide:true/);
   assert.match(runner,/QA_ZERO_INSTALLER_ZERO_REAL_CREDENTIALS/);
+  assert.match(runner,/m.audioRmsPeak>=0.008/);
+  assert.match(fixtureJs,/new window.AudioContext\(\)/);
+  assert.match(fixtureJs,/createMediaElementSource\(video\)/);
+  assert.match(fixtureJs,/zeroGain.gain.value=0/);
+  assert.match(fixtureJs,/zeroGain.connect\(context.destination\)/);
   assert.notEqual(cfg.identifier,stable.identifier);
   assert.equal(cfg.identifier,"fr.visyren.vyneo.desktop.jellyfinqa");
   assert.equal(cfg.build.frontendDist,"../qa-native-dist");

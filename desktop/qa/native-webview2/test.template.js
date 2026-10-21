@@ -127,8 +127,11 @@ try{
       audioUnmuted,
       audioRmsPeak:Number(audioPeakRms.toFixed(6))
     };
-    await invoke("stop_native_stream_ticket",{ticket:ticket.ticket});
     await report("PASS",metrics);
+    // The QA-specific native command revokes the ticket and exits the
+    // hidden throwaway process. It cannot affect the installed Vynéo.
+    void invoke("stop_native_stream_ticket",{ticket:ticket.ticket})
+      .catch(()=>{});
   },130);
   setTimeout(()=>{
     clearInterval(interval);

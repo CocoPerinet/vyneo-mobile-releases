@@ -28,6 +28,12 @@ test("synthetic WebView2 media QA is compile-time isolated from production",()=>
   assert.match(fixtureJs,/createMediaElementSource\(video\)/);
   assert.match(fixtureJs,/zeroGain.gain.value=0/);
   assert.match(fixtureJs,/zeroGain.connect\(context.destination\)/);
+  assert.match(fixtureJs,/await report\("PASS",metrics\)/);
+  assert.match(runner,/cleanupOrphanedQaTasks\(\)/);
+  assert.match(runner,/New-ScheduledTaskSettingsSet -ExecutionTimeLimit/);
+  assert.match(runner,/New-TimeSpan -Minutes 2/);
+  assert.match(streamer,/cfg\(feature="native-e2e-qa"\)/);
+  assert.match(streamer,/if quit_qa \{ app.exit\(0\); \}/);
   assert.notEqual(cfg.identifier,stable.identifier);
   assert.equal(cfg.identifier,"fr.visyren.vyneo.desktop.jellyfinqa");
   assert.equal(cfg.build.frontendDist,"../qa-native-dist");

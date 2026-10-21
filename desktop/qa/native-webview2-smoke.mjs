@@ -26,14 +26,36 @@ async function taskPowerShell(command){
     "-NoProfile","-NonInteractive","-Command",command
   ],{windowsHide:true,timeout:12000,maxBuffer:100000});
 }
+async function cleanupOrphanedQaTasks(){
+  // A remote SSH session may drop while the hidden QA is running.
+  // Recover only tasks whose action is this exact disposable QA binary.
+  // Never touch the installed stable process or unrelated scheduled tasks.
+  const script=[
+    "$ErrorActionPreference='Stop';",
+    "$exe=",psQuote(exe)+";",
+    "$tasks=@(Get-ScheduledTask -TaskName 'VyneoNativeMediaQA*'",
+    "-ErrorAction SilentlyContinue | Where-Object {",
+    "$_.Actions.Count -eq 1 -and $_.Actions[0].Execute -eq $exe });",
+    "foreach($task in $tasks){",
+    "Stop-ScheduledTask -TaskName $task.TaskName",
+    "-ErrorAction SilentlyContinue;",
+    "Unregister-ScheduledTask -TaskName $task.TaskName -Confirm:$false",
+    "-ErrorAction Stop; }"
+  ].join(" ");
+  await taskPowerShell(script);
+}
 async function startInteractiveQa(){
+  await cleanupOrphanedQaTasks();
   const create=([
     "$ErrorActionPreference='Stop';",
+    "$settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit",
+    "(New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew;",
     "$principal=New-ScheduledTaskPrincipal -UserId",
     "([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited;",
     "$action=New-ScheduledTaskAction -Execute",psQuote(exe)+";",
     "Register-ScheduledTask -TaskName",psQuote(taskName),
-    "-Action $action -Principal $principal -Force | Out-Null;",
+    "-Action $action -Principal $principal -Settings $settings",
+    "-Force | Out-Null;",
     "Start-ScheduledTask -TaskName",psQuote(taskName)
   ]).join(" ");
   taskRegistered=true;

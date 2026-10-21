@@ -137,12 +137,27 @@ pub fn create_native_stream_ticket(
 }
 
 #[tauri::command]
-pub fn stop_native_stream_ticket(state: State<'_, Arc<Tickets>>, ticket: String) {
+pub fn stop_native_stream_ticket(
+    state: State<'_, Arc<Tickets>>, ticket: String, app: tauri::AppHandle
+) {
+    #[cfg(not(feature="native-e2e-qa"))]
+    let _ = &app;
+    #[cfg(feature="native-e2e-qa")]
+    let mut quit_qa=false;
     if guid(&ticket) {
         if let Ok(mut map) = state.grants.lock() {
+            #[cfg(feature="native-e2e-qa")]
+            {
+                quit_qa=map.get(&ticket)
+                    .is_some_and(crate::native_e2e_qa::is_fixture);
+            }
             map.remove(&ticket);
         }
     }
+    // Only the separately identified QA binary may auto-exit.
+    // The installed stable must never quit on an ordinary media stop.
+    #[cfg(feature="native-e2e-qa")]
+    if quit_qa { app.exit(0); }
 }
 
 #[tauri::command]

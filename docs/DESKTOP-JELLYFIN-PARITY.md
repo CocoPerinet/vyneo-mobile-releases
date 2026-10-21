@@ -52,3 +52,12 @@
 - Stable 0.2.2 : installation et exécutable préservés, application toujours active après installation QA ; SHA-256 de l'exécutable stable identique avant/après (`4BEA205537F7E4C5AC32AE5D999BFC01124B91F3F0F50F1F321E35BE691BACD0`). Canal updater QA désactivé, coffre natif isolé.
 - En session PowerShell distante, `cargo` exige un PATH temporaire : `$env:PATH="$HOME\.cargo\bin;$env:PATH"` ; ne pas modifier le PATH global.
 - Aucun tag stable, manifeste updater, application stable, Jellyfin de production ou publication GitHub Releases modifié. Validation de lancement natif et avec le véritable compte Jellyfin restant à réaliser par l'utilisateur, sans perturber son poste.
+
+
+## Publication GitHub QA (21 octobre 2026)
+- Release publique en **préversion**, non stable et non brouillon : `desktop-jellyfin-qa-v0.2.3-qa.2`.
+- Adresse : https://github.com/CocoPerinet/vyneo-mobile-releases/releases/tag/desktop-jellyfin-qa-v0.2.3-qa.2
+- Fichiers publiés : `Vyneo-Jellyfin-QA-0.2.3-qa.2-Windows-x64.exe` (3 353 079 octets) et `SHA256SUMS.txt` ; SHA-256 vérifié après retéléchargement depuis la release GitHub.
+- Le tag correspond exactement au commit de build `c6b9d398b7130f458a6469a4b5ee78f804f352b6`. La release a été créée en brouillon, fichiers vérifiés, puis rendue publique.
+- La release reste une préversion : programme d'installation **non signé Authenticode**, validation réelle avec le compte Jellyfin restant à faire, pas de mise à jour de la stable ou du canal Preview.
+- Publication contrôlée : la release mobile `mobile-v0.3.4` reste la « Latest », et aucun workflow `desktop-v*` ou `desktop-preview-v*` n'est ciblé par le tag QA.

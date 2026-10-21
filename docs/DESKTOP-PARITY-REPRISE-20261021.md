@@ -622,3 +622,71 @@ La version stable desktop-v0.2.4 n'est pas modifiée. Une seule
 application reste installée sur COCO. La PR #9 demeure en brouillon,
 les critères D side-by-side et real-library restent PENDING,
 et le pipeline refuse une publication stable sans preuves réelles.
+
+## Suite 21 octobre : positions et historique de lecture Jellyfin
+
+Le prototype MP4/HLS savait ouvrir un flux vidéo, mais ne transmettait
+pas encore ses événements de lecture à Jellyfin. Il manquait donc
+le mécanisme serveur qui actualise les sections **Reprendre la lecture**
+et **À suivre** après un véritable visionnage.
+
+### Contrat implémenté, sans lecture réelle automatique
+
+- Le client **n'écrit absolument aucune position** lors de l'ouverture
+  d'une fiche, de la consultation PlaybackInfo, d'une lecture refusée ou
+  si la vidéo n'a jamais émis l'événement HTML5 `playing`.
+- Après le premier `playing`, le composant envoie
+  `POST /Sessions/Playing` avec les GUID Jellyfin validés du média
+  et de sa source, le PlaySessionId seulement s'il est exploitable,
+  la méthode DirectPlay ou Transcode et la position exacte en ticks.
+- Une progression est transmise toutes les 15 secondes de temps de
+  lecture en fonctionnement normal, ainsi qu'à la pause, reprise
+  et après un déplacement manuel. Les POST sont **strictement
+  sérialisés**, pour ne jamais envoyer un arrêt avant le démarrage.
+- `POST /Sessions/Playing/Stopped` est envoyé **une seule fois** à
+  la fermeture du lecteur ou à la fin du média. Un arrêt avant la
+  première image réellement jouée ne crée aucun historique.
+- Les volumes sont arrondis sur des **entiers 0..100** dans les corps
+  de requêtes : Jellyfin attend un entier, pas un pourcentage flottant.
+  Les ticks sont conservés sous forme d'entiers exacts.
+- Les réponses HTTP 204 sans corps sont valides. Les refus serveur
+  n'interrompent pas le flux vidéo : l'interface indique que le
+  visionnage reste possible mais que la progression n'a pas été
+  synchronisée. Le suivi serveur n'est jamais déclaré réussi en cas
+  d'échec réseau ou d'authentification.
+- Si la session Jellyfin change avant le retour du serveur,
+  la requête est rejetée comme obsolète. Aucun événement d'un ancien
+  compte ne doit basculer vers le nouveau.
+- Après arrêt ou fin d'une vidéo ayant réellement commencé, l'accueil
+  du **compte actuellement authentifié** est rechargé à partir des
+  résultats API Jellyfin. Aucune entrée À suivre n'est inventée
+  localement.
+
+### Tests exécutés, preuves et limites
+
+La suite Windows COCO du commit f3482f8 a exécuté **149 tests
+frontend**, **29 tests Node** (+6 ignorés), svelte-check à
+**0 erreur et 0 avertissement**, le build Vite et la QA
+Playwright complète, tous réussis. Les nouveaux tests simulent
+le premier `playing`, l'ordre Start/Progress/Stopped, le délai
+de 15 secondes, les pauses, les recherches, la fin naturelle,
+le refus HTTP, le volume entier, les réponses HTTP 204, et
+les sessions périmées après déconnexion.
+
+Références du contrat serveur : SDK Jellyfin
+https://typescript-sdk.jellyfin.org/functions/generated-client.SessionApiFp.html
+et compte-rendu du problème de volume fractionnaire :
+https://github.com/jellyfin/jellyfin-desktop/issues/1209.
+
+**Ne pas confondre ces tests avec une lecture réelle sur le N100.**
+Il faut encore lancer et fermer un film/épisode `.strm`
+dans le WebView2 authentifié, puis comparer l'ID, la nouvelle
+position et À suivre/Resume côté serveur avec le même compte.
+L'audio, les sous-titres et la charge du transcodeur restent
+aussi à certifier. Aucun de ces critères n'est marqué
+comme vérifié dans le bloc D.
+
+La stable desktop-v0.2.4 et son application Windows unique
+restent intactes. La PR #9 reste brouillon jusqu'à la validation
+réelle et une mise à jour signée distribuée par l'application
+existante.

@@ -147,6 +147,7 @@ async function main(){
         assert.equal(m.pauseVerified,true);
         assert.equal(m.seekVerified,true);
         assert.equal(m.seekTargetSeconds,3.2);
+        assert.equal(m.hlsWorkerConfigured,true);
         assert.deepEqual(result.errors,[]);
         res.writeHead(204,hdr);res.end();
         reportResolve(result);

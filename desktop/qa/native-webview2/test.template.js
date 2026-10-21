@@ -40,9 +40,11 @@ try{
     !/^[0-9a-f]{32}$/.test(ticket.ticket))
     throw Error("BAD_NATIVE_CAPABILITY");
   hls=new window.Hls({
-    enableWorker:false,maxBufferLength:12,maxMaxBufferLength:24,
-    manifestLoadingMaxRetry:0,levelLoadingMaxRetry:0,
-    fragLoadingMaxRetry:0
+    // Match the production WebView2/hls.js worker + buffering path.
+    enableWorker:true,maxBufferLength:24,
+    maxMaxBufferLength:48,maxBufferSize:48*1024*1024,
+    manifestLoadingMaxRetry:2,levelLoadingMaxRetry:2,
+    fragLoadingMaxRetry:2
   });
   hls.on(window.Hls.Events.ERROR,(_event,detail)=>{
     if(detail.fatal)die(detail.type+":"+detail.details);
@@ -87,6 +89,7 @@ try{
       pauseVerified:pausedBeforeSeek,
       seekVerified:true,
       seekTargetSeconds:3.2,
+      hlsWorkerConfigured:true,
       nativeProtocol:true,
       drm:false
     };

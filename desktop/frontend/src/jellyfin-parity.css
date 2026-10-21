@@ -594,3 +594,22 @@
   contain-intrinsic-size:auto 500px}
 .vy-group-back:focus-visible{outline:2px solid var(--vy-accent-2);
   outline-offset:3px}
+
+/* Collections and playlists often have no Jellyfin Primary artwork.
+ * Use a neutral fallback inside their tiles, without broken-image glyphs.
+ * A decoded real cover always overlays it automatically. */
+.vy-group-index .vy-card-picture{
+  background:radial-gradient(ellipse at 50% 34%,#242e42,#141a26 85%);
+}
+.vy-group-placeholder{
+  position:absolute;inset:0;z-index:0;
+  display:flex;flex-direction:column;justify-content:center;
+  align-items:center;gap:9px;
+  color:#929dad;pointer-events:none;
+}
+.vy-group-placeholder span{
+  font-size:10px;font-weight:800;letter-spacing:.13em;
+}
+.vy-group-index .vy-card-picture img{
+  position:relative;z-index:1;
+}

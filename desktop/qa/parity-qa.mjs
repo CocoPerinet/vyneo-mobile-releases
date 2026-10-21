@@ -837,6 +837,16 @@ try{
  const playlistsIndex=page.locator(".vy-group-index .vy-card");
  await playlistsIndex.first().waitFor({timeout:3500});
  assert.equal(await playlistsIndex.count(),3);
+ const placeholders=await playlistsIndex.locator(".vy-group-placeholder").count();
+ assert.equal(placeholders,3,
+  "A playlist without decoded artwork must show a clean fallback icon");
+ const fallbackGeometry=await playlistsIndex.first().evaluate(card=>{
+  const frame=card.querySelector(".vy-card-picture").getBoundingClientRect();
+  const icon=card.querySelector(".vy-group-placeholder svg").getBoundingClientRect();
+  return icon.left>=frame.left && icon.right<=frame.right &&
+    icon.top>=frame.top && icon.bottom<=frame.bottom;
+ });
+ assert(fallbackGeometry,"Fallback playlist icon must fit inside its tile");
  await playlistsIndex.first().getByRole("button",{
   name:/Ouvrir la playlist/
  }).click();

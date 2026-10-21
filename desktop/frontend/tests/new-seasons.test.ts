@@ -85,6 +85,54 @@ describe("Jellyfin parity: seasons, sequels and novelty badges",()=>{
     expect(classifyNewReleases(library([],[old]),[],[],now)
       .newReleases).toEqual([]);
   });
+  it("moves an engaged OLD season E1 to the tail of À suivre",()=>{
+    const agedSeries=item(14,"Series",{
+      playedPercentage:70,premiereDate:"2015-01-01"});
+    const oldE1=item(205,"Episode",{seriesId:id(14),seasonId:id(140),
+      seasonNumber:4,episodeNumber:1,premiereDate:"2025-05-15"});
+    const ongoing=item(207,"Episode",{seriesId:id(15),seasonId:id(150),
+      seasonNumber:4,episodeNumber:5,premiereDate:"2026-10-01"});
+    const neverStarted=item(208,"Episode",{seriesId:id(17),seasonId:id(170),
+      seasonNumber:1,episodeNumber:1,premiereDate:"2025-01-01"});
+    const result=classifyNewReleases(
+      library([oldE1,ongoing,neverStarted,ep]),
+      [season],[series,agedSeries],now);
+    expect(result.newReleases.map(x=>x.id)).toEqual([series.id]);
+    expect(result.nextUp.map(x=>x.id)).toEqual([
+      ongoing.id,neverStarted.id,oldE1.id]);
+    expect(result.relevantSeasons).toEqual([season]);
+  });
+  it("never gives an episode without SeasonId a speculative season badge",()=>{
+    const missingSeason=item(202,"Episode",{
+      seriesId:id(10),episodeNumber:4,seasonId:null});
+    expect(newBadge(missingSeason,[season],now)).toBeNull();
+  });
+  it("a sequel is NOT suggested before an earlier unseen saga installment",()=>{
+    const earlier=item(28,"Movie",{franchiseId:"112233",
+      premiereDate:"2021-06-01"});
+    const later=item(29,"Movie",{franchiseId:"112233",
+      premiereDate:"2026-10-01"});
+    const result=classifyNewReleases(
+      library([],[later,earlier]),[],[],now);
+    expect(result.newReleases).toEqual([]);
+    const playedEarlier={...earlier,played:true};
+    const after=classifyNewReleases({
+      ...library([],[later]),watched:[
+        ...library([]).watched,playedEarlier
+      ]
+    },[],[],now);
+    expect(after.newReleases.map(x=>x.id)).toEqual([later.id]);
+  });
+  it("never promotes an old episode merely because DateCreated is recent",()=>{
+    const s=item(12,"Series",{playedPercentage:80});
+    const episode=item(220,"Episode",{seriesId:id(12),
+      seasonId:id(120),seasonNumber:3,episodeNumber:1,
+      premiereDate:"2024-09-01"});
+    const result=classifyNewReleases(
+      library([episode]),[],[s],now);
+    expect(result.newReleases).toEqual([]);
+    expect(result.nextUp.map(x=>x.id)).toEqual([episode.id]);
+  });
   it("adds the adaptive shelf only when backed by recent real evidence",()=>{
     const row:Shelf={id:"next-up",title:"À suivre",items:[ep]};
     const newRows=includeNewReleaseShelf([row],library([ep]),

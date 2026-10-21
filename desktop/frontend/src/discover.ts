@@ -12,7 +12,10 @@ const unique=(items:MediaItem[],limit=30):MediaItem[]=>{
 };
 export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):Shelf[]{
   const recent=unique(data.recent,96);
-  const resume=unique(data.resume,16);
+  // Match the Jellyfin skin: playback state can be stale for .strm files.
+  // A title at >=95% is finished even if Jellyfin did not mark Played yet.
+  const resume=unique(data.resume.filter(item=>
+    !item.played && (item.progress===null || item.progress<95)),16);
   // Do not arbitrarily discard NextUp after 22 titles. The rail can
   // scroll through every authorized continuation returned by Jellyfin.
   const nextUp=unique(data.nextUp,600);

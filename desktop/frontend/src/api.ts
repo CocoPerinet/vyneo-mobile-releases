@@ -440,9 +440,9 @@ export class JellyfinApi {
   async getResume():Promise<MediaItem[]>{
     const uid=this.requireUser();
     return this.items("/UserItems/Resume?"+new URLSearchParams({
-      userId:uid,StartIndex:"0",Limit:"24",
+      userId:uid,StartIndex:"0",Limit:"100",
       IncludeItemTypes:"Movie,Episode",EnableUserData:"true"
-    }),24);
+    }),100);
   }
   async getNextUp():Promise<MediaItem[]>{
     const uid=this.requireUser(),generation=this.authGeneration;
@@ -516,24 +516,32 @@ export class JellyfinApi {
     const uid=this.requireUser(),generation=this.authGeneration;
     this.assertSession(uid,generation);
     const seen=new Set<string>();
+    // The NextUp fetch may return 600 different series. Previous versions
+    // silently dropped metadata for every series beyond the first 300,
+    // preventing their genuine new seasons from being detected.
     const ids=next.map(ep=>ep.seriesId).filter((id):id is string=>
       !!id && validId(id) && !seen.has(id.toLowerCase()) &&
-      !!seen.add(id.toLowerCase())).slice(0,300);
+      !!seen.add(id.toLowerCase())).slice(0,600);
+    const groups:Array<string[]>=[];
+    for(let i=0;i<ids.length;i+=60)groups.push(ids.slice(i,i+60));
     const rows:MediaItem[]=[];
-    for(let i=0;i<ids.length;i+=60){
-      const selection=ids.slice(i,i+60);
-      const path=this.userItems({
-        Ids:selection.join(","),IncludeItemTypes:"Series",Limit:60
-      });
-      const response=obj(await this.json(path,{maxBytes:786432}));
+    // Bound fan-out to three requests so enrichment remains responsive
+    // without flooding Jellyfin. Keep the server's own authorization scope.
+    for(let start=0;start<groups.length;start+=3){
+      const pages=await Promise.all(groups.slice(start,start+3).map(async selection=>{
+        const path=this.userItems({
+          Ids:selection.join(","),IncludeItemTypes:"Series",Limit:60
+        });
+        const response=obj(await this.json(path,{maxBytes:786432}));
+        this.assertSession(uid,generation);
+        if(!Array.isArray(response.Items) || response.Items.length>60)
+          throw new Error("SERIES_SCOPE_INVALID");
+        const authorized=new Set(selection.map(x=>x.toLowerCase()));
+        return parseItems(response,60).filter(media=>
+          media.type==="Series" && authorized.has(media.id.toLowerCase()));
+      }));
       this.assertSession(uid,generation);
-      if(!Array.isArray(response.Items) || response.Items.length>60)
-        throw new Error("SERIES_SCOPE_INVALID");
-      const authorized=new Set(selection.map(x=>x.toLowerCase()));
-      for(const media of parseItems(response,60)){
-        if(media.type==="Series" && authorized.has(media.id.toLowerCase()))
-          rows.push(media);
-      }
+      for(const page of pages)rows.push(...page);
     }
     return rows;
   }

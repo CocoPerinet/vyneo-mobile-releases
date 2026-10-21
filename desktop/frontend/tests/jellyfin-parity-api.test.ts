@@ -19,7 +19,9 @@ function series(n:number){
     ProductionYear:2024,Studios:[{Name:"Marvel Studios"}],
     PremiereDate:"2024-01-01",ImageTags:{Primary:"tag"}};
 }
-function fixture({nextUpCount=275,failSecond=false}:{nextUpCount?:number;failSecond?:boolean}={}){
+function fixture({nextUpCount=275,failSecond=false,seriesMatchSelection=false}:{
+  nextUpCount?:number;failSecond?:boolean;seriesMatchSelection?:boolean
+}={}){
   const calls:Array<{url:URL;options:RequestInit}>=[];
   const fetcher=vi.fn(async(u:RequestInfo|URL,options:RequestInit={})=>{
     const url=new URL(String(u)),path=url.pathname;
@@ -47,7 +49,15 @@ function fixture({nextUpCount=275,failSecond=false}:{nextUpCount?:number;failSec
             PremiereDate:"2019-04-01",DateCreated:"2026-10-19",Type:"Season"}
         ]});
       }
-      if(types==="Series")return output({Items:[series(100),series(101)]});
+      if(types==="Series"){
+        if(seriesMatchSelection){
+          const selected=url.searchParams.get("Ids")?.split(",")??[];
+          return output({Items:selected.map(sid=>({
+            ...series(Number.parseInt(sid,16)),Id:sid
+          }))});
+        }
+        return output({Items:[series(100),series(101)]});
+      }
       if(types==="Movie,Series"){
         const start=Number(url.searchParams.get("StartIndex"));
         return output({Items:Array.from(
@@ -108,6 +118,34 @@ describe("Jellyfin UI parity uses real scoped API metadata",()=>{
    expect(last.url.searchParams.get("Ids")).toBe([id(101),id(100)].join(","));
    expect(last.url.href).not.toContain(TOKEN);
    expect(last.options.credentials).toBe("omit");
+ });
+ it("enriches over 300 unique NextUp series without losing the last 150",async()=>{
+   const {api,calls}=fixture({seriesMatchSelection:true});
+   await api.login("Alice","password");
+   const prototype=normalizeItem(episode(0))!;
+   const items=Array.from({length:450},(_,n)=>({
+     ...prototype,id:id(5000+n),seriesId:id(8000+n)
+   }));
+   const evidence=await api.getNextUpSeries(items);
+   expect(evidence).toHaveLength(450);
+   expect(evidence[0].id).toBe(id(8000));
+   expect(evidence.at(-1)?.id).toBe(id(8449));
+   const batches=calls.filter(x=>
+     x.url.pathname==="/Users/"+USER+"/Items" &&
+     x.url.searchParams.get("IncludeItemTypes")==="Series");
+   expect(batches).toHaveLength(8);
+   expect(batches.every(x=>(x.url.searchParams.get("Ids")??"")
+     .split(",").length<=60)).toBe(true);
+   expect(batches.every(x=>!x.url.href.includes(TOKEN) &&
+     x.options.credentials==="omit")).toBe(true);
+ });
+ it("requests sufficient Resume results before filtering stale completed titles",async()=>{
+   const {api,calls}=fixture();
+   await api.login("Alice","password");
+   await api.getResume();
+   const resume=calls.find(x=>x.url.pathname==="/UserItems/Resume")!;
+   expect(resume.url.searchParams.get("Limit")).toBe("100");
+   expect(resume.url.searchParams.get("userId")).toBe(USER);
  });
  it("collects 201 universe items by authorized pages",async()=>{
    const {api,calls}=fixture();await api.login("Alice","password");

@@ -79,6 +79,17 @@ describe("Vynéo native shelves are metadata-driven and deterministic",()=>{
       expect.arrayContaining(fresh.map(i=>i.id)));
     expect(selected.items.every(i=>(i.year??0)>=2024)).toBe(true);
   });
+  it("filters stale completed items from Reprendre even without Played flag",()=>{
+    const r1=media(300,[ "Drame" ],{progress:98,played:false});
+    const r2=media(301,[ "Drame" ],{progress:100,played:true});
+    const r3=media(302,[ "Drame" ],{progress:48,played:false});
+    const r4=media(303,[ "Drame" ],{progress:94.9,played:false});
+    const r5=media(304,[ "Drame" ],{progress:null,played:false});
+    const rows=buildShelves({...sample(),resume:[r1,r2,r3,r4,r5]},
+      "a".repeat(32),new Date("2026-10-20"));
+    expect(rows.find(x=>x.id==="resume")?.items.map(x=>x.id))
+      .toEqual([r3.id,r4.id,r5.id]);
+  });
   it("shows no imaginary rankings when catalogue is empty",()=>{
     const zero:LibrarySnapshot={
       recent:[],resume:[],nextUp:[],favorites:[],watched:[],collections:[]

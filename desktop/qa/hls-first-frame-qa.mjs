@@ -116,8 +116,11 @@ try{
   assert(seen.includes("/hls/"+ticket+"/index.m3u8"));
   assert(seen.includes("/hls/"+ticket+"/playlist.m3u8"));
   assert(seen.some(path=>path.endsWith(".ts")));
-  assert(seen.every(path=>path==="/"||
-    path.startsWith("/hls/"+ticket+"/")));
+  // Chromium probes /favicon.ico independently of the HLS engine.
+  // It is neither a media request nor a cross-origin connection.
+  assert(seen.every(path=>path==="/"||path==="/favicon.ico"||
+    path.startsWith("/hls/"+ticket+"/")),
+    "Unexpected fixture request: "+JSON.stringify(seen));
   mkdirSync(shots,{recursive:true});
   await page.locator("#video").screenshot({
     path:join(shots,"hls-codec-smoke-first-frame.png")

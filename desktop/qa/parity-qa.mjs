@@ -242,10 +242,11 @@ try{
  await detail.getByRole("button",{name:"Retirer de ma liste"}).click();
  assert(actions.some(x=>x.method==="DELETE" &&
    x.path==="/Users/"+user+"/FavoriteItems/"+hoveredEpisode.SeriesId));
+ await detail.getByRole("button",{name:"Ajouter à ma liste"}).waitFor();
  await detail.getByRole("button",{name:"Marquer non vu"}).click();
  assert(actions.some(x=>x.method==="DELETE" &&
    x.path==="/Users/"+user+"/PlayedItems/"+hoveredEpisode.Id));
- assert.equal(await detail.getByRole("button",{name:"Marquer vu"}).count(),1);
+ await detail.getByRole("button",{name:"Marquer vu"}).waitFor({timeout:4000});
  await page.screenshot({path:join(out,"media-details-actions-1650.png"),
   fullPage:false});
  await detail.getByRole("button",{name:"Fermer"}).click();
@@ -255,8 +256,9 @@ try{
  await card.hover();
  await popup.waitFor();
  await popup.getByRole("button",{name:"Masquer de ce rayon sur cet appareil"}).click();
- assert.equal(await page.locator(".vy-shelf[aria-label='À suivre'] .vy-card").count(),
-   beforeHide-1);
+ await page.waitForFunction(expected=>
+  document.querySelectorAll(".vy-shelf[aria-label='À suivre'] .vy-card").length===expected,
+  beforeHide-1,{timeout:3500});
  await page.getByRole("button",{name:"Ouvrir le profil"}).click();
  await page.getByRole("button",{name:"Réafficher les 1 titres masqués"}).click();
  await page.waitForFunction(expected=>

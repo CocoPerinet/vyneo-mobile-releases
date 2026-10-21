@@ -110,7 +110,10 @@
 .vy-hero:hover .vy-hero-arrow,.vy-hero-arrow:focus-visible{opacity:1}
 .vy-hero-arrow:hover{background:rgba(20,22,30,.7);
   transform:translateY(-50%) scale(1.08)}
-.vy-hero-dots{position:absolute;left:0;right:0;bottom:22px;
+/* Home rails overlap the bottom 150px of the Hero. Dot controls must
+ * remain ABOVE that overlay; otherwise z-index:5 on the rails captures
+ * the click even though the dots themselves are visible. */
+.vy-hero-dots{position:absolute;left:0;right:0;bottom:170px;
   justify-content:center;gap:8px;pointer-events:auto}
 .vy-hero-dots button{width:12px;height:12px;padding:0;display:grid;
   place-items:center}
@@ -340,7 +343,8 @@
  .vy-toolbar{gap:10px}
  .vy-search-label{width:clamp(140px,34vw,230px)}
  .vy-hero{min-height:550px;margin-top:-104px;padding:145px 4% 128px}
- .vy-hero-controls{bottom:90px;right:4%}
+ .vy-hero-controls{inset:0}
+ .vy-hero-dots{bottom:103px;gap:5px}
  .vy-shelves{margin-top:-83px}
  .vy-rail{padding-inline:4%}
  .vy-card{flex-basis:260px}
@@ -348,6 +352,8 @@
  .vy-rail-arrow{width:32px;height:40px}
 }
 @media(max-width:460px){
+ .vy-hero-dots{bottom:100px;gap:4px}
+ .vy-hero-dots button{width:12px;height:14px}
  .vy-hero{min-height:490px}
  .vy-card{flex-basis:74vw}
  .vy-nav button{padding:8px 10px}

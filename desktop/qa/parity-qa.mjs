@@ -221,6 +221,19 @@ try{
  // A real spin-off can precede an engaged S2E1 when both are recent.
  // Assert the source-specific badge on each relevant slide, not a fabricated
  // claim that every carousel must start with the same category.
+ const dotHit=await heroDots.first().evaluate(button=>{
+  const rect=button.getBoundingClientRect();
+  const centerX=(rect.left+rect.right)/2;
+  const centerY=(rect.top+rect.bottom)/2;
+  const hit=document.elementFromPoint(centerX,centerY);
+  return {at:[centerX,centerY],clickable:hit===button ||
+    button.contains(hit),target:hit?.className??""};
+ });
+ assert(dotHit.clickable,
+  "Hero pagination is hidden underneath overlapping rails: "+
+  JSON.stringify(dotHit));
+ console.log("JELLYFIN_PARITY_HERO_DOTS_NOT_OCCLUDED_PASS "+
+   JSON.stringify(dotHit));
  const seriesHero=page.getByRole("button",{
   name:/Bannière \d+ : Série 1$/
  }).first();

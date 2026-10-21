@@ -101,7 +101,11 @@ try{
    const kind=qs.get("IncludeItemTypes"),filters=qs.get("Filters");
    const start=Number(qs.get("StartIndex")??0);
    const limit=Number(qs.get("Limit")??96);
-   if(kind==="Season"){
+   if(qs.has("SearchTerm")){
+    const term=qs.get("SearchTerm");
+    if(term==="alpha")await new Promise(resolve=>setTimeout(resolve,900));
+    payload={Items:[films[term==="alpha"?0:1]],TotalRecordCount:1};
+   }else if(kind==="Season"){
     payload={Items:[{Id:id(9000),SeriesId:id(100),IndexNumber:2,
      PremiereDate:"2026-09-15"}],TotalRecordCount:1};
    }else if(kind==="Series"&&qs.get("Ids")){
@@ -265,6 +269,21 @@ try{
   document.querySelectorAll(".vy-shelf[aria-label='À suivre'] .vy-card").length===expected,
   beforeHide,{timeout:3000});
  console.log("JELLYFIN_PARITY_RESTORE_HIDDEN_NEXT_UP_PASS");
+ // A slow first search must not overwrite newer results or end the spinner.
+ const searchInput=page.getByRole("searchbox",{
+  name:"Rechercher dans ma bibliothèque"});
+ await searchInput.fill("alpha");
+ await page.waitForTimeout(340);
+ await searchInput.fill("beta");
+ await page.locator(".vy-browser .vy-card-title").first()
+  .getByText("Film de test 2",{exact:true}).waitFor({timeout:5000});
+ await page.waitForTimeout(1100);
+ assert.equal(await page.locator(".vy-browser .vy-card-title").first()
+   .textContent(),"Film de test 2");
+ assert.equal(await page.locator(".vy-browser .vy-card").count(),1);
+ await searchInput.fill("");
+ await page.locator(".vy-shelf[aria-label='À suivre']").waitFor();
+ console.log("JELLYFIN_PARITY_SEARCH_RACE_PASS");
  const arrow=page.getByRole("button",{name:"Défiler À suivre vers la droite"});
  await arrow.waitFor({timeout:3000});
  const rail=page.locator(".vy-shelf[aria-label='À suivre'] .vy-rail");

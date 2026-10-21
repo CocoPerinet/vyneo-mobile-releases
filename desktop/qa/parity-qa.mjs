@@ -49,6 +49,7 @@ const cors={"Access-Control-Allow-Origin":"*",
  "Access-Control-Allow-Headers":"authorization,content-type",
  "Access-Control-Allow-Methods":"GET,POST,DELETE,OPTIONS"};
 const actions=[],external=[],errors=[];
+const favoriteIds=new Set(),playedIds=new Set();
 let browser;
 try{
  browser=await chromium.launch({
@@ -70,6 +71,11 @@ try{
   if(method==="POST"||method==="DELETE"){
    if(path.includes("/FavoriteItems/")||path.includes("/PlayedItems/")){
     actions.push({method,path});
+    const parts=path.split("/");
+    const target=parts.at(-1);
+    const state=path.includes("/FavoriteItems/")?favoriteIds:playedIds;
+    if(method==="POST")state.add(target);
+    else state.delete(target);
     return route.fulfill({status:204,headers:cors,body:""});
    }
   }
@@ -122,10 +128,12 @@ try{
     return route.fulfill({status:503,headers:cors,body:"Parent temporarily unavailable"});
    const mediaId=path.split("/").at(-1);
    const episode=nextUp.find(ep=>ep.Id===mediaId);
-   if(episode)payload=episode;
+   if(episode)payload={...episode,UserData:{...episode.UserData,
+    Played:playedIds.has(mediaId)}};
    else if(seriesIds.includes(mediaId)){
     payload={...films[0],Id:mediaId,Type:"Series",Name:"Série parente",
-      UserData:{PlayedPercentage:55,Played:false,IsFavorite:false}};
+      UserData:{PlayedPercentage:55,Played:false,
+        IsFavorite:favoriteIds.has(mediaId)}};
    }else payload=films.find(f=>f.Id===mediaId)??films[0];
   }
   return route.fulfill({status:200,headers:{"Content-Type":"application/json",
@@ -223,6 +231,38 @@ try{
  console.log("JELLYFIN_PARITY_HOVER_FAIL_CLOSED_AND_CLOSE_PASS");
  await page.mouse.move(900,25);
  await popup.waitFor({state:"hidden",timeout:2500});
+ // Detail actions mutate Jellyfin directly, and episode favorites must
+ // always update their parent series rather than the episode.
+ await card.scrollIntoViewIfNeeded();
+ await card.locator(".vy-card-main").click();
+ const detail=page.locator(".vy-detail[role='dialog']");
+ await detail.waitFor({timeout:4000});
+ await detail.getByRole("button",{name:"Retirer de ma liste"})
+   .waitFor({timeout:5000});
+ await detail.getByRole("button",{name:"Retirer de ma liste"}).click();
+ assert(actions.some(x=>x.method==="DELETE" &&
+   x.path==="/Users/"+user+"/FavoriteItems/"+hoveredEpisode.SeriesId));
+ await detail.getByRole("button",{name:"Marquer non vu"}).click();
+ assert(actions.some(x=>x.method==="DELETE" &&
+   x.path==="/Users/"+user+"/PlayedItems/"+hoveredEpisode.Id));
+ assert.equal(await detail.getByRole("button",{name:"Marquer vu"}).count(),1);
+ await page.screenshot({path:join(out,"media-details-actions-1650.png"),
+  fullPage:false});
+ await detail.getByRole("button",{name:"Fermer"}).click();
+ await detail.waitFor({state:"hidden"});
+ console.log("JELLYFIN_PARITY_DETAIL_ACTIONS_PARENT_SAFE_PASS");
+ const beforeHide=await page.locator(".vy-shelf[aria-label='À suivre'] .vy-card").count();
+ await card.hover();
+ await popup.waitFor();
+ await popup.getByRole("button",{name:"Masquer de ce rayon sur cet appareil"}).click();
+ assert.equal(await page.locator(".vy-shelf[aria-label='À suivre'] .vy-card").count(),
+   beforeHide-1);
+ await page.getByRole("button",{name:"Ouvrir le profil"}).click();
+ await page.getByRole("button",{name:"Réafficher les 1 titres masqués"}).click();
+ await page.waitForFunction(expected=>
+  document.querySelectorAll(".vy-shelf[aria-label='À suivre'] .vy-card").length===expected,
+  beforeHide,{timeout:3000});
+ console.log("JELLYFIN_PARITY_RESTORE_HIDDEN_NEXT_UP_PASS");
  const arrow=page.getByRole("button",{name:"Défiler À suivre vers la droite"});
  await arrow.waitFor({timeout:3000});
  const rail=page.locator(".vy-shelf[aria-label='À suivre'] .vy-rail");

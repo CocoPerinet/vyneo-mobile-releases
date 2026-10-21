@@ -147,7 +147,7 @@ describe("shared lazy artwork observer",()=>{
       dataset:{} as Record<string,string>,
       get src(){return src;},
       set src(value:string){src=value;},
-      getAttribute(name:string){return name==="src"?src:null;},
+      getAttribute(name:string){return name==="src"?(src||null):null;},
       addEventListener(name:string,fn:()=>void){listeners.set(name,fn);},
       removeEventListener(name:string){listeners.delete(name);},
       removeAttribute(name:string){if(name==="src")src="";}

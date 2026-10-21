@@ -850,3 +850,68 @@ réel. Cela ne certifie toujours pas le bon transcodage d'un vrai
 `.strm` Jellyfin, l'audio audible, la qualité QSV, les sous-titres
 ou la progression serveur de l'utilisateur. Le bloc D réel demeure
 `PENDING` et bloque toujours le release stable.
+
+## 22 octobre : remux des sources STRM, robustesse HLS et limites du serveur
+
+### Correctifs fonctionnels réalisés
+
+- Commit `7e5bb63` : le test WebView2 utilise désormais
+  **enableWorker=true** et exactement les paramètres de buffering
+  HLS du lecteur Vynéo destiné à la production. Le contrôle COCO
+  a passé 66 images décodées, une pause, un saut et une reprise,
+  via le protocole Tauri réel, sans installation supplémentaire.
+- Commit `2df79f9` : l'indicateur `IsRemote` des MediaSources
+  Jellyfin est maintenant conservé dans le modèle local,
+  sans divulguer le chemin ni l'URL du fichier. Un MP4 H.264/AAC
+  **distant** n'est plus envoyé vers la voie DirectPlay
+  `stream.mp4?Static=true` qui pourrait demander une redirection
+  bloquée par la sécurité ; une négociation HLS est préférée.
+- Commit `fe3e857` : erreurs UI précises pour accès Jellyfin
+  refusé, limite de transcodage, absence de playlist HLS,
+  défaut réseau, et codec refusé par WebView2. Les diagnostics
+  n'affichent jamais les URL de lecture ni un jeton d'accès.
+- Commit `5fee1d1` : une source Jellyfin avec
+  `SupportsDirectStream=true`, `SupportsTranscoding=false`
+  **et une TranscodingUrl HLS validée** est désormais acceptée.
+  Cela permet le remux serveur sans forcer un réencodage vidéo.
+  La validation des IDs, de la playlist, des codecs et de
+  l'origine HTTPS épinglée reste obligatoire. Les événements
+  Jellyfin peuvent désormais utiliser `PlayMethod=DirectStream`,
+  au lieu de déclarer un transcodage absent.
+
+### Tests exécutés sur COCO (commit 5fee1d1)
+
+- **157 tests frontend et 30 tests Node** réussis ; 6 tests Node
+  correspondant à d'autres contextes de déploiement ignorés.
+- Svelte-check : **0 erreur et 0 avertissement** ;
+  compilation frontend Vite réussie.
+- QA de parité visuelle Chromium et décodage HLS synthétique
+  réussis. QA native dans WebView2/Tauri :
+  `VYNEO_WEBVIEW2_NATIVE_PAUSE_SEEK_RESUME_PASS`,
+  65 images décodées, 19 avant saut, lecture à 3,8 s,
+  pause/reprise et décodage via Web Worker HLS activé,
+  sans accès à la bibliothèque réelle.
+
+### Préconditions bloquantes du vrai test
+
+- Les métadonnées du coffre Windows consultées sans lire
+  ni extraire de secret n'ont montré aucune entrée QA distincte
+  pour Vynéo. Le coffre de la version stable n'a **pas** été
+  consulté ou contourné.
+- Le serveur N100 expose `/dev/dri/renderD128` en
+  lecture/écriture depuis Jellyfin, la configuration QSV
+  est active et jellyfin-ffmpeg annonce bien
+  `qsv`, `h264_qsv` et `hevc_qsv`. Cela ne prouve
+  toujours pas le transcodage effectif d'un STRM.
+- Lors du contrôle à 00:11, le conteneur Jellyfin consommait
+  environ **195 % CPU** sur un N100 à 4 cœurs, avec charge
+  système supérieure à 4 et sans processus ffmpeg détecté.
+  Aucun transcodage d'essai lourd n'a été ajouté au serveur
+  déjà occupé. Une lecture intégrale sur compte réel
+  attend une fenêtre de charge plus faible et une session
+  de QA authentifiée autorisée.
+
+L'installation unique Vynéo `0.2.4` reste intacte et la PR #9
+reste brouillon. Le bloc D `real-library` et `side-by-side`
+ne change PAS de statut. Il ne faut pas publier une stable
+sur la seule foi des tests synthétiques.

@@ -173,8 +173,14 @@ try{
  assert.equal(await page.locator(".vy-header .vy-nav").getByRole("button",
   {name:"Univers",exact:true}).count(),0,
   "Univers must remain a home rail, never a header tab");
- await page.locator('[data-vy-universe="dcu"] img')
-  .evaluate(img=>img.decode());
+ // The final logo is lazy, far beyond the right edge of the carousel.
+ // Scroll it into view before waiting, rather than awaiting decode()
+ // indefinitely while Chromium defers the off-screen resource.
+ await page.locator('[data-vy-universe="dcu"]').scrollIntoViewIfNeeded();
+ await page.waitForFunction(()=>{
+  const img=document.querySelector('[data-vy-universe="dcu"] img');
+  return img?.complete && img.naturalWidth>0;
+ },null,{timeout:4500});
  const newDcu=await page.locator('[data-vy-universe="dcu"] img')
   .evaluate(img=>({loaded:img.complete&&img.naturalWidth>0,
    filter:getComputedStyle(img).filter}));

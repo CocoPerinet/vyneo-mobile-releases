@@ -818,3 +818,35 @@ des sous-titres, du transcodage QSV ni des rapports de progression
 réellement reçus par Jellyfin. Le bloc D réel reste `PENDING`.
 Aucune publication stable n'est autorisée tant que ce dernier
 contrôle n'a pas été réalisé avec le même compte que Jellyfin.
+
+### QA native complémentaire : pause, saut dans la timeline et reprise
+
+Le commit `88ca2ba` renforce la même session QA WebView2 masquée :
+le lecteur doit décoder les premières images du flux HLS, se mettre
+réellement en pause, accepter un saut au temps **3,2 secondes**, puis
+reprendre la lecture et décoder au moins trois images supplémentaires.
+
+Résultat exécuté sur COCO dans la session Windows interactive :
+
+```
+VYNEO_WEBVIEW2_NATIVE_PAUSE_SEEK_RESUME_PASS
+width=320 height=180 readyState=4
+decodedFrames=66 framesBeforeSeek=20
+currentTime=3.79 duration=6.04
+paused=false pauseVerified=true seekVerified=true
+seekTargetSeconds=3.2 nativeProtocol=true drm=false
+QA_ZERO_INSTALLER_ZERO_REAL_CREDENTIALS
+```
+
+Après le second passage, vérification des ressources : installation
+enregistrée = Vynéo `0.2.4` uniquement, processus Vynéo présent =
+application stable uniquement en session 1, tâche QA temporaire restante =
+**0**. Aucune interaction souris/clavier ou changement de focus n'a
+été nécessaire.
+
+Cela valide la capacité du code natif à **lire, mettre en pause,
+rechercher et reprendre** un flux HLS synthétique dans le WebView2
+réel. Cela ne certifie toujours pas le bon transcodage d'un vrai
+`.strm` Jellyfin, l'audio audible, la qualité QSV, les sous-titres
+ou la progression serveur de l'utilisateur. Le bloc D réel demeure
+`PENDING` et bloque toujours le release stable.

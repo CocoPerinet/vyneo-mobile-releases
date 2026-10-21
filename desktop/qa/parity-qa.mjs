@@ -848,6 +848,32 @@ try{
  assert(external.every(x=>!x.url.includes(token)));
  assert.equal(errors.length,0,"Browser errors "+errors.join("; "));
  console.log("JELLYFIN_PARITY_NATIVE_PLAYLISTS_SCOPED_READ_ONLY_PASS");
+ // The original Jellyfin header includes both links. With seven tabs,
+ // the active link must remain reachable in the scrollable narrow header,
+ // including after opening a collection or playlist content page.
+ await page.setViewportSize({width:390,height:844});
+ await page.getByRole("button",{name:"Toutes les playlists"}).click();
+ for(const label of ["Collections","Playlists","Ma liste","Accueil"]){
+  await page.locator(".vy-header .vy-nav").getByRole("button",{
+   name:label,exact:true}).click();
+  await page.waitForFunction(name=>{
+   const nav=document.querySelector(".vy-header .vy-nav");
+   const active=nav?.querySelector('[aria-current="page"]');
+   if(!active || active.textContent?.trim()!==name)return false;
+   const bounds=nav.getBoundingClientRect(),item=active.getBoundingClientRect();
+   return item.left>=bounds.left-3 && item.right<=bounds.right+3;
+  },label,{timeout:2500});
+  const horizontal=await page.evaluate(()=>
+   document.documentElement.scrollWidth-
+   document.documentElement.clientWidth);
+  assert(horizontal<=2,
+   "Mobile page overflows on "+label+": "+horizontal);
+ }
+ await page.getByRole("button",{name:"Playlists",exact:true}).click();
+ await page.locator(".vy-group-index .vy-card").first()
+  .waitFor({timeout:3500});
+ await page.screenshot({path:join(out,"playlists-390.png"),fullPage:false});
+ console.log("JELLYFIN_PARITY_MOBILE_COLLECTIONS_PLAYLISTS_NAV_PASS");
 }finally{
  await browser?.close();
  await new Promise(resolve=>http.close(resolve));

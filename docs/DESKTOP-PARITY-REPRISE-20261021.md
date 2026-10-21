@@ -424,3 +424,75 @@ a été vérifiée sur le vrai serveur N100. Les IDs/captures propres
 à une session réelle du compte Vynéo restent à comparer (bloc D
 `side-by-side` et `real-library` **toujours PENDING**).
 La version signée `desktop-v0.2.4` n'est pas touchée.
+
+## Suite du 21 octobre, 19 h 50 : header Collections et Playlists
+
+Commits `84eb225`, `658e79e`, `717e75a`, `154977b`,
+`7271ada` dans la PR #9 brouillon.
+
+### Source : écran Jellyfin réellement connecté
+
+L'onglet Brave Jellyfin connecté montre la séquence initiale
+`Reprendre la lecture / À suivre / Nouvelles saisons et suites /
+Univers / Tendances / Pour vous` et les boutons header
+`Animes / Films / Séries / Collections / Playlists / Ma liste`.
+La source observée en lecture seule (libellés et décomptes DOM) est
+archivée dans `desktop/parity/live-home-reference.json`. Les tests
+Playwright vérifient l'ordre exact des six premières sections, et
+n'acceptent plus une simple présence plus loin dans l'accueil.
+Le rayon de recommandations retrouve le libellé **« Pour vous »**
+exactement, au lieu du sous-titre promotionnel Desktop.
+
+### Collections et Playlists sans application supplémentaire
+
+Les nouvelles pages sont purement natives Svelte dans l'application
+existante. Index, fiches et boutons « Afficher davantage » utilisent
+les API Jellyfin **de l'utilisateur authentifié**, jamais une liste
+globale administrateur :
+
+- `GET /Users/{userId}/Items?IncludeItemTypes=BoxSet` ou `Playlist`,
+  `StartIndex`, `Limit=48`, pagination via `TotalRecordCount`.
+- Une collection `BoxSet` s'ouvre avec
+  `GET /Users/{userId}/Items?ParentId={boxSetId}&Recursive=false`,
+  types de médias `Movie,Series,Episode` uniquement.
+- Une playlist utilise `GET /Playlists/{playlistId}/Items?userId={userId}`
+  en lecture seule, sans création, suppression, édition ni endpoint PUT.
+- Identifiants de collection validés en GUID, limites de pagination
+  1..60, contrôle de session avant/après chaque requête, tentative
+  interdite et erreur 403 sans affichage des contenus.
+- Une collection ou playlist vide affiche un état explicite. Un épisode
+  ouvre la fiche déjà implémentée, sans inventer une lecture native.
+- Lors d'un changement de compte, la liste, le détail et les requêtes
+  en vol sont invalidés. Retour clavier vers la collection d'origine,
+  puis focus restitué après fermeture de la fiche.
+- En écran 390 px, les 7 onglets restent accessibles par navigation
+  horizontale, avec recentrage du lien sélectionné et sans
+  débordement de la page.
+
+**Limite Jellyfin à surveiller :** la liste `ParentId` d'une
+collection peut ne pas inclure tous les médias à cause des droits
+ou d'un comportement du serveur. Vynéo n'élève pas les privilèges,
+ne remplace pas cette réponse par une requête administrateur et
+ne prétend pas que l'absence d'une œuvre prouve son inexistence.
+La validation sur les **mêmes droits du même compte** reste à faire.
+
+### Résultats exécutés
+
+Commit `154977b` : **136/136 Vitest**, **26 Node réussis**
+(**6 ignorés POSIX**), `svelte-check` **0 erreur / 0 avertissement**,
+build Vite PASS, Playwright Chromium PASS. Le navigateur automatisé
+vérifie 53 collections en deux pages, retour depuis une collection
+et une fiche, 3 playlists et leurs membres, API strictement
+lecture seule, plus les scénarios précédents des Univers et de
+l'accueil.
+
+Commit `7271ada` : revalidation CSS et Playwright PASS,
+avec navigation Collections/Playlists/Ma liste/Accueil testée à
+390 px. Ces scénarios utilisent encore un serveur et des contenus
+**synthétiques**. Seul le menu de référence Jellyfin a été observé
+avec une session réelle, pas le compte candidat sous test.
+
+La stable Desktop `0.2.4` n'a pas été mise à jour.
+La PR #9 reste en brouillon. Les attestations obligatoires du bloc D
+`side-by-side` et `real-library` restent **pending** avant une
+version stable signée.

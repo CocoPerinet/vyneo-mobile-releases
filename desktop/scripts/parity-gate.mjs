@@ -51,6 +51,22 @@ export function verifyParityAudit(root=auditRoot,providedMatrix){
   }
   return matrix;
 }
+// Stable tags are not allowed to bypass the real parity sign-off.
+export function verifyReleaseParityReadiness(matrix){
+  for(const id of ["side-by-side","real-library"]){
+    const item=matrix.items.find(entry=>entry.id===id);
+    assert.equal(item?.status,"real-validated",
+      "Block D real Jellyfin audit is mandatory before a stable release: "+id);
+    assert.ok(item.evidence?.startsWith("real:"),
+      "Missing real validation evidence: "+id);
+  }
+  for(const item of matrix.items.filter(x=>x.block==="A" || x.block==="B")){
+    assert.ok(item.status==="synthetic-validated" ||
+      item.status==="real-validated",
+      "Block A/B interface parity needs browser QA before release: "+item.id);
+  }
+  return matrix;
+}
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const matrix=verifyParityAudit();
   console.log("VYNEO_PARITY_AUDIT_REQUIRED_OK: "+

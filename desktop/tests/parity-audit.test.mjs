@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {resolve} from "node:path";
-import {auditRoot,PARITY_IDS,verifyParityAudit} from "../scripts/parity-gate.mjs";
+import {auditRoot,PARITY_IDS,verifyParityAudit,
+  verifyReleaseParityReadiness} from "../scripts/parity-gate.mjs";
 
 const source=()=>JSON.parse(readFileSync(resolve(auditRoot,
   "desktop/parity/audit-traceability.json"),"utf8"));
@@ -20,4 +21,17 @@ test("a missing criterion or a forged real validation is rejected",()=>{
   const fake=source();
   fake.items.find(x=>x.id==="real-library").status="real-validated";
   assert.throws(()=>verifyParityAudit(auditRoot,fake),/real evidence/);
+});
+
+test("stable release refuses an unverified real-library comparison",()=>{
+  const current=source();
+  assert.throws(()=>verifyReleaseParityReadiness(current),
+    /Block D real Jellyfin audit/);
+  const approved=source();
+  for(const id of ["side-by-side","real-library"]){
+    const item=approved.items.find(entry=>entry.id===id);
+    item.status="real-validated";
+    item.evidence="real:docs/DESKTOP-PARITY-REAL-ACCEPTANCE.md";
+  }
+  assert.doesNotThrow(()=>verifyReleaseParityReadiness(approved));
 });

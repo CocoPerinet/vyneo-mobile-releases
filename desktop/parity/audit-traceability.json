@@ -26,20 +26,20 @@
       "id": "header",
       "title": "Header, navigation, recherche, avatar",
       "acceptance": "Extraire tailles, gaps, rayon, typographie et obtenir un rendu équivalent pour 1280/1650/1920 px",
-      "status": "source-reviewed",
+      "status": "synthetic-validated",
       "reference": "skin.css:119-319",
       "automation": "desktop/qa/parity-qa.mjs",
-      "evidence": "Audit source 2026-10-20 / tests synthétiques 0.2.4 (pas de capture Jellyfin réelle)"
+      "evidence": "Tests synthétiques COCO 2026-10-21 : header 74 px, liens 16.5 px, champ 320x46 px à 1650 px ; responsive 1280/1920."
     },
     {
       "block": "A",
       "id": "hero",
       "title": "Bannière, ratios, fondu et commandes",
       "acceptance": "Reprendre min-height, marge sous header, fondu, actions et chevauchement des rayons",
-      "status": "source-reviewed",
+      "status": "synthetic-validated",
       "reference": "skin.css:824-967",
       "automation": "desktop/qa/parity-qa.mjs",
-      "evidence": "Audit source 2026-10-20 / tests synthétiques 0.2.4 (pas de capture Jellyfin réelle)"
+      "evidence": "Tests synthétiques COCO 2026-10-21 : min(78vh,820px), overlap 150 px, navigation diapos et capture home-hero-1650.png."
     },
     {
       "block": "A",
@@ -59,27 +59,27 @@
       "status": "synthetic-validated",
       "reference": "skin.css:975-1130",
       "automation": "desktop/qa/parity-qa.mjs",
-      "evidence": "Audit source 2026-10-20 / tests synthétiques 0.2.4 (pas de capture Jellyfin réelle)"
+      "evidence": "Tests synthétiques COCO 2026-10-21 : cartes 340 px, gap 13 px, flèches, ArrowLeft/ArrowRight et scroll du focus."
     },
     {
       "block": "B",
       "id": "hover-details",
       "title": "Popup média au survol",
       "acceptance": "Calquer largeur, espacement, animation, images, badges et actions autorisées",
-      "status": "source-reviewed",
+      "status": "synthetic-validated",
       "reference": "skin.css:772-822",
       "automation": "desktop/qa/parity-qa.mjs",
-      "evidence": "Audit source 2026-10-20 / tests synthétiques 0.2.4 (pas de capture Jellyfin réelle)"
+      "evidence": "Tests synthétiques COCO 2026-10-21 : popup 320 px, boutons 34 px, actions parent-safe, image et badges."
     },
     {
       "block": "B",
       "id": "hover-accessibility",
       "title": "Hover/fermeture souris, clavier et focus",
       "acceptance": "Assurer accès clavier, gestion des bords, délais annulables et fermeture tardive",
-      "status": "pending",
+      "status": "synthetic-validated",
       "reference": "inject.js:~6825+",
       "automation": "desktop/qa/parity-qa.mjs",
-      "evidence": ""
+      "evidence": "Tests synthétiques COCO 2026-10-21 : flèche bas ouvre, Tab circule, Échap ferme avec retour focus, géométrie dans viewport."
     },
     {
       "block": "C",

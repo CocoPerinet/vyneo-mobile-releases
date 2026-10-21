@@ -1,4 +1,4 @@
-import {verifyParityAudit} from "./parity-gate.mjs";
+import {verifyParityAudit,verifyReleaseParityReadiness} from "./parity-gate.mjs";
 import assert from "node:assert/strict";
 import {readFileSync,existsSync} from "node:fs";
 import {resolve,dirname} from "node:path";
@@ -10,7 +10,9 @@ const conf=JSON.parse(read("src-tauri/tauri.conf.json"));
 const release=JSON.parse(read("src-tauri/tauri.release.conf.json"));
 const preview=JSON.parse(read("src-tauri/tauri.preview.conf.json"));
 const pkg=JSON.parse(read("package.json"));
-verifyParityAudit();
+const parityAudit=verifyParityAudit();
+if(process.env.GITHUB_REF?.startsWith("refs/tags/desktop-v"))
+  verifyReleaseParityReadiness(parityAudit);
 const lock=JSON.parse(read("package-lock.json"));
 const mobile=JSON.parse(read("../update-manifest.json"));
 const cargo=read("src-tauri/Cargo.toml");

@@ -36,7 +36,7 @@
   let streamBusy=$state(false);
   let streamError=$state("");
   let streamStarted=$state(false);
-  let videoElement:HTMLVideoElement|undefined;
+  let videoElement=$state<HTMLVideoElement|undefined>(undefined);
   let streamEpoch=0;
   const nativeAvailable=isTauri();
   let favoriteParent=$state<{id:string;isFavorite:boolean}|null>(null);
@@ -378,6 +378,7 @@
           {/if}
           {#if streamTicket}
             <div class="vy-native-player">
+              <!-- svelte-ignore a11y_media_has_caption -->
               <video bind:this={videoElement}
                 src={streamTicket.url} controls playsinline preload="metadata"
                 aria-label={"Lecteur vidéo : "+shown.title}

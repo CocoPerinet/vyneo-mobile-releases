@@ -463,6 +463,24 @@ try{
  await page.waitForTimeout(600);
  assert((await rail.evaluate(x=>x.scrollLeft))>prior);
  console.log("JELLYFIN_PARITY_CAROUSEL_ARROW_PASS");
+ // Block A keyboard: ArrowRight/Left must move focus to actual media cards,
+ // including cards initially outside the visible carousel viewport.
+ const keyboardRail=page.locator(".vy-shelf[aria-label='À suivre'] .vy-rail");
+ const buttons=keyboardRail.locator(".vy-card-main");
+ await buttons.first().focus();
+ await page.keyboard.press("ArrowRight");
+ assert.equal(await buttons.nth(1).evaluate(el=>el===document.activeElement),
+  true,"ArrowRight must focus the following title");
+ for(let i=0;i<5;i++)await page.keyboard.press("ArrowRight");
+ await page.waitForTimeout(400);
+ assert.equal(await buttons.nth(6).evaluate(el=>el===document.activeElement),
+  true,"Keyboard navigation must pass the first viewport");
+ assert((await keyboardRail.evaluate(el=>el.scrollLeft))>0,
+  "Keyboard navigation must scroll its rail to the focused item");
+ await page.keyboard.press("ArrowLeft");
+ assert.equal(await buttons.nth(5).evaluate(el=>el===document.activeElement),
+  true,"ArrowLeft must return focus to the previous title");
+ console.log("JELLYFIN_PARITY_RAIL_KEYBOARD_NAV_PASS");
  await page.getByRole("button",{name:"Explorer l'univers Pixar"}).click();
  await page.getByRole("button",{name:/Tous les univers/}).click();
  await page.locator(".vy-universe-tile").first().waitFor();

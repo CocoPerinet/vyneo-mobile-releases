@@ -42,6 +42,8 @@ export interface PlaybackSource {
   directPlay:boolean;
   directStream:boolean;
   transcoding:boolean;
+  /** Jellyfin remote source (.strm) can redirect even if codecs look direct-playable. */
+  isRemote:boolean;
   tracks:PlaybackTrack[];
 }
 export interface PlaybackProbe {

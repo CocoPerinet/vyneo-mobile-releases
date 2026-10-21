@@ -65,6 +65,7 @@ export function parsePlaybackInfo(payload:unknown):PlaybackProbe{
       directPlay:row.SupportsDirectPlay===true,
       directStream:row.SupportsDirectStream===true,
       transcoding:row.SupportsTranscoding===true,
+      isRemote:row.IsRemote===true,
       tracks
     });
   }

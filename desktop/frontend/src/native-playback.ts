@@ -6,7 +6,10 @@ import type {MediaItem,PlaybackProbe,PlaybackSource} from "./types";
 export function selectDirectMp4(probe:PlaybackProbe):PlaybackSource|null{
   if(probe.errorCode)return null;
   return probe.sources.find(source=>{
-    if(!source.id || !source.directPlay ||
+    // A remote STRM may redirect its MP4 stream even when Jellyfin
+    // advertises DirectPlay. Native proxy deliberately refuses redirects
+    // to avoid leaking auth headers: select server-side HLS instead.
+    if(!source.id || !source.directPlay || source.isRemote ||
       !["MP4","M4V"].includes(source.container.toUpperCase()))return false;
     const video=source.tracks.filter(track=>track.kind==="Video");
     const audio=source.tracks.filter(track=>track.kind==="Audio");

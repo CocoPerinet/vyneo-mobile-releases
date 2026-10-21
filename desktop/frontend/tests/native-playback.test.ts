@@ -8,7 +8,7 @@ const track=(kind:PlaybackTrack["kind"],codec:string):PlaybackTrack=>({
 });
 const source=(overrides:Partial<PlaybackSource>={}):PlaybackSource=>({
   id,title:"MP4",container:"MP4",bitrate:12_000_000,
-  directPlay:true,directStream:true,transcoding:true,
+  directPlay:true,directStream:true,transcoding:true,isRemote:false,
   tracks:[track("Video","h264"),track("Audio","aac")],...overrides
 });
 const probe=(s:PlaybackSource[],errorCode:string|null=null):PlaybackProbe=>({
@@ -37,6 +37,16 @@ describe("native playback: no false-positive video compatibility",()=>{
     }
     expect(selectDirectMp4(probe([]))).toBeNull();
     expect(selectDirectMp4(probe([source()],"NotAllowed"))).toBeNull();
+  });
+  it("never treats a remote STRM MP4 as local DirectPlay, even with H264/AAC",()=>{
+    const remote=source({isRemote:true});
+    expect(selectDirectMp4(probe([remote]))).toBeNull();
+    expect(selectJellyfinHls(probe([remote]))?.id).toBe(id);
+    expect(selectJellyfinHls(probe([source({
+      isRemote:true,transcoding:false
+    })]))).toBeNull();
+    expect(selectDirectMp4(probe([source({isRemote:false})]))?.id)
+      .toBe(id);
   });
   it("chooses an authorized Jellyfin transcoding source for STRM MKV/HEVC",()=>{
     const hevc=source({container:"MKV",tracks:[

@@ -15,24 +15,28 @@ export const UNIVERSES:readonly Universe[]=[
 ];
 const text=(item:MediaItem)=>[...(item.tags??[]),...(item.studios??[])]
   .map(value=>value.toLocaleLowerCase("en").trim());
+// The real Jellyfin injector rejects promotional footage from *every*
+// branded universe, even when it carries an exact studio/tag match.
+const NOT_A_WORK=/world premiere|premi[èe]re mondiale|red carpet|tapis rouge|behind the scenes|making[- ]of|featurette|special look|comic[- ]?con/i;
+const MCU_EXTRAS=/pr[ée]sentation sp[ée]ciale|special presentation|\bLEGO\b|werewolf by night|joyeuses f[êe]tes|l[ée]gendes des studios marvel|marvel studios:? legends/i;
 export function belongsToUniverse(item:MediaItem,id:UniverseId):boolean{
-  if(item.type!=="Movie" && item.type!=="Series")return false;
+  if((item.type!=="Movie" && item.type!=="Series") ||
+    NOT_A_WORK.test(item.title))return false;
   const values=text(item);
   const matches=(pattern:RegExp)=>values.some(x=>pattern.test(x));
   const name=item.title.toLocaleLowerCase("fr");
   switch(id){
     case "mcu":
-      if(/legends|légendes des studios marvel|special presentation|lego/i.test(name))
-        return false;
+      if(MCU_EXTRAS.test(name))return false;
       return matches(/marvel cinematic universe|\bmcu\b/i) ||
         (item.type==="Movie" && (item.year??0)>=2008 &&
           matches(/^marvel studios$/i));
     case "disney":
-      return matches(/walt disney pictures|walt disney animation/i);
+      return matches(/walt disney pictures/i);
     case "pixar":
       return matches(/\bpixar\b/i);
     case "dreamworks":
-      return matches(/dreamworks animation|dreamworks pictures/i);
+      return matches(/dreamworks animation/i);
     case "starwars":
       // Lucasfilm alone also produces Indiana Jones and Labyrinth. The
       // original Jellyfin theme has explicit series-title fallbacks for

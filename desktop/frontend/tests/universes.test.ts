@@ -47,6 +47,40 @@ describe("Jellyfin universes parity",()=>{
      studios:["Lucasfilm Ltd."]}),"starwars")).toBe(false);
 
  });
+ it("rejects global promotional extras and the Marvel exclusions from the original skin",()=>{
+   const promotional=[
+     "World Premiere: Pixar", "Star Wars : Behind the Scenes",
+     "Disney making-of", "DreamWorks featurette", "DC Comic-con",
+     "Marvel red carpet", "DCU special look"
+   ];
+   const brand:readonly ("mcu"|"disney"|"pixar"|"dreamworks"|"starwars"|"dc"|"dcu")[]=[
+     "pixar","starwars","disney","dreamworks","dc","mcu","dcu"
+   ];
+   const studio=[
+     "Pixar","Lucasfilm Ltd.","Walt Disney Pictures",
+     "DreamWorks Animation","DC","Marvel Studios","DC Studios"
+   ];
+   for(let i=0;i<promotional.length;i++){
+     expect(belongsToUniverse(row(300+i,{title:promotional[i],
+       studios:[studio[i]]}),brand[i])).toBe(false);
+   }
+   for(const title of ["Werewolf by Night","Les Gardiens de la Galaxie : Joyeuses fêtes",
+     "Marvel Studios: Legends","Marvel LEGO Holiday Special",
+     "Présentation spéciale Marvel"]){
+     expect(belongsToUniverse(row(400,{title,
+       studios:["Marvel Studios"],year:2025}),"mcu")).toBe(false);
+   }
+   expect(belongsToUniverse(row(402,{title:"Captain America : Un brave nouveau monde",
+     studios:["Marvel Studios"],year:2025}),"mcu")).toBe(true);
+ });
+ it("avoids studios that the original Jellyfin universe rules do not authorize",()=>{
+   expect(belongsToUniverse(row(450,{studios:["DreamWorks Pictures"],
+     title:"Un film live-action"}),"dreamworks")).toBe(false);
+   expect(belongsToUniverse(row(451,{studios:["DreamWorks Animation"],
+     title:"Un film d'animation"}),"dreamworks")).toBe(true);
+   expect(belongsToUniverse(row(452,{studios:["Warner Bros. Animation"],
+     title:"Un film d'animation"}),"dc")).toBe(false);
+ });
  it("uses the exact MCU phase boundary between April and July 2025",()=>{
    const spring=row(20,{tags:["MCU"],year:2025,
      premiereDate:"2025-04-30",title:"Thunderbolts*"});

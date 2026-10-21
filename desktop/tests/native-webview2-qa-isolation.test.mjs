@@ -6,6 +6,7 @@ test("synthetic WebView2 media QA is compile-time isolated from production",()=>
   const cargo=read("src-tauri/Cargo.toml");
   const entry=read("src-tauri/src/main.rs");
   const streamer=read("src-tauri/src/native_hls.rs");
+  const ticketState=read("src-tauri/src/native_stream.rs");
   const qa=read("src-tauri/src/native_e2e_qa.rs");
   const cfg=JSON.parse(read("src-tauri/tauri.jellyfin-qa.conf.json"));
   const stable=JSON.parse(read("src-tauri/tauri.conf.json"));
@@ -32,8 +33,8 @@ test("synthetic WebView2 media QA is compile-time isolated from production",()=>
   assert.match(runner,/cleanupOrphanedQaTasks\(\)/);
   assert.match(runner,/New-ScheduledTaskSettingsSet -ExecutionTimeLimit/);
   assert.match(runner,/New-TimeSpan -Minutes 2/);
-  assert.match(streamer,/cfg\(feature="native-e2e-qa"\)/);
-  assert.match(streamer,/if quit_qa \{ app.exit\(0\); \}/);
+  assert.match(ticketState,/cfg\(feature="native-e2e-qa"\)/);
+  assert.match(ticketState,/if quit_qa \{ app.exit\(0\); \}/);
   assert.notEqual(cfg.identifier,stable.identifier);
   assert.equal(cfg.identifier,"fr.visyren.vyneo.desktop.jellyfinqa");
   assert.equal(cfg.build.frontendDist,"../qa-native-dist");

@@ -101,6 +101,8 @@
   let homeWarning=$state("");
   let epoch=0;
   let refreshVersion=0;
+  let favoriteReconcileVersion=0;
+  let playbackReconcileVersion=0;
   let searchTimer:ReturnType<typeof setTimeout>|null=null;
   let searchSequence=0;
   const tabs:Array<{key:ViewKey;label:string}>= [
@@ -311,6 +313,47 @@
   function openMedia(item:MediaItem){
     closeHover();selected=item;
   }
+  // Jellyfin updates one item at a time, but its derived shelves depend
+  // on several user-scoped queries. Reconcile after a confirmed mutation:
+  // NextUp alone is insufficient, because S2E1 classification also depends
+  // on the updated parent series' PlayedPercentage and recent season IDs.
+  // Each action type has a separate ticket so a favorite refresh cannot
+  // cancel a concurrently running playback reconciliation.
+  async function reconcileAfterMutation(action:MediaAction,
+    generation:number,uid:string){
+    if(action==="favorite"){
+      const ticket=++favoriteReconcileVersion;
+      try{
+        const favorites=await api.getFavorites();
+        if(generation===epoch && ticket===favoriteReconcileVersion &&
+          session?.userId===uid)
+          data={...data,favorites};
+      }catch{/* Optimistic confirmed changes remain in current UI. */}
+      return;
+    }
+    const ticket=++playbackReconcileVersion;
+    const current=()=>generation===epoch &&
+      session?.userId===uid && ticket===playbackReconcileVersion;
+    const updated=await Promise.allSettled([
+      api.getNextUp(),api.getResume(),api.getWatched(),
+      api.getRecentSeasons()
+    ]);
+    if(!current())return;
+    const [next,resume,watched,seasons]=updated;
+    // Apply each independently: a denied or timed-out API request must
+    // not erase valid shelves already shown to the signed-in user.
+    data={...data,
+      ...(next.status==="fulfilled"?{nextUp:next.value}:{}),
+      ...(resume.status==="fulfilled"?{resume:resume.value}:{}),
+      ...(watched.status==="fulfilled"?{watched:watched.value}:{})
+    };
+    if(seasons.status==="fulfilled")recentSeasons=seasons.value;
+    if(next.status!=="fulfilled")return;
+    try{
+      const evidence=await api.getNextUpSeries(next.value);
+      if(current())seriesEvidence=evidence;
+    }catch{/* Keep last verified parent metadata on transient errors. */}
+  }
   async function changeMediaState(shown:MediaItem,
     action:MediaAction):Promise<boolean>{
     if(hoverBusy || !session)return false;
@@ -345,14 +388,10 @@
       if(hover)hover={...hover,item:rewrite(hover.item)};
       if(verifiedHeroFavorite?.id===shown.id && action==="favorite")
         verifiedHeroFavorite={id:shown.id,favorite:enabled};
-      if(action==="favorite")void api.getFavorites().then(items=>{
-        if(generation===epoch && session?.userId===uid)
-          data={...data,favorites:items};
-      }).catch(()=>{});
-      if(action==="played")void api.getNextUp().then(items=>{
-        if(generation===epoch && session?.userId===uid)
-          data={...data,nextUp:items};
-      }).catch(()=>{});
+      // An in-flight initial Home refresh must not overwrite a newer
+      // confirmed user mutation with an older playback snapshot.
+      refreshVersion++;
+      void reconcileAfterMutation(action,generation,uid);
       return true;
     }catch{
       if(generation===epoch)hoverError="Modification refusée par Jellyfin.";

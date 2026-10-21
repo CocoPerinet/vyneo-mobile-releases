@@ -402,9 +402,40 @@ try{
    "The hover must read the series favorite state");
  await page.screenshot({path:join(out,"hover-1650.png"),fullPage:false});
  console.log("JELLYFIN_PARITY_HOVER_ACTIONS_PASS");
+ // A Jellyfin media change must invalidate ALL dependent shelves, not
+ // just NextUp: Resume, playback history, recent season dates and parent
+ // series engagement must be reread for the current signed-in user.
+ const countProgress=()=>{
+  const routes=external.map(x=>new URL(x.url));
+  return {
+   next:routes.filter(x=>x.pathname==="/Shows/NextUp").length,
+   resume:routes.filter(x=>x.pathname==="/UserItems/Resume").length,
+   watched:routes.filter(x=>x.pathname==="/Users/"+user+"/Items" &&
+     x.searchParams.get("Filters")==="IsPlayed").length,
+   seasons:routes.filter(x=>x.pathname==="/Users/"+user+"/Items" &&
+     x.searchParams.get("IncludeItemTypes")==="Season").length,
+   parents:routes.filter(x=>x.pathname==="/Users/"+user+"/Items" &&
+     x.searchParams.get("IncludeItemTypes")==="Series" &&
+     x.searchParams.has("Ids")).length
+  };
+ };
+ const beforeProgress=countProgress();
  await popup.getByRole("button",{name:"Marquer vu"}).click();
  assert(actions.some(x=>x.method==="POST" &&
   x.path==="/Users/"+user+"/PlayedItems/"+hoveredEpisode.Id));
+ const until=Date.now()+4500;
+ while(Date.now()<until){
+  const current=countProgress();
+  if(Object.entries(beforeProgress).every(([name,amount])=>
+    current[name]>amount))break;
+  await page.waitForTimeout(30);
+ }
+ const afterProgress=countProgress();
+ assert(Object.entries(beforeProgress).every(([name,amount])=>
+   afterProgress[name]>amount),
+   "Played mutation must refresh NextUp, Resume, Watched, Seasons and "+
+   "Series engagement: "+JSON.stringify({beforeProgress,afterProgress}));
+ console.log("JELLYFIN_PARITY_POST_PLAYBACK_SHELF_RECONCILIATION_PASS");
  await page.mouse.move(900,25);
  await popup.waitFor({state:"hidden",timeout:2500});
  const second=page.locator(".vy-shelf[aria-label='À suivre'] .vy-card").nth(1);

@@ -45,7 +45,7 @@ export interface PlaybackProbe {
   sources:PlaybackSource[];
   errorCode:string|null;
 }
-export type ViewKey="home"|"movies"|"series"|"anime"|"favorites"|"universes";
+export type ViewKey="home"|"movies"|"series"|"anime"|"favorites";
 export interface MediaItem {
   id:string;
   title:string;

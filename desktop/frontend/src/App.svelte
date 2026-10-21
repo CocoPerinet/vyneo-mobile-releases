@@ -7,7 +7,7 @@
   import {buildShelves,featuredSlides} from "./discover";
   import {newBadge,classifyNewReleases,includeNewReleaseShelf} from "./new-seasons";
   import type {RecentSeason} from "./new-seasons";
-  import {UNIVERSES,universeItems,groupUniverseItems} from "./universes";
+  import {UNIVERSES,groupUniverseItems} from "./universes";
   import type {UniverseId} from "./universes";
   import ShelfRail from "./ShelfRail.svelte";
   import UniverseRail from "./UniverseRail.svelte";
@@ -60,6 +60,10 @@
   let universeCatalog=$state<MediaItem[]>([]);
   let activeUniverse=$state<UniverseId|null>(null);
   let universeGroupIndex=$state(0);
+  // Focus stays in the independent Svelte modal and returns to its tile;
+  // opening an universe must not replace Home or reset the Home scroll.
+  let universeReturnFocus:HTMLElement|null=null;
+  let universeReturnItemId:string|null=null;
   let universeLoading=$state(false);
   let universeError=$state("");
   let hover=$state<{
@@ -128,14 +132,19 @@
     if(tab==="movies")return catalogs.Movie.items;
     if(tab==="series")return catalogs.Series.items;
     if(tab==="anime")return catalogs.Anime.items;
-    if(tab==="universes" && activeUniverse)
-      return universeItems(activeUniverse,universeCatalog);
-    if(tab==="universes")return [];
     return [];
   });
   let searchActive=$derived(searchText.trim().length>=2);
   let activeUniverseGroups=$derived(activeUniverse?
     groupUniverseItems(activeUniverse,universeCatalog):[]);
+  // Keep Home exactly where the viewer left it while the Jellyfin-style
+  // universe modal is open. Restore external/OS body styles on close.
+  $effect(()=>{
+    if(!activeUniverse)return;
+    const before=document.body.style.overflow;
+    document.body.style.overflow="hidden";
+    return ()=>{document.body.style.overflow=before;};
+  });
   // Hero episodes inherit the parent series favorite state. Never guess
   // from the episode's UserData or a stale NextUp snapshot.
   $effect(()=>{
@@ -391,10 +400,63 @@
     }finally{if(generation===epoch)universeLoading=false;}
   }
   function openUniverse(next:UniverseId){
-    selectTab("universes");
+    closeHover();
+    universeReturnFocus=document.activeElement instanceof HTMLElement
+      ?document.activeElement:null;
+    universeReturnItemId=null;
     activeUniverse=next;
     universeGroupIndex=0;
     void loadUniverse();
+    requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>(
+      ".vy-universe-panel .vy-universe-close")?.focus({preventScroll:true}));
+  }
+  function closeUniverse(){
+    activeUniverse=null;universeGroupIndex=0;
+    universeReturnItemId=null;
+    const returnTo=universeReturnFocus;
+    universeReturnFocus=null;
+    requestAnimationFrame(()=>{
+      if(returnTo?.isConnected)returnTo.focus({preventScroll:true});
+    });
+  }
+  function openFromUniverse(item:MediaItem){
+    universeReturnItemId=item.id;
+    openMedia(item);
+  }
+  function closeMediaDetails(){
+    selected=null;
+    if(activeUniverse && universeReturnItemId){
+      const id=universeReturnItemId;
+      requestAnimationFrame(()=>{
+        // Item IDs originate from validated Jellyfin GUIDs only.
+        const button=document.querySelector<HTMLButtonElement>(
+          '[data-vy-universe-item="'+id+'"] .vy-universe-main');
+        button?.focus({preventScroll:true});
+        button?.scrollIntoView({block:"nearest",inline:"nearest"});
+      });
+    }
+  }
+  function handleUniverseKey(event:KeyboardEvent){
+    if(!activeUniverse || selected)return;
+    if(event.key==="Escape"){
+      event.preventDefault();event.stopPropagation();closeUniverse();
+      return;
+    }
+    if(event.key!=="Tab")return;
+    const panel=document.querySelector<HTMLElement>(".vy-universe-panel");
+    if(!panel)return;
+    const controls=[...panel.querySelectorAll<HTMLElement>(
+      'button:not([disabled]):not([tabindex="-1"]),[href]:not([tabindex="-1"])'
+    )].filter(el=>el.getClientRects().length>0);
+    const first=controls[0],last=controls.at(-1);
+    if(!first||!last)return;
+    if(event.shiftKey &&
+      (document.activeElement===first || !panel.contains(document.activeElement))){
+      event.preventDefault();last.focus({preventScroll:true});
+    }else if(!event.shiftKey &&
+      (document.activeElement===last || !panel.contains(document.activeElement))){
+      event.preventDefault();first.focus({preventScroll:true});
+    }
   }
   function moveHero(step:number){
     if(heroSlides.length>1)
@@ -413,6 +475,7 @@
   }
   function selectTab(next:ViewKey){
     closeHover();
+    if(activeUniverse)closeUniverse();
     tab=next;selected=null;searchText="";searchRows=[];
     searchBusy=false;searchSequence++;
     if(searchTimer!==null)clearTimeout(searchTimer);
@@ -435,6 +498,7 @@
     session=authenticated;profileOpen=false;
     recentSeasons=[];seriesEvidence=[];hiddenCards=[];
     universeCatalog=[];activeUniverse=null;universeError="";
+    universeReturnFocus=null;universeReturnItemId=null;
     closeHover();clearAvatar();hoverDetailsCache.clear();
     const generation=++epoch;
     loadAvatar(generation);
@@ -545,6 +609,7 @@
     closeHover();clearAvatar();hoverDetailsCache.clear();
     hiddenCards=[];recentSeasons=[];seriesEvidence=[];
     universeCatalog=[];activeUniverse=null;universeError="";
+    universeReturnFocus=null;universeReturnItemId=null;
     if(searchTimer!==null)clearTimeout(searchTimer);
     api.logout();artwork.clear();
     session=null;selected=null;tab="home";heroIndex=0;
@@ -591,6 +656,7 @@
     closeHover();requestAnimationFrame(keepActiveNavVisible);
   }}
   onkeydown={(event)=>{
+    if(activeUniverse && !selected)handleUniverseKey(event);
     if(event.key==="Escape"){
       profileOpen=false;
       const returnFocus=!!hoverKeyboardOrigin &&
@@ -654,10 +720,8 @@
       <nav class="vy-nav" aria-label="Navigation principale">
         {#each tabs as entry (entry.key)}
           <button type="button"
-            class:active={tab===entry.key ||
-              (tab==="universes" && entry.key==="home")}
-            aria-current={tab===entry.key ||
-              (tab==="universes" && entry.key==="home")?"page":undefined}
+            class:active={tab===entry.key}
+            aria-current={tab===entry.key?"page":undefined}
             onclick={()=>selectTab(entry.key)}>{entry.label}</button>
         {/each}
       </nav>
@@ -857,76 +921,6 @@
             {/if}
           {/each}
         </section>
-      {:else if tab==="universes"}
-        <section class="vy-browser vy-universes-page">
-          {#if activeUniverse}
-            <button type="button" class="vy-universe-back"
-              onclick={()=>{activeUniverse=null;closeHover();}}>
-              ‹ Tous les univers
-            </button>
-            <div class="vy-browser-heading vy-universe-heading">
-              <img class="vy-universe-page-logo" data-vy-universe={activeUniverse}
-                src={UNIVERSES.find(u=>u.id===activeUniverse)?.logo??""}
-                alt={UNIVERSES.find(u=>u.id===activeUniverse)?.label??"Univers"}/>
-              <h1>{UNIVERSES.find(u=>u.id===activeUniverse)?.label??"Univers"}</h1>
-            </div>
-            {#if universeLoading}
-              <p class="vy-empty">Recherche des œuvres autorisées dans Jellyfin…</p>
-            {:else if universeError}
-              <p class="vy-empty" role="alert">{universeError}</p>
-              <button type="button" class="vy-universe-retry"
-                onclick={()=>void loadUniverse()}>Réessayer</button>
-            {:else if activeUniverseGroups.length}
-              <div class="vy-universe-tabs" role="tablist"
-                aria-label={"Époques de "+(UNIVERSES.find(u=>
-                  u.id===activeUniverse)?.label??"cet univers")}>
-                {#each activeUniverseGroups as group,index (group.name)}
-                  <button type="button" role="tab"
-                    data-vy-universe-group={group.name}
-                    class:active={universeGroupIndex===index}
-                    aria-selected={universeGroupIndex===index}
-                    aria-controls="vy-universe-current-list"
-                    tabindex={universeGroupIndex===index?0:-1}
-                    onclick={()=>universeGroupIndex=index}
-                    onkeydown={(event)=>{
-                      const key=event.key;
-                      if(!["ArrowLeft","ArrowRight","Home","End"].includes(key))return;
-                      event.preventDefault();
-                      const count=activeUniverseGroups.length;
-                      universeGroupIndex=key==="Home"?0:
-                        key==="End"?count-1:
-                        (index+(key==="ArrowRight"?1:count-1))%count;
-                      requestAnimationFrame(()=>
-                        document.querySelectorAll<HTMLButtonElement>(
-                          ".vy-universe-tabs [role=tab]")[universeGroupIndex]
-                          ?.focus({preventScroll:true}));
-                    }}>{group.name}</button>
-                {/each}
-              </div>
-              {#each activeUniverseGroups as group,index (group.name)}
-                {#if universeGroupIndex===index}
-                  <div class="vy-universe-list" role="tabpanel"
-                    id="vy-universe-current-list" aria-label={group.name}>
-                    {#each group.items as item (item.id)}
-                      <UniverseEntry {item} cache={artwork} busy={hoverBusy}
-                        onopen={openMedia}
-                        onfavorite={(media)=>void changeMediaState(media,"favorite")}
-                        onplayed={(media)=>void changeMediaState(media,"played")}/>
-                    {/each}
-                  </div>
-                {/if}
-              {/each}
-            {:else}
-              <p class="vy-empty">Aucun titre de cet univers n'est présent dans
-                votre bibliothèque accessible.</p>
-            {/if}
-          {:else}
-            <h1>Univers</h1>
-            <p class="vy-universes-intro">Explorez les œuvres regroupées à partir
-              des studios et des métadonnées de votre bibliothèque Jellyfin.</p>
-            <UniverseRail onselect={openUniverse}/>
-          {/if}
-        </section>
       {:else}
         <section class="vy-browser">
           <div class="vy-browser-heading">
@@ -972,6 +966,77 @@
         </section>
       {/if}
     </main>
+    {#if activeUniverse}
+      <!-- Jellyfin skin's universe selector is a modal, not a separate
+           navigation page. Preserve the underlying Home and its scroll. -->
+      <div class="vy-universe-modal"
+        class:vy-universe-under-detail={!!selected} role="presentation">
+        <button type="button" tabindex="-1" class="vy-universe-backdrop"
+          aria-label="Fermer cet univers" onclick={closeUniverse}></button>
+        <section class="vy-universe-panel" role="dialog"
+          aria-hidden={selected?"true":undefined}
+          aria-modal={selected?undefined:"true"}
+          aria-label={UNIVERSES.find(u=>u.id===activeUniverse)?.label??"Univers"}>
+          <button type="button" class="vy-universe-close"
+            aria-label="Fermer l'univers" onclick={closeUniverse}>×</button>
+          <img class="vy-universe-page-logo" data-vy-universe={activeUniverse}
+            src={UNIVERSES.find(u=>u.id===activeUniverse)?.logo??""}
+            alt={UNIVERSES.find(u=>u.id===activeUniverse)?.label??"Univers"}/>
+          {#if universeLoading}
+            <p class="vy-empty" role="status">
+              Recherche des œuvres autorisées dans Jellyfin…
+            </p>
+          {:else if universeError}
+            <p class="vy-empty" role="alert">{universeError}</p>
+            <button type="button" class="vy-universe-retry"
+              onclick={()=>void loadUniverse()}>Réessayer</button>
+          {:else if activeUniverseGroups.length}
+            <div class="vy-universe-tabs" role="tablist"
+              aria-label={"Époques de "+(UNIVERSES.find(u=>
+                u.id===activeUniverse)?.label??"cet univers")}>
+              {#each activeUniverseGroups as group,index (group.name)}
+                <button type="button" role="tab"
+                  data-vy-universe-group={group.name}
+                  class:active={universeGroupIndex===index}
+                  aria-selected={universeGroupIndex===index}
+                  aria-controls="vy-universe-current-list"
+                  tabindex={universeGroupIndex===index?0:-1}
+                  onclick={()=>universeGroupIndex=index}
+                  onkeydown={(event)=>{
+                    const key=event.key;
+                    if(!["ArrowLeft","ArrowRight","Home","End"].includes(key))return;
+                    event.preventDefault();
+                    const count=activeUniverseGroups.length;
+                    universeGroupIndex=key==="Home"?0:
+                      key==="End"?count-1:
+                      (index+(key==="ArrowRight"?1:count-1))%count;
+                    requestAnimationFrame(()=>
+                      document.querySelectorAll<HTMLButtonElement>(
+                        ".vy-universe-tabs [role=tab]")[universeGroupIndex]
+                        ?.focus({preventScroll:true}));
+                  }}>{group.name}</button>
+              {/each}
+            </div>
+            {#each activeUniverseGroups as group,index (group.name)}
+              {#if universeGroupIndex===index}
+                <div class="vy-universe-list" role="tabpanel"
+                  id="vy-universe-current-list" aria-label={group.name}>
+                  {#each group.items as item (item.id)}
+                    <UniverseEntry {item} cache={artwork} busy={hoverBusy}
+                      onopen={openFromUniverse}
+                      onfavorite={(media)=>void changeMediaState(media,"favorite")}
+                      onplayed={(media)=>void changeMediaState(media,"played")}/>
+                  {/each}
+                </div>
+              {/if}
+            {/each}
+          {:else}
+            <p class="vy-empty">Aucun titre de cet univers n'est présent dans
+              votre bibliothèque accessible.</p>
+          {/if}
+        </section>
+      </div>
+    {/if}
     {#if hover && !selected}
       <HoverPreview item={hover.item} cache={artwork}
         x={hover.x} y={hover.y} source={hover.source}
@@ -987,7 +1052,7 @@
     {#if selected}
       <MediaDetails item={selected} {api} cache={artwork}
         onaction={changeMediaState}
-        onclose={()=>selected=null}/>
+        onclose={closeMediaDetails}/>
     {/if}
   {/if}
 </div>

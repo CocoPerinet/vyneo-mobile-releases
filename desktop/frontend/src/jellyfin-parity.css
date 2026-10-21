@@ -522,3 +522,54 @@
   .vy-universe-tabs{gap:6px}
   .vy-universe-tabs button{font-size:12px;padding:7px 11px}
 }
+
+/* Original Jellyfin skin.css:4668-4710. The universe picker is a centered
+ * dark modal over the preserved Home, not another SPA tab or full-page route.
+ * MediaDetails stays above it (z-index 90), with focus returned afterward. */
+.vy-universe-modal{
+  position:fixed;inset:0;z-index:85;
+  display:flex;align-items:center;justify-content:center;
+  padding:28px;
+  background:rgba(6,4,3,.88);
+  overscroll-behavior:contain;
+}
+.vy-universe-under-detail{visibility:hidden}
+.vy-universe-backdrop{
+  position:absolute;inset:0;display:block;width:100%;height:100%;
+  padding:0;border:0;background:transparent;border-radius:0;
+  cursor:default;
+}
+.vy-universe-panel{
+  position:relative;z-index:1;
+  box-sizing:border-box;width:100%;max-width:1080px;
+  max-height:86vh;overflow-y:auto;overscroll-behavior:contain;
+  padding:30px 32px 34px;
+  color:var(--vy-text);background:rgba(15,11,10,.99);
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:20px;box-shadow:0 30px 90px rgba(0,0,0,.72);
+}
+.vy-universe-close{
+  position:absolute;top:16px;right:18px;
+  padding:6px 10px;border:0;border-radius:8px;
+  background:transparent;color:#9aa3b4;
+  font:400 18px/1 var(--vy-font);
+}
+.vy-universe-close:hover{color:var(--vy-text)}
+.vy-universe-close:focus-visible{
+  outline:2px solid var(--vy-accent-2);outline-offset:2px;
+}
+.vy-universe-panel .vy-universe-page-logo{
+  display:block;max-width:240px;max-height:62px;
+  width:auto;object-fit:contain;margin:0 0 22px;
+}
+.vy-universe-panel .vy-universe-tabs{margin:0 0 20px}
+@media(max-width:700px){
+  .vy-universe-modal{padding:8px}
+  .vy-universe-panel{
+    max-height:94dvh;padding:22px 12px 20px;border-radius:14px;
+  }
+  .vy-universe-close{top:8px;right:8px}
+  .vy-universe-panel .vy-universe-page-logo{
+    max-width:min(200px,70%);max-height:54px;margin-bottom:16px;
+  }
+}

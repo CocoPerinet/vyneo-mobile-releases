@@ -504,29 +504,37 @@ try{
  assert.equal(await buttons.nth(5).evaluate(el=>el===document.activeElement),
   true,"ArrowLeft must return focus to the previous title");
  console.log("JELLYFIN_PARITY_RAIL_KEYBOARD_NAV_PASS");
- await page.getByRole("button",{name:"Explorer l'univers Pixar"}).click();
- await page.getByRole("button",{name:/Tous les univers/}).click();
- await page.locator(".vy-universe-tile").first().waitFor();
+ // Original Jellyfin: Universe tiles live in a rail; clicking one opens a
+ // centered modal above Home without changing the route or Home scroll.
+ const pixarTile=page.getByRole("button",{name:"Explorer l'univers Pixar"});
+ await pixarTile.scrollIntoViewIfNeeded();
  assert.equal(await page.locator(".vy-universe-tile").count(),7);
- assert.equal(await page.locator(".vy-universes-page h1").count(),1);
- const universeLeft=await page.locator(".vy-universes-page .vy-universe-tile")
+ const universeLeft=await page.locator(".vy-universe-tile")
    .first().evaluate(el=>el.getBoundingClientRect().left);
  console.log("JELLYFIN_PARITY_UNIVERSE_LEFT "+universeLeft);
  assert(universeLeft>=42 && universeLeft<=75,
-   "Universe tiles should align with the content heading");
+  "Universe tiles must align with Home's content heading");
  await page.screenshot({path:join(out,"universe-tiles-1650.png"),fullPage:false});
- await page.getByRole("button",{name:"Explorer l'univers Pixar"}).click();
- await page.locator(".vy-universes-page .vy-universe-entry").first()
-   .waitFor({timeout:10000});
- const tabs=page.locator(".vy-universes-page .vy-universe-tabs [role=tab]");
+ const backgroundScroll=await page.evaluate(()=>window.scrollY);
+ await pixarTile.click();
+ const dialog=page.getByRole("dialog",{name:"Pixar"});
+ await dialog.waitFor({timeout:3500});
+ assert.equal(await page.locator(".vy-header .vy-nav [aria-current=page]")
+   .textContent(),"Accueil","Universe modal must not replace the Home tab");
+ assert.equal(await page.evaluate(()=>document.body.style.overflow),"hidden");
+ assert.equal(await dialog.locator(".vy-universe-page-logo").count(),1);
+ assert.equal(await dialog.locator("h1").count(),0,
+  "Jellyfin displays only the universe logo, never duplicated text");
+ await dialog.locator(".vy-universe-entry").first().waitFor({timeout:10000});
+ const tabs=dialog.locator(".vy-universe-tabs [role=tab]");
  assert.deepEqual(await tabs.allTextContents(),
   ["Années 2000","Années 2010","Années 2020"],
   "Universe tabs must follow the original Jellyfin decade grouping");
- assert.equal(await page.locator(".vy-universe-entry").count(),1);
+ assert.equal(await dialog.locator(".vy-universe-entry").count(),1);
  await tabs.nth(1).click();
- assert.equal(await page.locator(".vy-universe-entry").count(),1);
+ assert.equal(await dialog.locator(".vy-universe-entry").count(),1);
  await tabs.nth(2).click();
- assert((await page.locator(".vy-universe-entry").count())>100);
+ assert((await dialog.locator(".vy-universe-entry").count())>100);
  await tabs.nth(1).focus();
  await page.keyboard.press("ArrowLeft");
  assert.equal(await tabs.nth(0).getAttribute("aria-selected"),"true");
@@ -553,7 +561,7 @@ try{
  await first.getByRole("button",{name:"Marquer non vu"})
   .waitFor({timeout:3000});
  await page.waitForTimeout(750);
- const artStatus=await page.locator(".vy-universes-page .vy-universe-entry img")
+ const artStatus=await dialog.locator(".vy-universe-entry img")
    .evaluateAll(imgs=>({total:imgs.length,
      loaded:imgs.filter(img=>img.complete&&img.naturalWidth>0).length,
      broken:imgs.filter(img=>img.complete&&img.naturalWidth===0&&!!img.src).length}));
@@ -561,6 +569,33 @@ try{
  console.log("JELLYFIN_PARITY_IMAGE_STATUS "+JSON.stringify(artStatus));
  await page.screenshot({path:join(out,"universes-1650.png"),fullPage:false});
  console.log("JELLYFIN_PARITY_UNIVERSE_CHRONOLOGY_AND_ACTIONS_PASS");
+ // Opening an item from the universe must return to the same modal/tab and
+ // restore keyboard focus when the details overlay is closed.
+ await first.getByRole("button",{name:/Voir la fiche de/}).click();
+ await page.locator(".vy-detail-screen").waitFor({timeout:3500});
+ await page.locator(".vy-detail-close").click();
+ await dialog.waitFor();
+ assert.equal(await tabs.nth(2).getAttribute("aria-selected"),"true");
+ await page.waitForFunction(id=>{
+  const element=document.querySelector(
+    '[data-vy-universe-item="'+id+'"] .vy-universe-main');
+  return element===document.activeElement;
+ },firstId,{timeout:2500});
+ console.log("JELLYFIN_PARITY_UNIVERSE_DETAIL_RETURN_FOCUS_PASS");
+ // Dismiss and reopen without resetting the home rail position.
+ await page.keyboard.press("Escape");
+ await dialog.waitFor({state:"hidden",timeout:2500});
+ await page.waitForFunction(()=>
+  document.activeElement?.matches(
+    '.vy-universe-tile[data-vy-universe="pixar"]'),null,{timeout:2500});
+ const scrollAfter=await page.evaluate(()=>window.scrollY);
+ assert(Math.abs(scrollAfter-backgroundScroll)<=3,
+  "Closing the universe modal must restore exact Home scroll");
+ await pixarTile.click();
+ await dialog.waitFor();
+ await dialog.locator(".vy-universe-entry").first().waitFor({timeout:10000});
+ await tabs.nth(2).click();
+ console.log("JELLYFIN_PARITY_UNIVERSE_MODAL_AND_HOME_SCROLL_PASS");
  assert(external.every(x=>!x.url.includes(token)));
  assert.equal(errors.length,0,"Unexpected browser errors: "+errors.join("; "));
  for(const viewport of [{width:390,height:844},{width:1280,height:800},
@@ -581,6 +616,14 @@ try{
    console.log("JELLYFIN_PARITY_ACTIVE_MOBILE_TAB_PASS "+
     JSON.stringify(navVisibility));
   }
+  const modalGeometry=await dialog.locator(".vy-universe-panel").evaluate(el=>{
+   const rect=el.getBoundingClientRect();
+   const viewport=document.documentElement.clientWidth;
+   return {x:rect.left,right:rect.right,width:rect.width,
+     height:rect.height,viewWidth:viewport};
+  });
+  assert(modalGeometry.x>=0 && modalGeometry.right<=viewport.width+1,
+   "Universe modal panel exceeds viewport "+JSON.stringify(modalGeometry));
   const overflow=await page.evaluate(()=>
    document.documentElement.scrollWidth-document.documentElement.clientWidth);
   assert(overflow<=2,"Horizontal overflow "+viewport.width+" "+overflow);
@@ -588,6 +631,11 @@ try{
    fullPage:false});
  }
  console.log("JELLYFIN_PARITY_NO_OVERFLOW_390_1280_1920_PASS");
+ await page.locator(".vy-universe-backdrop").click({position:{x:6,y:6}});
+ await dialog.waitFor({state:"hidden",timeout:2500});
+ assert.equal(await page.evaluate(()=>document.body.style.overflow),"",
+  "Closing the universe must restore normal Home page scrolling");
+ console.log("JELLYFIN_PARITY_UNIVERSE_BACKDROP_CLOSE_PASS");
 }finally{
  await browser?.close();
  await new Promise(resolve=>http.close(resolve));

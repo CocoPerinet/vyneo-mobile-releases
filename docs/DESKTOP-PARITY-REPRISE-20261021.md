@@ -1083,3 +1083,26 @@ application installée. Les critères **D side-by-side et
 D real-library restent PENDING** en attendant l'approbation
 manuelle d'une session QA authentifiée, puis les tests en
 lecture réelle et de progression.
+
+### Vérification non authentifiée sur l'API réelle
+
+Un unique appel HTTP POST `/QuickConnect/Initiate` a été
+exécuté sur le serveur Jellyfin existant, avec l'identité
+client Vynéo et `Authorization: MediaBrowser` **sans jeton
+de compte**. Réponse HTTP 2xx et schéma confirmé :
+- code de 6 caractères correspondant au validateur Vynéo ;
+- secret éphémère de 64 caractères correspondant au validateur ;
+- `Authenticated=false` initialement.
+
+La réponse a été immédiatement réduite à ses seuls attributs
+de structure et longueurs **sans afficher, conserver, envoyer
+en pièce jointe, journaliser ou transmettre le Code ou le
+Secret**. Aucune approbation, aucun échange de session,
+aucune consultation de bibliothèque et aucune modification
+de l'état `played` n'a été exécutée. La demande non approuvée
+expire selon la politique Quick Connect du serveur.
+
+Cela confirme la compatibilité du **début du protocole réel**,
+pas la réussite d'une authentification ni celle d'une lecture
+réelle. L'utilisateur devra encore approuver délibérément une
+future demande dans Jellyfin pour permettre la QA du même compte.

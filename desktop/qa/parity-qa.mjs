@@ -585,7 +585,8 @@ try{
  // restore keyboard focus when the details overlay is closed.
  await first.getByRole("button",{name:/Voir la fiche de/}).click();
  await page.locator(".vy-detail-screen").waitFor({timeout:3500});
- await page.locator(".vy-detail-close").click();
+ await page.keyboard.press("Escape");
+ await page.locator(".vy-detail-screen").waitFor({state:"hidden",timeout:3000});
  await dialog.waitFor();
  assert.equal(await tabs.nth(2).getAttribute("aria-selected"),"true");
  await page.waitForFunction(id=>{
@@ -594,6 +595,16 @@ try{
   return element===document.activeElement;
  },firstId,{timeout:2500});
  console.log("JELLYFIN_PARITY_UNIVERSE_DETAIL_RETURN_FOCUS_PASS");
+ const modalClose=dialog.getByRole("button",{name:"Fermer l'univers"});
+ await modalClose.focus();
+ await page.keyboard.press("Shift+Tab");
+ assert(await dialog.evaluate(el=>el.contains(document.activeElement)),
+  "Shift+Tab from modal close must wrap to the last dialog control");
+ assert.equal(await modalClose.evaluate(el=>el===document.activeElement),false);
+ await page.keyboard.press("Tab");
+ assert.equal(await modalClose.evaluate(el=>el===document.activeElement),true,
+  "Tab from last dialog control must wrap to the close button");
+ console.log("JELLYFIN_PARITY_UNIVERSE_MODAL_FOCUS_TRAP_PASS");
  // Dismiss and reopen without resetting the home rail position.
  await page.keyboard.press("Escape");
  await dialog.waitFor({state:"hidden",timeout:2500});

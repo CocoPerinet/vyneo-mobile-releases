@@ -496,6 +496,9 @@
                   }
                 }}
                 onerror={()=>{
+                  // Clearing an intentional stop can emit a delayed WebView2
+                  // media error. Ignore it once the capability is revoked.
+                  if(!streamTicket)return;
                   streamError="Flux indisponible ou codec non pris en charge.";
                   if(reporter && videoElement)
                     reporter.stop(playbackClock(videoElement),true);

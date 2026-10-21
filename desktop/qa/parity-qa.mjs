@@ -101,6 +101,15 @@ try{
     body:bodyJson({Secret:quickSecret,Code:quickCode,
       Authenticated:false})});
   }
+  if(path==="/Users/AuthenticateWithQuickConnect" && method==="POST"){
+   assert.equal(qs.size,0,"Secret must never appear in a query string");
+   assert.deepEqual(JSON.parse(request.postData()),{Secret:quickSecret});
+   assert(!request.headers().authorization?.includes(quickSecret));
+   // A code which nobody has approved MUST NOT sign in the user.
+   return route.fulfill({status:401,
+    headers:{"Content-Type":"application/json",...cors},
+    body:bodyJson({error:"approval pending"})});
+  }
   if(path==="/tmdb/discover/movie"||path==="/tmdb/discover/tv"){
    assert.equal(request.headers().authorization,undefined,
      "The public popularity proxy must never receive a Jellyfin token");
@@ -228,13 +237,22 @@ try{
   quickCode);
  assert(!(await page.locator(".vy-login-card").innerHTML()).includes(quickSecret));
  assert.equal(await page.locator("#vy-password").count(),0);
+ await page.getByRole("button",{name:"J'ai autorisé le code"}).click();
+ await page.locator(".vy-quick-code").waitFor();
+ await page.locator(".vy-login-card [role='alert']").waitFor();
+ assert((await page.locator(".vy-login-card [role='alert']").innerText())
+  .includes("non encore autorisé"));
+ assert.equal((await page.locator(".vy-quick-code").innerText()).trim(),
+  quickCode,"Pending code should survive a not-yet-approved exchange");
+ assert(!(await page.locator(".vy-login-card").innerHTML()).includes(quickSecret));
  await page.getByRole("button",{name:"Retour à la connexion"}).click();
  await page.locator("#vy-password").waitFor({timeout:4000});
  assert.equal(await page.locator(".vy-quick-code").count(),0);
- assert(!external.some(x=>
-  new URL(x.url).pathname==="/Users/AuthenticateWithQuickConnect"),
-  "Cancelling pairing cannot authenticate or alter Jellyfin watch history");
- console.log("VYNEO_QUICK_CONNECT_CODE_PRIVATE_CANCEL_PASS");
+ assert.equal(external.filter(x=>
+  new URL(x.url).pathname==="/Users/AuthenticateWithQuickConnect").length,1);
+ assert(!external.some(x=>x.url.includes(quickSecret)),
+  "Quick Connect proof must not appear in a captured URL");
+ console.log("VYNEO_QUICK_CONNECT_PRIVATE_UNAPPROVED_CANCEL_PASS");
  await page.locator("#vy-username").fill("Alice");
  await page.locator("#vy-password").fill("fictional-password");
  await page.getByRole("button",{name:"Se connecter"}).click();

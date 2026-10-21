@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type {LibrarySnapshot,MediaItem,SessionPublic,ViewKey,Shelf,CatalogKind} from "./types";
+  import type {LibrarySnapshot,MediaItem,SessionPublic,ViewKey,Shelf,CatalogKind,LibraryGroupKind} from "./types";
   import {onMount} from "svelte";
   import {nativeVault} from "./credential-vault";
   import {JellyfinApi} from "./api";
@@ -90,6 +90,12 @@
   let favoriteCatalogs=$state<Record<CatalogKind,CatalogState>>({
     Movie:freshCatalog(),Series:freshCatalog(),Anime:freshCatalog()
   });
+  let libraryGroups=$state<Record<LibraryGroupKind,CatalogState>>({
+    BoxSet:freshCatalog(),Playlist:freshCatalog()
+  });
+  let openGroup=$state<MediaItem|null>(null);
+  let groupContents=$state<CatalogState>(freshCatalog());
+  let groupVersion=0;
   const favoriteSections:Array<{kind:CatalogKind;label:string}>=[
     {kind:"Anime",label:"Animés"},
     {kind:"Movie",label:"Films"},
@@ -112,10 +118,14 @@
     {key:"anime",label:"Animés"},
     {key:"movies",label:"Films"},
     {key:"series",label:"Séries"},
+    {key:"collections",label:"Collections"},
+    {key:"playlists",label:"Playlists"},
     {key:"favorites",label:"Ma liste"}
   ];
   let catalogKind=$derived<CatalogKind|null>(
     tab==="movies"?"Movie":tab==="series"?"Series":tab==="anime"?"Anime":null);
+  let libraryGroupKind=$derived<LibraryGroupKind|null>(
+    tab==="collections"?"BoxSet":tab==="playlists"?"Playlist":null);
   let heroIndex=$state(0);
   let shelves=$derived.by(()=>{
     if(!session)return [];
@@ -221,6 +231,80 @@
         loading:false,error:"Impossible de charger cette page. Réessayez."},
         onlyFavorites);
     }
+  }
+  async function loadLibraryGroups(kind:LibraryGroupKind){
+    if(!session)return;
+    const uid=session.userId,generation=epoch;
+    const previous=libraryGroups[kind],offset=previous.nextOffset;
+    if(previous.loading || offset===null)return;
+    libraryGroups={...libraryGroups,[kind]:{
+      ...previous,loading:true,error:""
+    }};
+    try{
+      const page=await api.getLibraryGroupPage(kind,offset);
+      if(generation!==epoch || session?.userId!==uid)return;
+      const before=libraryGroups[kind];
+      const known=new Set(before.items.map(item=>item.id));
+      const next=page.items.filter(item=>!known.has(item.id) &&
+        !!known.add(item.id));
+      libraryGroups={...libraryGroups,[kind]:{
+        items:[...before.items,...next],nextOffset:page.nextOffset,
+        total:page.total,libraryAvailable:page.libraryAvailable,
+        loading:false,loaded:true,error:""
+      }};
+    }catch{
+      if(generation!==epoch || session?.userId!==uid)return;
+      libraryGroups={...libraryGroups,[kind]:{
+        ...libraryGroups[kind],loading:false,
+        error:"Impossible de charger cette bibliothèque. Réessayez."
+      }};
+    }
+  }
+  async function loadGroupContents(){
+    if(!session || !openGroup ||
+      (openGroup.type!=="BoxSet" && openGroup.type!=="Playlist"))return;
+    const uid=session.userId,generation=epoch,request=groupVersion;
+    const id=openGroup.id,kind=openGroup.type;
+    const previous=groupContents,offset=previous.nextOffset;
+    if(previous.loading || offset===null)return;
+    groupContents={...previous,loading:true,error:""};
+    try{
+      const page=await api.getLibraryGroupContents(kind,id,offset);
+      if(generation!==epoch || request!==groupVersion ||
+        session?.userId!==uid || openGroup?.id!==id)return;
+      const known=new Set(groupContents.items.map(item=>item.id));
+      const next=page.items.filter(item=>!known.has(item.id) &&
+        !!known.add(item.id));
+      groupContents={
+        items:[...groupContents.items,...next],nextOffset:page.nextOffset,
+        total:page.total,libraryAvailable:page.libraryAvailable,
+        loading:false,loaded:true,error:""
+      };
+    }catch{
+      if(generation!==epoch || request!==groupVersion ||
+        session?.userId!==uid || openGroup?.id!==id)return;
+      groupContents={...groupContents,loading:false,
+        error:"Impossible de charger le contenu. Réessayez."};
+    }
+  }
+  function openLibraryGroup(item:MediaItem){
+    if(item.type!=="BoxSet" && item.type!=="Playlist")return;
+    closeHover();groupVersion++;
+    openGroup=item;groupContents=freshCatalog();
+    window.scrollTo({top:0,behavior:"instant"});
+    void loadGroupContents();
+    requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>(
+      ".vy-group-back")?.focus({preventScroll:true}));
+  }
+  function closeLibraryGroup(){
+    const id=openGroup?.id;
+    groupVersion++;openGroup=null;groupContents=freshCatalog();
+    window.scrollTo({top:0,behavior:"instant"});
+    if(id)requestAnimationFrame(()=>{
+      document.querySelector<HTMLButtonElement>(
+        '.vy-group-index [data-vy-card="'+id+'"] .vy-card-main')
+        ?.focus({preventScroll:true});
+    });
   }
   function clearAvatar(){
     if(avatarUrl)URL.revokeObjectURL(avatarUrl);
@@ -406,6 +490,12 @@
       favoriteCatalogs=Object.fromEntries(Object.entries(favoriteCatalogs)
         .map(([key,value])=>[key,{...value,items:value.items.map(rewrite)}])
       ) as Record<CatalogKind,CatalogState>;
+      libraryGroups=Object.fromEntries(Object.entries(libraryGroups)
+        .map(([key,value])=>[key,{...value,items:value.items.map(rewrite)}])
+      ) as Record<LibraryGroupKind,CatalogState>;
+      groupContents={...groupContents,
+        items:groupContents.items.map(rewrite)};
+      if(openGroup)openGroup=rewrite(openGroup);
       if(selected)selected=rewrite(selected);
       // Universe rows must reflect API-confirmed favorite/played mutations
       // immediately; the catalogue is a distinct, on-demand data snapshot.
@@ -489,7 +579,14 @@
     openMedia(item);
   }
   function closeMediaDetails(){
+    const previous=selected?.id;
     selected=null;
+    if(openGroup && previous){
+      requestAnimationFrame(()=>
+        document.querySelector<HTMLButtonElement>(
+          '.vy-group-contents [data-vy-card="'+previous+'"] .vy-card-main')
+          ?.focus({preventScroll:true}));
+    }
     if(activeUniverse && universeReturnItemId){
       const id=universeReturnItemId;
       requestAnimationFrame(()=>{
@@ -541,6 +638,7 @@
   function selectTab(next:ViewKey){
     closeHover();
     if(activeUniverse)closeUniverse();
+    if(openGroup){groupVersion++;openGroup=null;groupContents=freshCatalog();}
     tab=next;selected=null;searchText="";searchRows=[];
     searchBusy=false;searchSequence++;
     if(searchTimer!==null)clearTimeout(searchTimer);
@@ -549,6 +647,10 @@
     if(next==="movies" && !catalogs.Movie.loaded)void loadCatalog("Movie");
     if(next==="series" && !catalogs.Series.loaded)void loadCatalog("Series");
     if(next==="anime" && !catalogs.Anime.loaded)void loadCatalog("Anime");
+    if(next==="collections" && !libraryGroups.BoxSet.loaded)
+      void loadLibraryGroups("BoxSet");
+    if(next==="playlists" && !libraryGroups.Playlist.loaded)
+      void loadLibraryGroups("Playlist");
     if(next==="favorites")for(const entry of favoriteSections){
       if(!favoriteCatalogs[entry.kind].loaded)void loadCatalog(entry.kind,true);
     }
@@ -564,6 +666,8 @@
     recentSeasons=[];seriesEvidence=[];hiddenCards=[];trending=[];
     universeCatalog=[];activeUniverse=null;universeError="";
     universeReturnFocus=null;universeReturnItemId=null;
+    groupVersion++;openGroup=null;groupContents=freshCatalog();
+    libraryGroups={BoxSet:freshCatalog(),Playlist:freshCatalog()};
     closeHover();clearAvatar();hoverDetailsCache.clear();
     const generation=++epoch;
     loadAvatar(generation);
@@ -582,6 +686,8 @@
     if(tab==="movies")void loadCatalog("Movie");
     if(tab==="series")void loadCatalog("Series");
     if(tab==="anime")void loadCatalog("Anime");
+    if(tab==="collections")void loadLibraryGroups("BoxSet");
+    if(tab==="playlists")void loadLibraryGroups("Playlist");
     if(tab==="favorites")for(const entry of favoriteSections)
       void loadCatalog(entry.kind,true);
     requestAnimationFrame(keepActiveNavVisible);
@@ -692,6 +798,8 @@
     searchText="";searchRows=[];searchBusy=false;data=empty();homeWarning="";
     catalogs={Movie:freshCatalog(),Series:freshCatalog(),Anime:freshCatalog()};
     favoriteCatalogs={Movie:freshCatalog(),Series:freshCatalog(),Anime:freshCatalog()};
+    libraryGroups={BoxSet:freshCatalog(),Playlist:freshCatalog()};
+    groupVersion++;openGroup=null;groupContents=freshCatalog();
     // Clear the system vault before permitting a new login.
     loginBusy=true;
     try{await nativeVault.clear();}
@@ -955,6 +1063,84 @@
           <span>Vynéo · Votre bibliothèque, notre interface</span>
           <button type="button" onclick={()=>void refresh()}>Actualiser</button>
         </footer>
+      {:else if libraryGroupKind}
+        <section class="vy-browser vy-group-library">
+          <div class="vy-browser-heading">
+            <div>
+              <span class="vy-kicker">VOTRE BIBLIOTHÈQUE JELLYFIN</span>
+              <h1>{libraryGroupKind==="BoxSet"?"Collections":"Playlists"}</h1>
+            </div>
+          </div>
+          {#if openGroup}
+            <div class="vy-group-open-heading">
+              <button type="button" class="vy-group-back"
+                onclick={closeLibraryGroup}>
+                <VyIcon kind="chevron-left" size={18}/>
+                {libraryGroupKind==="BoxSet"
+                  ?"Toutes les collections":"Toutes les playlists"}
+              </button>
+              <h2>{openGroup.title}</h2>
+            </div>
+            <div class="vy-catalog-grid vy-group-contents">
+              {#each groupContents.items as item (item.id)}
+                <MediaCard {item} cache={artwork} onclick={openMedia}
+                  novelty={badgeFor(item)}
+                  onhover={(element,trigger)=>
+                    requestHover(item,element,"catalog",trigger)}
+                  onleave={requestHideHover}/>
+              {/each}
+            </div>
+            {#if groupContents.error}
+              <p class="vy-empty" role="alert">{groupContents.error}</p>
+            {/if}
+            {#if groupContents.nextOffset!==null}
+              <div class="vy-pagination">
+                <button type="button" disabled={groupContents.loading}
+                  onclick={()=>void loadGroupContents()}>
+                  {groupContents.loading?"Chargement…":
+                    groupContents.error?"Réessayer":"Afficher davantage"}
+                </button>
+              </div>
+            {/if}
+            {#if groupContents.loaded && !groupContents.items.length &&
+                !groupContents.error}
+              <p class="vy-empty">Aucun film, épisode ou série accessible.
+                Les autres types de médias ne sont pas encore pris en charge.</p>
+            {/if}
+          {:else}
+            <div class="vy-catalog-grid vy-group-index">
+              {#each libraryGroups[libraryGroupKind].items as item (item.id)}
+                <MediaCard {item} cache={artwork}
+                  onclick={openLibraryGroup}
+                  actionLabel={"Ouvrir "+(libraryGroupKind==="BoxSet"
+                    ?"la collection":"la playlist")+" : "+item.title}/>
+              {/each}
+            </div>
+            {#if libraryGroups[libraryGroupKind].error}
+              <p class="vy-empty" role="alert">
+                {libraryGroups[libraryGroupKind].error}
+              </p>
+            {/if}
+            {#if libraryGroups[libraryGroupKind].nextOffset!==null}
+              <div class="vy-pagination">
+                <button type="button"
+                  disabled={libraryGroups[libraryGroupKind].loading}
+                  onclick={()=>void loadLibraryGroups(libraryGroupKind!)}>
+                  {libraryGroups[libraryGroupKind].loading?"Chargement…":
+                    libraryGroups[libraryGroupKind].error
+                    ?"Réessayer":"Afficher davantage"}
+                </button>
+              </div>
+            {/if}
+            {#if libraryGroups[libraryGroupKind].loaded &&
+                !libraryGroups[libraryGroupKind].items.length &&
+                !libraryGroups[libraryGroupKind].error}
+              <p class="vy-empty">Aucune
+                {libraryGroupKind==="BoxSet"?"collection":"playlist"}
+                accessible avec ce compte.</p>
+            {/if}
+          {/if}
+        </section>
       {:else if tab==="favorites"}
         <section class="vy-browser vy-favorites">
           <div class="vy-browser-heading">

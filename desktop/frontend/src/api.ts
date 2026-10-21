@@ -1,4 +1,4 @@
-import type {MediaItem,MediaType,SessionPublic,CatalogKind,CatalogPage,CatalogLibraryIds,SeasonSummary,EpisodePage,PlaybackProbe} from "./types";
+import type {MediaItem,MediaType,SessionPublic,CatalogKind,CatalogPage,CatalogLibraryIds,LibraryGroupKind,SeasonSummary,EpisodePage,PlaybackProbe} from "./types";
 import {parseSeasons,parsePlaybackInfo} from "./media-details";
 import type {RecentSeason} from "./new-seasons";
 import type {TrendingRank} from "./trending";
@@ -7,7 +7,7 @@ import {candidateOffsets,CANDIDATE_BATCH_SIZE} from "./candidate-pages";
 export const SERVER_ORIGIN="https://cocojellyfin.duckdns.org:38443";
 const ID=/^[a-f0-9]{32}$/i;
 const TOKEN=/^[a-z0-9._\-]{12,2048}$/i;
-const TYPES=new Set<MediaType>(["Movie","Series","Episode","BoxSet"]);
+const TYPES=new Set<MediaType>(["Movie","Series","Episode","BoxSet","Playlist"]);
 const FIELDS="Overview,Genres,Tags,Studios,CommunityRating,DateCreated,PremiereDate,UserData,ImageTags,BackdropImageTags,ProviderIds,ChildCount,RunTimeTicks";
 const obj=(v:unknown):Record<string,unknown>=>
   v && typeof v==="object" && !Array.isArray(v)
@@ -318,6 +318,66 @@ export class JellyfinApi {
     const more=consumed>0 && (total===null
       ?consumed===limit:startIndex+consumed<total);
     return {items,total,nextOffset:more?startIndex+consumed:null,libraryAvailable:true};
+  }
+  /** Page through collections or playlists *visible to this account*.
+   * A navigation entry is not evidence of cross-library permission. */
+  async getLibraryGroupPage(kind:LibraryGroupKind,
+    startIndex=0,limit=48):Promise<CatalogPage>{
+    if(!["BoxSet","Playlist"].includes(kind) ||
+      !Number.isSafeInteger(startIndex) || startIndex<0 ||
+      startIndex>100000 || !Number.isSafeInteger(limit) ||
+      limit<1 || limit>60)throw new Error("PAGE_INVALID");
+    const uid=this.requireUser(),generation=this.authGeneration;
+    const path=this.userItems({IncludeItemTypes:kind,SortBy:"SortName",
+      SortOrder:"Ascending",StartIndex:startIndex,Limit:limit,
+      EnableTotalRecordCount:"true"});
+    const raw=obj(await this.json(path,{maxBytes:1048576}));
+    this.assertSession(uid,generation);
+    if(!Array.isArray(raw.Items) || raw.Items.length>limit)
+      throw new Error("GROUPS_INVALID");
+    const consumed=raw.Items.length;
+    const items=parseItems(raw,limit).filter(item=>item.type===kind);
+    const total=typeof raw.TotalRecordCount==="number" &&
+      Number.isSafeInteger(raw.TotalRecordCount) &&
+      raw.TotalRecordCount>=0?raw.TotalRecordCount:null;
+    const more=consumed>0 && (total===null
+      ?consumed===limit:startIndex+consumed<total);
+    return {items,total,nextOffset:more?startIndex+consumed:null,
+      libraryAvailable:true};
+  }
+  /** Never infer collection membership from franchise tags or another user.
+   * BoxSet children come from /Users/{id}/Items (ParentId scoped);
+   * Playlist entries come from Jellyfin's documented Playlist API. */
+  async getLibraryGroupContents(kind:LibraryGroupKind,id:string,
+    startIndex=0,limit=48):Promise<CatalogPage>{
+    if(!["BoxSet","Playlist"].includes(kind) || !validId(id) ||
+      !Number.isSafeInteger(startIndex) || startIndex<0 ||
+      startIndex>100000 || !Number.isSafeInteger(limit) ||
+      limit<1 || limit>60)throw new Error("PAGE_INVALID");
+    const uid=this.requireUser(),generation=this.authGeneration;
+    const path=kind==="BoxSet"
+      ?this.userItems({ParentId:id,Recursive:"false",
+        IncludeItemTypes:"Movie,Series,Episode",
+        SortBy:"SortName",SortOrder:"Ascending",
+        StartIndex:startIndex,Limit:limit,EnableTotalRecordCount:"true"})
+      :"/Playlists/"+id+"/Items?"+new URLSearchParams({
+        userId:uid,StartIndex:String(startIndex),Limit:String(limit),
+        Fields:FIELDS,EnableUserData:"true"
+      });
+    const raw=obj(await this.json(path,{maxBytes:1048576}));
+    this.assertSession(uid,generation);
+    if(!Array.isArray(raw.Items) || raw.Items.length>limit)
+      throw new Error("GROUP_CONTENT_INVALID");
+    const consumed=raw.Items.length;
+    const items=parseItems(raw,limit).filter(item=>
+      item.type==="Movie" || item.type==="Series" || item.type==="Episode");
+    const total=typeof raw.TotalRecordCount==="number" &&
+      Number.isSafeInteger(raw.TotalRecordCount) &&
+      raw.TotalRecordCount>=0?raw.TotalRecordCount:null;
+    const more=consumed>0 && (total===null
+      ?consumed===limit:startIndex+consumed<total);
+    return {items,total,nextOffset:more?startIndex+consumed:null,
+      libraryAvailable:true};
   }
   private assertSession(uid:string,generation:number){
     if(generation!==this.authGeneration || this.userId!==uid)

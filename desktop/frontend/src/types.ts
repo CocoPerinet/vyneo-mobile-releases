@@ -1,4 +1,5 @@
-export type MediaType="Movie"|"Series"|"Episode"|"BoxSet";
+export type MediaType="Movie"|"Series"|"Episode"|"BoxSet"|"Playlist";
+export type LibraryGroupKind="BoxSet"|"Playlist";
 export type CatalogKind="Movie"|"Series"|"Anime";
 export type CatalogLibraryIds=Record<CatalogKind,string|null>;
 export interface CatalogPage {
@@ -45,7 +46,7 @@ export interface PlaybackProbe {
   sources:PlaybackSource[];
   errorCode:string|null;
 }
-export type ViewKey="home"|"movies"|"series"|"anime"|"favorites";
+export type ViewKey="home"|"movies"|"series"|"anime"|"collections"|"playlists"|"favorites";
 export interface MediaItem {
   id:string;
   title:string;

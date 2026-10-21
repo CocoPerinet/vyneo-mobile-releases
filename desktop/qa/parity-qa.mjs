@@ -49,6 +49,16 @@ for(const [index,year] of [[30,2014],[32,2005]]){
  films[index].ProductionYear=year;
  films[index].PremiereDate=year+"-06-15";
 }
+const boxSets=Array.from({length:53},(_,i)=>({
+ Id:id(7000+i),Name:"Collection "+(i+1),Type:"BoxSet",
+ ImageTags:{Primary:"png"},BackdropImageTags:[],
+ UserData:{Played:false,IsFavorite:false}
+}));
+const playlists=Array.from({length:3},(_,i)=>({
+ Id:id(8000+i),Name:"Playlist "+(i+1),Type:"Playlist",
+ ImageTags:{Primary:"png"},BackdropImageTags:[],
+ UserData:{Played:false,IsFavorite:false}
+}));
 const nextUp=Array.from({length:270},(_,n)=>({
  Id:id(3000+n),Name:"Épisode de test "+(n+1),Type:"Episode",
  SeriesName:"Série "+(n%50+1),SeriesId:id(100+n%50),
@@ -123,6 +133,10 @@ try{
     {Id:id(8101),Name:"Séries",CollectionType:"tvshows"},
     {Id:id(8102),Name:"Animes",CollectionType:"tvshows"}
    ]};
+  }else if(path==="/Playlists/"+id(8000)+"/Items"){
+   assert.equal(qs.get("userId"),user);
+   payload={Items:[films[2],films[3],films[4]],
+    TotalRecordCount:3};
   }else if(path==="/UserItems/Resume"){
    // Resume has genuine partial playback; the prior QA accidentally
    // served eight already-watched films and hid the missing-stale fix.
@@ -157,8 +171,13 @@ try{
      ...films[n],Id:sid,Name:"Série "+(n+1),Type:"Series",
      UserData:{PlayedPercentage:55,Played:false}
     })),TotalRecordCount:ids.length};
-   }else if(kind==="BoxSet"){
-    payload={Items:[],TotalRecordCount:0};
+   }else if(qs.get("ParentId")===id(7000)){
+    assert.equal(qs.get("Recursive"),"false");
+    payload={Items:[films[0],films[1]],TotalRecordCount:2};
+   }else if(kind==="BoxSet" || kind==="Playlist"){
+    const collection=kind==="BoxSet"?boxSets:playlists;
+    payload={Items:collection.slice(start,start+limit),
+      TotalRecordCount:collection.length};
    }else{
     let candidates=films;
     if(filters==="IsPlayed")candidates=films.slice(0,30);
@@ -789,6 +808,46 @@ try{
  assert.equal(await page.evaluate(()=>document.body.style.overflow),"",
   "Closing the universe must restore normal Home page scrolling");
  console.log("JELLYFIN_PARITY_UNIVERSE_BACKDROP_CLOSE_PASS");
+ // Native collections/playlists are additional real Jellyfin navigation
+ // pages, not dead decorative links. Verify scoped reads and Back.
+ await page.getByRole("button",{name:"Collections",exact:true}).click();
+ await page.getByRole("heading",{name:"Collections",exact:true})
+  .waitFor({timeout:3500});
+ const groupIndex=page.locator(".vy-group-index .vy-card");
+ await page.waitForFunction(()=>document.querySelectorAll(
+  ".vy-group-index .vy-card").length>=48,null,{timeout:3500});
+ assert.equal(await groupIndex.count(),48);
+ await page.getByRole("button",{name:"Afficher davantage"}).click();
+ await page.waitForFunction(()=>document.querySelectorAll(
+  ".vy-group-index .vy-card").length===53,null,{timeout:3500});
+ await groupIndex.first().getByRole("button",{name:/Ouvrir la collection/}).click();
+ const groupContents=page.locator(".vy-group-contents .vy-card");
+ await groupContents.first().waitFor({timeout:3500});
+ assert.equal(await groupContents.count(),2);
+ await groupContents.first().getByRole("button",{name:/Détails/}).click();
+ await page.locator(".vy-detail-screen").waitFor({timeout:3500});
+ await page.keyboard.press("Escape");
+ await page.locator(".vy-detail-screen").waitFor({state:"hidden",timeout:3000});
+ await page.getByRole("button",{name:"Toutes les collections"}).click();
+ assert.equal(await groupIndex.count(),53);
+ console.log("JELLYFIN_PARITY_NATIVE_COLLECTIONS_PAGINATION_AND_BACK_PASS");
+ await page.getByRole("button",{name:"Playlists",exact:true}).click();
+ await page.getByRole("heading",{name:"Playlists",exact:true})
+  .waitFor({timeout:3500});
+ const playlistsIndex=page.locator(".vy-group-index .vy-card");
+ await playlistsIndex.first().waitFor({timeout:3500});
+ assert.equal(await playlistsIndex.count(),3);
+ await playlistsIndex.first().getByRole("button",{
+  name:/Ouvrir la playlist/
+ }).click();
+ await page.locator(".vy-group-contents .vy-card").first()
+  .waitFor({timeout:3500});
+ assert.equal(await page.locator(".vy-group-contents .vy-card").count(),3);
+ assert(external.some(x=>new URL(x.url).pathname===
+   "/Playlists/"+id(8000)+"/Items"));
+ assert(external.every(x=>!x.url.includes(token)));
+ assert.equal(errors.length,0,"Browser errors "+errors.join("; "));
+ console.log("JELLYFIN_PARITY_NATIVE_PLAYLISTS_SCOPED_READ_ONLY_PASS");
 }finally{
  await browser?.close();
  await new Promise(resolve=>http.close(resolve));

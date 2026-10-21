@@ -213,7 +213,14 @@ try{
  await page.screenshot({path:join(out,"home-hero-1650.png"),fullPage:false});
  const heroTitle=await page.locator(".vy-hero h1").textContent();
  const heroDots=page.locator(".vy-hero-dots button");
- assert((await heroDots.count())>=2,"Hero carousel needs multiple slides");
+ const curatedHeroCount=await heroDots.count();
+ assert(curatedHeroCount>=12 && curatedHeroCount<=32,
+  "Jellyfin targets 16 curated slides, not five: "+curatedHeroCount);
+ console.log("JELLYFIN_PARITY_CURATED_HERO_BANNER_COUNT "+
+   JSON.stringify({count:curatedHeroCount,target:16}));
+ assert.equal(await page.locator(".vy-hero .vy-kicker").textContent(),
+  "NOUVELLE SAISON",
+  "A proven S2E1 must have source priority and the correct hero badge");
  await page.getByRole("button",{name:"Bannière suivante"}).click();
  await page.waitForFunction(before=>
   document.querySelector(".vy-hero h1")?.textContent!==before,heroTitle);

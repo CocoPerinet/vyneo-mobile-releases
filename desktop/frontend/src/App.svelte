@@ -130,6 +130,19 @@
   ]);
   let heroSlides=$derived(featuredSlides(shelves));
   let hero=$derived(heroSlides[heroIndex%Math.max(1,heroSlides.length)]??null);
+  let heroSource=$derived.by(()=>{
+    if(!hero)return "À LA UNE";
+    const isIn=(id:string)=>shelves.some(row=>row.id===id &&
+      row.items.some(item=>item.id===hero?.id));
+    if(isIn("new-seasons")){
+      const badge=newBadge(hero,seasonBadges);
+      return badge?.label.startsWith("Nouvelle saison")
+        ?"NOUVELLE SAISON":"NOUVEAU";
+    }
+    if(isIn("top-ten"))return "TENDANCE";
+    if(isIn("for-you"))return "POUR VOUS";
+    return "À LA UNE";
+  });
   let gridItems=$derived.by(()=>{
     if(tab==="movies")return catalogs.Movie.items;
     if(tab==="series")return catalogs.Series.items;
@@ -834,8 +847,9 @@
           <div class="vy-hero-shade"></div>
           <div class="vy-hero-inner">
             {#if hero}
-              <span class="vy-kicker">VOTRE SÉLECTION</span>
-              <h1>{hero.title}</h1>
+              <span class="vy-kicker">{heroSource}</span>
+              <h1>{hero.type==="Episode" && hero.seriesName
+                ?hero.seriesName:hero.title}</h1>
               <p class="vy-hero-overview">{hero.overview ||
                 [hero.year,...hero.genres.slice(0,3)].filter(Boolean).join(" · ")}</p>
               <div class="vy-hero-actions">

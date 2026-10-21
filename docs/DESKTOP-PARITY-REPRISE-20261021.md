@@ -765,3 +765,56 @@ consistance des positions réellement enregistrées par
 le serveur et comparaison des captures du même compte.
 Le bloc D reste PENDING. Aucune deuxième application
 n'a été installée ni démarrée sur COCO.
+
+## 21 octobre, 23 h : premier décodage dans WebView2/Tauri réel sans installation
+
+### Vérification de bout en bout native sur COCO
+
+Le commit `492a42b` a introduit un exécutable de QA **portable** et non
+installé, compilé avec la feature Rust facultative `native-e2e-qa`.
+La feature est absente de tout build stable, et ses fichiers HLS fictifs
+sont intégrés uniquement au binaire de test, jamais aux versions
+signées. La configuration de QA utilise l'identité indépendante
+`fr.visyren.vyneo.desktop.jellyfinqa`, un répertoire d'assets isolé,
+aucun fournisseur de credentials réels et un endpoint de mise à jour
+désactivé.
+
+Première tentative en SSH Session 0 : WebView2 refuse d'initialiser
+sa fenêtre (HRESULT 0x80070578, handle de fenêtre invalide).
+Une tâche Windows avec `InteractiveToken`, créée temporairement
+par le runner sur la session utilisateur, a résolu ce blocage.
+La fenêtre de QA reste masquée et n'ajoute aucun raccourci,
+paquet Windows, icône système ou nouvelle installation. La tâche
+est stoppée et supprimée automatiquement à la fin du contrôle.
+
+Au commit **`29ccd8f`**, commande
+`npm run qa:native-webview2`, le test a retourné :
+
+```
+VYNEO_WEBVIEW2_NATIVE_SCHEME_FIRST_FRAME_PASS
+width=320 height=180 readyState=4 decodedFrames=19
+currentTime=0.65 duration=6.04 paused=false
+nativeProtocol=true drm=false
+QA_ZERO_INSTALLER_ZERO_REAL_CREDENTIALS
+```
+
+Le flux **H.264/AAC de test** suit vraiment le protocole Tauri
+`http://vyneo-media.localhost/hls/...` : commande native de création
+du ticket temporaire, accès au master HLS, réécriture du manifeste et
+des URLs de trois fragments TS vers des capacités mémoire Rust,
+décodage par hls.js dans le WebView2 embarqué, puis révocation
+du ticket via `stop_native_stream_ticket`.
+
+Contrôles complémentaires réalisés après exécution : **une seule**
+installation Vynéo version `0.2.4` est enregistrée, un seul processus
+Vynéo en cours (celui de l'application stable dans la session Windows 1),
+aucune tâche `VyneoNativeMediaQA*` restante. La QA n'a jamais
+réutilisé le jeton ou l'historique du compte Jellyfin.
+
+**Portée exacte :** la chaîne native et son premier décodage sont
+désormais prouvés pour un flux synthétique. Ce n'est **pas** encore une
+preuve de lecture d'un média réel .strm protégé, des pistes audio,
+des sous-titres, du transcodage QSV ni des rapports de progression
+réellement reçus par Jellyfin. Le bloc D réel reste `PENDING`.
+Aucune publication stable n'est autorisée tant que ce dernier
+contrôle n'a pas été réalisé avec le même compte que Jellyfin.

@@ -350,3 +350,77 @@ les images au même contenu/viewport/scroll et la lecture réelle de
 l'installation finale. La candidate n'a pas été installée séparément :
 l'application signée `desktop-v0.2.4` reste intacte. Aucune release
 stable n'est autorisée tant que cette validation n'est pas documentée.
+
+## Suite soirée : « Tendances » réel via le proxy TMDb du serveur
+
+Commits `0ae72bc`, `4ac7ed6` de la PR #9.
+
+### Écart factuel confirmé
+
+L'accueil Jellyfin authentifié observé comporte « Tendances » après les
+sept Univers. Desktop n'avait pas cette section, seulement un « Top 10 »
+basé sur les notes IMDb/TMDb, **qui n'est pas un indicateur de popularité
+en ce moment**. Le thème Jellyfin lui-même refuse de fabriquer des
+« Tendances » avec les seules notes ou dates.
+
+Vérification non-invasive de l'infrastructure existante : le proxy
+hébergé **sur le même domaine épinglé Jellyfin**, route
+`/tmdb/discover/movie` / `/tmdb/discover/tv`, renvoie bien le JSON de
+classement `popularity.desc`. Les ressources publiques ne nécessitent
+aucun nouveau token ni API payante.
+
+### Implémentation native privée et bornée
+
+- `getTrendingRanks` demande jusqu'à **3 pages de 20 résultats** pour
+  films et séries (6 GET publics), en arrière-plan, sans ralentir le
+  premier écran. Deux requêtes au maximum simultanées.
+- **Séparation des secrets :** la méthode ne réutilise *jamais* le client
+  JSON Jellyfin authentifié ; elle envoie seulement `Accept:
+  application/json`, aucun header `Authorization`, `credentials:
+  omit`, ni jeton dans l'URL. L'hôte et le chemin sont construits à
+  partir du serveur autorisé, sans URL tiers injecté.
+- Limites : 6 secondes par appel, 512 KiB maximum de JSON par réponse,
+  20 résultats maximum, identifiants numériques validés, exclusion des
+  contenus marqués adultes, validation de l'identité session avant et
+  après chargement.
+- `matchTrending` compare les ID TMDb **uniquement** avec les films et
+  séries déjà renvoyés par les requêtes Jellyfin autorisées de la session
+  (96 récents + jusqu'à 512 candidats). Il filtre les œuvres vues,
+  conserve l'ordre de popularité par type, mélange films/séries,
+  dédoublonne les éditions d'une œuvre et privilégie un visuel existant.
+  Aucune donnée TMDb externe n'est traitée comme nouvel accès catalogue.
+- Si moins de 3 œuvres autorisées concordent, le rayon « Tendances »
+  est absent. Il ne tombe pas silencieusement sur « mieux notés ».
+  L'ancien Top 10 conserve sa logique propre ; le Hero n'attribue le
+  badge « TENDANCE » que si le titre provient de ce vrai rayon.
+- L'appel TMDb et l'échantillon Jellyfin restent **optionnels et
+  asynchrones**, indépendants du premier affichage Reprendre/À suivre.
+  Après changement de compte, les résultats de l'ancienne session sont
+  rejetés et l'état Tendances vidé.
+
+### Limites précises
+
+L'échantillon autorisé de 512 éléments ne parcourt pas tout le
+catalogue Jellyfin (jusqu'à 6 000 objets possibles). Le résultat
+« Tendances » peut donc avoir une couverture plus faible que la
+version Jellyfin et ne constitue pas encore une parité exacte de
+tous les contenus visibles. Le matching n'est pas un filtrage par
+droit que TMDb pourrait garantir : le contrôle de droit vient
+*exclusivement* de Jellyfin pour le profil de session.
+
+### Vérification Windows COCO
+
+Commit `4ac7ed6` : **130/130 tests frontend Vitest**, **25 tests
+Node exécutables** (6 ignorés spécifiques POSIX), **0 erreur /
+0 avertissement TypeScript/Svelte**, build Vite PASS et Playwright
+Chromium complet PASS. Le scénario navigateur vérifie :
+classement TMDb récupéré sans headers sensibles, 18 cartes Tendances
+réellement reconnues par l'échantillon Jellyfin synthétique, ordre
+`À suivre → Nouvelles saisons et suites → Univers → Tendances`,
+Hero 16 bannières et badges source exacts.
+
+Les tests sont synthétiques, même si la disponibilité du proxy TMDb
+a été vérifiée sur le vrai serveur N100. Les IDs/captures propres
+à une session réelle du compte Vynéo restent à comparer (bloc D
+`side-by-side` et `real-library` **toujours PENDING**).
+La version signée `desktop-v0.2.4` n'est pas touchée.

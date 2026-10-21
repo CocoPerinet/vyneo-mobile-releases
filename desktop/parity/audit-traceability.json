@@ -39,7 +39,7 @@
       "status": "synthetic-validated",
       "reference": "skin.css:824-967",
       "automation": "desktop/qa/parity-qa.mjs",
-      "evidence": "Jellyfin réel observé en lecture seule via onglet Brave connecté le 21/10 : 15 indicateurs de bannière dans le DOM. Desktop candidate : cible 16, sélection round-robin nouveauté/tendance/recommandation, toutes les nouveautés engagées réservées, sans séries doublonnées ni œuvres vues. Tests synthétiques COCO 2026-10-21 : 122 Vitest, QA Playwright vérifiant 16 points, badges par provenance et hit-test réel des indicateurs à 390/1280/1920 px. Comparaison pixel à pixel des captures Jellyfin/Desktop avec le même profil encore ouverte."
+      "evidence": "Tests synthétiques COCO 2026-10-21 : source navigateur Jellyfin réel en lecture seule indiquant 15 bannières ; Vynéo cible éditoriale 16 et réserve toutes les nouveautés. Nouveau rayon de popularité TMDb autorisé nourrit le Hero, avec badge Tendance strictement lié au classement véritable (Top 10 noté != tendance). 130 tests frontend, QA Playwright 390/1280/1920 px et clics réels d’indicateurs sans obstruction. Parité screenshot session réelle ouverte."
     },
     {
       "block": "A",
@@ -59,7 +59,7 @@
       "status": "synthetic-validated",
       "reference": "skin.css:975-1130",
       "automation": "desktop/qa/parity-qa.mjs",
-      "evidence": "Tests synthétiques COCO 2026-10-21 : cartes 340 px, gap 13 px, flèches, ArrowLeft/ArrowRight et scroll du focus."
+      "evidence": "Tests synthétiques COCO 2026-10-21 : rayons 340 px / gap 13 px, flèches et focus ; nouvelle section Tendances placée après Univers uniquement sur classements TMDb du proxy Jellyfin épinglé, recoupés avec un échantillon de titres autorisés par compte. QA Chromium : 18 titres tendances simulés, 6 requêtes proxy sans jeton, ordre des sections vérifié. Comptes réels / captures identiques toujours non validés."
     },
     {
       "block": "B",

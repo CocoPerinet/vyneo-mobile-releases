@@ -34,6 +34,13 @@ const films=Array.from({length:220},(_,n)=>({
  ImageTags:{Primary:"png"},BackdropImageTags:["png"],
  UserData:{Played:n<20,IsFavorite:n<5}
 }));
+// The Jellyfin injector uses TVDbCollection for coherent series spin-offs.
+ // Simulate two watched titles and one newly released derivative, not a
+ // random "best-of" playlist sharing the same provider collection ID.
+for(const index of [0,1,35]){
+ films[index].Tags=["Saga continue"];
+ films[index].ProviderIds.TvdbCollection="8541; 902";
+}
 // Historical titles prove that an authorized Pixar universe is grouped
 // into decades rather than displayed in the former undifferentiated grid.
 for(const [index,year] of [[30,2014],[32,2005]]){
@@ -194,6 +201,11 @@ try{
  assert.equal(await page.locator(".vy-shelves .vy-shelf-count").count(),0);
  await page.getByRole("heading",{name:"Nouvelles saisons et suites"})
    .waitFor({timeout:12000});
+ await page.locator(
+  '.vy-shelf[aria-label="Nouvelles saisons et suites"] '+
+  '.vy-card[data-vy-card="'+id(36)+'"]'
+ ).waitFor({timeout:12000});
+ console.log("JELLYFIN_PARITY_TVDB_COHESIVE_SPINOFF_VISIBLE_PASS");
  // The old script always captured the scrolled Univers row, not the Hero:
  // keep a deterministic top-of-home screenshot for Block D side-by-side QA.
  await page.evaluate(()=>window.scrollTo({top:0,behavior:"instant"}));

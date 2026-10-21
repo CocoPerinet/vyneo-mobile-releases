@@ -118,7 +118,10 @@ describe("shared lazy artwork observer",()=>{
     }))} as unknown as ArtworkCache;
     const node=()=>({
       isConnected:true,dataset:{} as Record<string,string>,
-      src:"",removeAttribute:vi.fn()
+      src:"",naturalWidth:100,naturalHeight:60,complete:true,
+      getAttribute(name:string){return name==="src"?"blob:poster":null;},
+      addEventListener:vi.fn(),removeEventListener:vi.fn(),
+      removeAttribute:vi.fn()
     }) as unknown as HTMLImageElement;
     const first=node(),second=node();
     const a=lazyArtwork(first,{cache,item:media(1),kind:"Backdrop"});
@@ -128,6 +131,7 @@ describe("shared lazy artwork observer",()=>{
     instances[0].fire(first);
     await vi.waitFor(()=>expect(first.src).toBe("blob:poster"));
     expect(first.dataset.vyArtKind).toBe("primary");
+    expect(first.dataset.vyArtReady).toBe("true");
     expect(second.src).toBe("");
     instances[0].fire(second);
     await vi.waitFor(()=>expect(second.src).toBe("blob:poster"));
@@ -135,5 +139,38 @@ describe("shared lazy artwork observer",()=>{
     a.destroy();b.destroy();
     expect(instances[0].targets.size).toBe(0);
   });
+  it("keeps a failed image hidden and resets readiness on content change",async()=>{
+    const listeners=new Map<string,()=>void>();
+    let src="";
+    const el={
+      isConnected:true,complete:false,naturalWidth:0,naturalHeight:0,
+      dataset:{} as Record<string,string>,
+      get src(){return src;},
+      set src(value:string){src=value;},
+      getAttribute(name:string){return name==="src"?(src||null):null;},
+      addEventListener(name:string,fn:()=>void){listeners.set(name,fn);},
+      removeEventListener(name:string){listeners.delete(name);},
+      removeAttribute(name:string){if(name==="src")src="";}
+    } as unknown as HTMLImageElement;
+    const cache={getBest:vi.fn(async()=>({
+      url:"blob:not-decoded",kind:"Backdrop" as const
+    }))} as unknown as ArtworkCache;
+    const action=lazyArtwork(el,{cache,item:media(1),kind:"Backdrop"});
+    expect(el.dataset.vyArtReady).toBe("false");
+    await vi.waitFor(()=>expect(el.src).toBe("blob:not-decoded"));
+    listeners.get("error")?.();
+    expect(el.dataset.vyArtReady).toBe("false");
+    expect(el.getAttribute("src")).toBeNull();
+    action.update({cache,item:media(2),kind:"Backdrop"});
+    expect(el.dataset.vyArtReady).toBe("false");
+    await vi.waitFor(()=>expect(el.src).toBe("blob:not-decoded"));
+    (el as unknown as {naturalWidth:number}).naturalWidth=50;
+    (el as unknown as {naturalHeight:number}).naturalHeight=30;
+    listeners.get("load")?.();
+    expect(el.dataset.vyArtReady).toBe("true");
+    action.destroy();
+    expect(listeners.size).toBe(0);
+  });
+
 });
 

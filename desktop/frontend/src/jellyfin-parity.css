@@ -135,6 +135,13 @@
   cursor:pointer;
 }
 .vy-card-picture{border-radius:9px;box-shadow:none}
+/* The image element is kept invisible until an actual decoded frame
+   exists. The card background stays visible if Jellyfin has no artwork. */
+.vy-card-picture img:not([data-vy-art-ready="true"]),
+.vy-hover-image>img:not([data-vy-art-ready="true"]),
+.vy-detail-top img:not([data-vy-art-ready="true"]),
+.vy-hero-art:not([data-vy-art-ready="true"]){visibility:hidden}
+
 .vy-card:hover .vy-card-picture,.vy-card:focus-within .vy-card-picture{
   transform:scale(1.016);
   box-shadow:0 12px 25px #0009;
@@ -176,12 +183,20 @@
   background:linear-gradient(100deg,#e55063,#ce3b48);
   box-shadow:0 3px 10px #0009;
 }
+/* Rank stays bottom-left. New film/season badges occupy the opposite
+   corner, even when the rank uses two digits or the tile is narrow. */
+.vy-card-ranking .vy-novelty{
+  top:9px;right:9px;left:auto;bottom:auto;
+  max-width:calc(100% - 18px);
+}
 .vy-universe-rail{gap:22px}
 .vy-universe-tile{
   flex:0 0 clamp(220px,19vw,255px);
   height:135px;
-  display:grid;
-  place-items:center;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
   padding:20px;
   border:1px solid #ffffff1a;
   border-radius:12px;
@@ -191,9 +206,17 @@
   transition:transform .16s,border .16s;
 }
 .vy-universe-tile:hover{transform:translateY(-3px);border-color:#ffa44b90}
+/* The new DCU has a full-color blue logo, unlike the monochrome wordmarks. */
+.vy-universe-tile[data-vy-universe="dcu"] img{filter:none}
 .vy-universe-tile img{
-  max-width:90%;
-  max-height:82%;
+  display:block;
+  flex:0 1 auto;
+  width:100%;
+  height:100%;
+  min-width:0;
+  min-height:0;
+  max-width:100%;
+  max-height:100%;
   object-fit:contain;
   filter:brightness(0) invert(1);
 }

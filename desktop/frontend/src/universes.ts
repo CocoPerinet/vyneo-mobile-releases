@@ -1,6 +1,6 @@
 import type {MediaItem} from "./types";
 
-export type UniverseId="mcu"|"disney"|"pixar"|"dreamworks"|"starwars"|"dc";
+export type UniverseId="mcu"|"disney"|"pixar"|"dreamworks"|"starwars"|"dc"|"dcu";
 export interface Universe {
   id:UniverseId;label:string;logo:string;
 }
@@ -10,7 +10,8 @@ export const UNIVERSES:readonly Universe[]=[
   {id:"pixar",label:"Pixar",logo:"/universes/pixar.png"},
   {id:"dreamworks",label:"DreamWorks",logo:"/universes/dreamworks.png"},
   {id:"starwars",label:"Star Wars",logo:"/universes/starwars.svg"},
-  {id:"dc",label:"DC",logo:"/universes/dc.png"}
+  {id:"dc",label:"DC",logo:"/universes/dc.png"},
+  {id:"dcu",label:"Nouveau DCU",logo:"/universes/dcu.png"}
 ];
 const text=(item:MediaItem)=>[...(item.tags??[]),...(item.studios??[])]
   .map(value=>value.toLocaleLowerCase("en").trim());
@@ -33,9 +34,21 @@ export function belongsToUniverse(item:MediaItem,id:UniverseId):boolean{
     case "dreamworks":
       return matches(/dreamworks animation|dreamworks pictures/i);
     case "starwars":
-      return matches(/\bstar wars\b|\blucasfilm\b/i);
+      // Lucasfilm alone also produces Indiana Jones and Labyrinth. The
+      // original Jellyfin theme has explicit series-title fallbacks for
+      // works whose Jellyfin studio is their TV broadcaster (Disney+).
+      if(/indiana jones|labyrinthe|^mishima$/i.test(name))return false;
+      return matches(/\bstar wars\b/i) ||
+        (matches(/\blucasfilm\b/i) &&
+          !/indiana jones|labyrinthe|^mishima$/i.test(name)) ||
+        /^(andor|ahsoka|obi-wan kenobi|the mandalorian|tales of the jedi|tales of the empire|the clone wars|the bad batch|skeleton crew|the acolyte|the book of boba fett|le livre de boba fett|star wars[\s:,-]|rogue one|solo\s*:)/i.test(name);
     case "dc":
-      return matches(/^dc$|dc entertainment|dc films|dc comics|dc extended universe|dc studios/i);
+      // The original Jellyfin keeps the DC Studios reboot separate.
+      if(matches(/^dc studios$/i))return false;
+      return matches(/^dc$|dc entertainment|dc films|dc universe|dc comics|dc extended universe/i) ||
+        /^(joker|justice league|lego dc|batman et harley quinn)(?:\b|\s|:)/i.test(name);
+    case "dcu":
+      return (item.year??0)>=2025 && matches(/^dc studios$/i);
   }
 }
 export function universeItems(universe:UniverseId,

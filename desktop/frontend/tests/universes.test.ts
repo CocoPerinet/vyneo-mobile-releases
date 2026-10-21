@@ -10,9 +10,9 @@ const row=(n:number,patch:Partial<MediaItem>={}):MediaItem=>({
   seriesName:"",...patch
 });
 describe("Jellyfin universes parity",()=>{
- it("reuses the six approved universe logos and order",()=>{
+ it("matches the seven Jellyfin theme universes and preserves their order",()=>{
    expect(UNIVERSES.map(x=>x.id))
-     .toEqual(["mcu","disney","pixar","dreamworks","starwars","dc"]);
+     .toEqual(["mcu","disney","pixar","dreamworks","starwars","dc","dcu"]);
    expect(UNIVERSES.every(x=>x.logo.startsWith("/universes/"))).toBe(true);
  });
  it("identifies cinematic brands from specific metadata, not title similarity",()=>{
@@ -32,6 +32,19 @@ describe("Jellyfin universes parity",()=>{
      "pixar")).toBe(true);
    expect(belongsToUniverse(row(8,{tags:["Science Fiction"]}),
      "starwars")).toBe(false);
+   expect(belongsToUniverse(row(9,{studios:["DC Studios"],year:2025}),
+     "dcu")).toBe(true);
+   expect(belongsToUniverse(row(9,{studios:["DC Studios"],year:2025}),
+     "dc")).toBe(false);
+   expect(belongsToUniverse(row(9,{studios:["DC Studios"],year:2024}),
+     "dcu")).toBe(false);
+   expect(belongsToUniverse(row(10,{title:"Joker",studios:["Warner Bros."]}),
+     "dc")).toBe(true);
+   expect(belongsToUniverse(row(11,{title:"Andor",type:"Series",
+     studios:["Disney+"]}),"starwars")).toBe(true);
+   expect(belongsToUniverse(row(12,{title:"Indiana Jones et le cadran de la destinée",
+     studios:["Lucasfilm Ltd."]}),"starwars")).toBe(false);
+
  });
  it("groups authorized local items uniquely in chronological order",()=>{
    const data=[row(2,{studios:["Pixar Animation Studios"],year:2026}),

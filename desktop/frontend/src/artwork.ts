@@ -156,14 +156,37 @@ function watch(node:HTMLImageElement,load:()=>void){
 }
 export function lazyArtwork(node:HTMLImageElement,initial:LazyArt){
   let options=initial,generation=0,loaded=false;
+  let assignedUrl:string|null=null;
+  // A Blob URL can exist before the browser has decoded it. An <img>
+  // without src (or with a failed src) otherwise exposes its broken-image
+  // icon in the middle of an otherwise valid Jellyfin card.
+  node.dataset.vyArtReady="false";
+  function onLoad(){
+    if(assignedUrl && node.getAttribute("src")===assignedUrl &&
+      node.naturalWidth>0 && node.naturalHeight>0)
+      node.dataset.vyArtReady="true";
+  }
+  function onError(){
+    if(assignedUrl && node.getAttribute("src")===assignedUrl){
+      node.dataset.vyArtReady="false";
+      node.removeAttribute("src");
+      assignedUrl=null;
+    }
+  }
+  node.addEventListener("load",onLoad);
+  node.addEventListener("error",onError);
   async function load(){
     if(loaded)return;
     loaded=true;
     const run=generation;
     const resolved=await options.cache.getBest(options.item,options.kind);
     if(resolved && run===generation && node.isConnected){
+      node.dataset.vyArtReady="false";
       node.dataset.vyArtKind=resolved.kind.toLowerCase();
+      assignedUrl=resolved.url;
       node.src=resolved.url;
+      // Cached and decoded images can already be ready synchronously.
+      if(node.complete)onLoad();
     }
   }
   function observe(){
@@ -176,10 +199,16 @@ export function lazyArtwork(node:HTMLImageElement,initial:LazyArt){
       if(options.item.id===next.item.id && options.kind===next.kind &&
          options.cache===next.cache)return;
       generation++;options=next;
-      stopWatching(node);node.removeAttribute("src");
+      stopWatching(node);assignedUrl=null;
+      node.dataset.vyArtReady="false";
+      node.removeAttribute("src");
       delete node.dataset.vyArtKind;
       observe();
     },
-    destroy(){generation++;stopWatching(node);}
+    destroy(){
+      generation++;assignedUrl=null;stopWatching(node);
+      node.removeEventListener("load",onLoad);
+      node.removeEventListener("error",onError);
+    }
   };
 }

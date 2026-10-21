@@ -15,6 +15,8 @@
   import VyIcon from "./VyIcon.svelte";
   import MediaCard from "./MediaCard.svelte";
   import MediaDetails from "./MediaDetails.svelte";
+  import {planMediaMutation,projectMediaMutation} from "./media-actions";
+  import type {MediaAction} from "./media-actions";
 
   function deviceId():string{
     try{
@@ -70,6 +72,7 @@
     at:number;promise:Promise<MediaItem>
   }>();
   let scrollPosition=$state(0);
+  let verifiedHeroFavorite=$state<{id:string;favorite:boolean}|null>(null);
   let hoverOpenTimer:ReturnType<typeof setTimeout>|null=null;
   let hoverCloseTimer:ReturnType<typeof setTimeout>|null=null;
   let catalogs=$state<Record<CatalogKind,CatalogState>>({
@@ -92,13 +95,13 @@
   let epoch=0;
   let refreshVersion=0;
   let searchTimer:ReturnType<typeof setTimeout>|null=null;
+  let searchSequence=0;
   const tabs:Array<{key:ViewKey;label:string}>= [
     {key:"home",label:"Accueil"},
     {key:"anime",label:"Animés"},
     {key:"movies",label:"Films"},
     {key:"series",label:"Séries"},
-    {key:"favorites",label:"Ma liste"},
-    {key:"universes",label:"Univers"}
+    {key:"favorites",label:"Ma liste"}
   ];
   let catalogKind=$derived<CatalogKind|null>(
     tab==="movies"?"Movie":tab==="series"?"Series":tab==="anime"?"Anime":null);
@@ -128,6 +131,19 @@
     return [];
   });
   let searchActive=$derived(searchText.trim().length>=2);
+  // Hero episodes inherit the parent series favorite state. Never guess
+  // from the episode's UserData or a stale NextUp snapshot.
+  $effect(()=>{
+    const current=hero,uid=session?.userId;
+    verifiedHeroFavorite=null;
+    if(!current || !uid)return;
+    let disposed=false;
+    void detailFor(current,uid).then(item=>{
+      if(!disposed && session?.userId===uid && hero?.id===current.id)
+        verifiedHeroFavorite={id:current.id,favorite:item.isFavorite};
+    }).catch(()=>{});
+    return ()=>{disposed=true;};
+  });
 
   function catalogEntry(kind:CatalogKind,onlyFavorites=false):CatalogState{
     return onlyFavorites?favoriteCatalogs[kind]:catalogs[kind];
@@ -264,24 +280,20 @@
     closeHover();selected=item;
   }
   async function changeMediaState(shown:MediaItem,
-    action:"favorite"|"played"){
-    if(hoverBusy || !session)return;
+    action:MediaAction):Promise<boolean>{
+    if(hoverBusy || !session)return false;
+    const mutation=planMediaMutation(shown,action);
+    if(!mutation)return false;
     const uid=session.userId,generation=epoch;
-    const targetId=action==="favorite" && shown.type==="Episode"?
-      shown.seriesId??shown.id:shown.id;
-    const enabled=!(action==="favorite"?shown.isFavorite:shown.played);
+    const {targetId,enabled}=mutation;
     hoverBusy=true;hoverError="";
     try{
       await api.updateMediaState(targetId,action,enabled);
       hoverDetailsCache.delete(uid+":"+targetId.toLowerCase());
       hoverDetailsCache.delete(uid+":"+shown.id.toLowerCase());
-      if(generation!==epoch || session?.userId!==uid)return;
-      const rewrite=(item:MediaItem):MediaItem=>{
-        if(item.id.toLowerCase()!==targetId.toLowerCase() &&
-           item.id.toLowerCase()!==shown.id.toLowerCase())return item;
-        return action==="favorite"?{...item,isFavorite:enabled}:
-          {...item,played:enabled,progress:enabled?null:item.progress};
-      };
+      if(generation!==epoch || session?.userId!==uid)return false;
+      const rewrite=(item:MediaItem)=>
+        projectMediaMutation(item,shown,mutation,action);
       data={...data,
         recent:data.recent.map(rewrite),resume:data.resume.map(rewrite),
         nextUp:data.nextUp.map(rewrite),watched:data.watched.map(rewrite),
@@ -293,7 +305,10 @@
       favoriteCatalogs=Object.fromEntries(Object.entries(favoriteCatalogs)
         .map(([key,value])=>[key,{...value,items:value.items.map(rewrite)}])
       ) as Record<CatalogKind,CatalogState>;
-      if(hover?.item.id===shown.id)hover={...hover,item:rewrite(shown)};
+      if(selected)selected=rewrite(selected);
+      if(hover)hover={...hover,item:rewrite(hover.item)};
+      if(verifiedHeroFavorite?.id===shown.id && action==="favorite")
+        verifiedHeroFavorite={id:shown.id,favorite:enabled};
       if(action==="favorite")void api.getFavorites().then(items=>{
         if(generation===epoch && session?.userId===uid)
           data={...data,favorites:items};
@@ -302,8 +317,10 @@
         if(generation===epoch && session?.userId===uid)
           data={...data,nextUp:items};
       }).catch(()=>{});
+      return true;
     }catch{
       if(generation===epoch)hoverError="Modification refusée par Jellyfin.";
+      return false;
     }finally{if(generation===epoch)hoverBusy=false;}
   }
   async function toggleHoverState(action:"favorite"|"played"){
@@ -311,8 +328,13 @@
       (!hoverDetailsPending && !hoverFavoriteUnavailable)))
       await changeMediaState(hover.item,action);
   }
-  async function toggleHeroState(action:"favorite"|"played"){
-    if(hero)await changeMediaState(hero,action);
+  async function toggleHeroState(action:MediaAction){
+    if(!hero)return;
+    if(action==="favorite"){
+      if(verifiedHeroFavorite?.id!==hero.id)return;
+      await changeMediaState({...hero,isFavorite:verifiedHeroFavorite.favorite},
+        action);
+    }else await changeMediaState(hero,action);
   }
   function hideFromThisDevice(){
     if(!hover || !session)return;
@@ -321,6 +343,12 @@
     try{localStorage.setItem("vyneo.hidden."+session.userId,
       JSON.stringify(hiddenCards));}catch{}
     closeHover();
+  }
+  function restoreHiddenCards(){
+    if(!session)return;
+    hiddenCards=[];
+    try{localStorage.removeItem("vyneo.hidden."+session.userId);}catch{}
+    profileOpen=false;
   }
   async function loadUniverse(){
     if(universeLoading || !session || universeCatalog.length)return;
@@ -357,7 +385,10 @@
   }
   function selectTab(next:ViewKey){
     closeHover();
-    tab=next;selected=null;searchText="";searchRows=[];profileOpen=false;
+    tab=next;selected=null;searchText="";searchRows=[];
+    searchBusy=false;searchSequence++;
+    if(searchTimer!==null)clearTimeout(searchTimer);
+    profileOpen=false;
     activeUniverse=null;
     if(next==="movies" && !catalogs.Movie.loaded)void loadCatalog("Movie");
     if(next==="series" && !catalogs.Series.loaded)void loadCatalog("Series");
@@ -501,18 +532,21 @@
   }
   function updateSearch(){
     if(searchTimer!==null)clearTimeout(searchTimer);
-    const query=searchText.trim();
-    if(query.length<2){searchRows=[];searchBusy=false;return;}
+    const request=++searchSequence,query=searchText.trim();
+    searchRows=[];
+    if(query.length<2){searchBusy=false;return;}
     const generation=epoch;
+    searchBusy=true;
     searchTimer=setTimeout(async()=>{
-      searchBusy=true;
       try{
         const rows=await api.search(query);
-        if(generation===epoch && searchText.trim()===query)
+        if(generation===epoch && searchSequence===request)
           searchRows=rows;
       }catch{
-        if(generation===epoch)searchRows=[];
-      }finally{if(generation===epoch)searchBusy=false;}
+        if(generation===epoch && searchSequence===request)searchRows=[];
+      }finally{
+        if(generation===epoch && searchSequence===request)searchBusy=false;
+      }
     },260);
   }
   const titleFor=(page:ViewKey)=>
@@ -584,8 +618,11 @@
         aria-label="Retour à l'accueil" onclick={()=>selectTab("home")}>Vynéo</button>
       <nav class="vy-nav" aria-label="Navigation principale">
         {#each tabs as entry (entry.key)}
-          <button type="button" class:active={tab===entry.key}
-            aria-current={tab===entry.key?"page":undefined}
+          <button type="button"
+            class:active={tab===entry.key ||
+              (tab==="universes" && entry.key==="home")}
+            aria-current={tab===entry.key ||
+              (tab==="universes" && entry.key==="home")?"page":undefined}
             onclick={()=>selectTab(entry.key)}>{entry.label}</button>
         {/each}
       </nav>
@@ -616,6 +653,11 @@
                 (credentialStored
                   ?"Connexion mémorisée sur cet appareil"
                   :"Session active, non mémorisée")}</small>
+              {#if hiddenCards.length}
+                <button type="button" onclick={restoreHiddenCards}>
+                  Réafficher les {hiddenCards.length} titres masqués
+                </button>
+              {/if}
               <button type="button" onclick={()=>void logout()}>
                 Se déconnecter
               </button>
@@ -663,9 +705,13 @@
                   <span aria-hidden="true">▶</span> Voir la fiche
                 </button>
                 <button type="button" class="vy-icon-button vy-hero-action-icon"
-                  aria-label={hero.isFavorite?"Retirer de ma liste":"Ajouter à ma liste"}
-                  title="Ma liste" class:active={hero.isFavorite}
-                  disabled={hoverBusy}
+                  aria-label={verifiedHeroFavorite?.id!==hero.id
+                    ?"Vérification du favori":verifiedHeroFavorite.favorite
+                    ?"Retirer de ma liste":"Ajouter à ma liste"}
+                  title="Ma liste"
+                  class:active={verifiedHeroFavorite?.id===hero.id &&
+                    verifiedHeroFavorite.favorite}
+                  disabled={hoverBusy || verifiedHeroFavorite?.id!==hero.id}
                   onclick={()=>void toggleHeroState("favorite")}>
                   <VyIcon kind="heart" size={19}/>
                 </button>
@@ -870,6 +916,7 @@
     {/if}
     {#if selected}
       <MediaDetails item={selected} {api} cache={artwork}
+        onaction={changeMediaState}
         onclose={()=>selected=null}/>
     {/if}
   {/if}

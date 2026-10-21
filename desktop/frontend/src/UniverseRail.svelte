@@ -33,6 +33,7 @@
     <div class="vy-rail vy-universe-rail" bind:this={rail} onscroll={measure}>
       {#each UNIVERSES as universe (universe.id)}
         <button class="vy-universe-tile" type="button"
+          data-vy-universe={universe.id}
           aria-label={"Explorer l'univers "+universe.label}
           onclick={()=>onselect(universe.id)}>
           <img src={universe.logo} alt={universe.label} loading="lazy"/>

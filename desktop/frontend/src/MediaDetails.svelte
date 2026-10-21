@@ -1,6 +1,8 @@
 <script lang="ts">
   import {onMount} from "svelte";
   import type {JellyfinApi} from "./api";
+  import type {MediaAction} from "./media-actions";
+  import VyIcon from "./VyIcon.svelte";
   import type {ArtworkCache} from "./artwork";
   import {hasArtwork,lazyArtwork} from "./artwork";
   import type {EpisodePage,MediaItem,PlaybackProbe,SeasonSummary} from "./types";
@@ -9,9 +11,10 @@
     item:MediaItem;
     api:JellyfinApi;
     cache:ArtworkCache;
+    onaction:(item:MediaItem,action:MediaAction)=>Promise<boolean>;
     onclose:()=>void;
   };
-  let {item,api,cache,onclose}:Props=$props();
+  let {item,api,cache,onaction,onclose}:Props=$props();
   let media=$state<MediaItem|null>(null);
   let seasons=$state<SeasonSummary[]>([]);
   let seasonsLoading=$state(false);
@@ -26,9 +29,17 @@
   let playback=$state<PlaybackProbe|null>(null);
   let playbackBusy=$state(false);
   let playbackError=$state("");
+  let favoriteParent=$state<{id:string;isFavorite:boolean}|null>(null);
+  let stateBusy=$state(false);
+  let stateError=$state("");
   let epoch=0,seasonEpoch=0,playbackEpoch=0;
   let closeButton:HTMLButtonElement;
   let shown=$derived(focusedEpisode??media??item);
+  let favoriteUnavailable=$derived(shown.type==="Episode"
+    ?!shown.seriesId || favoriteParent?.id!==shown.seriesId
+    :media?.id!==shown.id);
+  let isFavorite=$derived(shown.type==="Episode"
+    ?favoriteParent?.isFavorite??false:shown.isFavorite);
   const duration=(ticks:number|null|undefined)=>
     typeof ticks==="number" && ticks>0
       ?Math.max(1,Math.round(ticks/600_000_000))+" min":"";
@@ -67,6 +78,17 @@
       const fresh=await api.getItemDetails(item.id);
       if(version!==epoch)return;
       media=fresh;
+      if(fresh.type==="Series"){
+        favoriteParent={id:fresh.id,isFavorite:fresh.isFavorite};
+      }else if(fresh.type==="Episode" && fresh.seriesId){
+        favoriteParent=null;
+        try{
+          const parent=await api.getItemDetails(fresh.seriesId);
+          if(version===epoch && parent.id===fresh.seriesId &&
+            parent.type==="Series")
+            favoriteParent={id:parent.id,isFavorite:parent.isFavorite};
+        }catch{/* Unverified parent: the heart remains disabled. */}
+      }
     }catch{/* Original catalog card remains available. */}
   }
   function chooseSeason(id:string){
@@ -74,6 +96,7 @@
     activeSeason=id;episodes=[];episodeTotal=null;nextOffset=0;
     episodeError="";episodeLoading=false;focusedEpisode=null;
     playback=null;playbackError="";playbackBusy=false;playbackEpoch++;
+    stateError="";
     void loadEpisodes();
   }
   async function loadEpisodes(){
@@ -100,7 +123,44 @@
   }
   function focusEpisode(episode:MediaItem){
     focusedEpisode=episode;playback=null;playbackError="";
-    playbackBusy=false;playbackEpoch++;
+    playbackBusy=false;playbackEpoch++;stateError="";
+  }
+  async function mutateMedia(action:MediaAction){
+    if(stateBusy || (action==="favorite" && favoriteUnavailable))return;
+    const target={...shown,isFavorite},targetId=target.id;
+    const version=epoch;
+    stateBusy=true;stateError="";
+    try{
+      const updated=await onaction(target,action);
+      if(version!==epoch || shown.id!==targetId)return;
+      if(!updated){
+        stateError="Modification refusée par Jellyfin. Réessayez.";
+        return;
+      }
+      if(action==="favorite"){
+        const next=!isFavorite;
+        if(target.type==="Episode" && favoriteParent)
+          favoriteParent={...favoriteParent,isFavorite:next};
+        if(media && (media.id===target.id ||
+          media.id===target.seriesId))
+          media={...media,isFavorite:next};
+        if(focusedEpisode && focusedEpisode.id===targetId)
+          focusedEpisode={...focusedEpisode,isFavorite:next};
+      }else{
+        const next=!target.played;
+        const apply=(entry:MediaItem):MediaItem=>
+          entry.id===targetId?{...entry,played:next,
+            progress:next?null:entry.progress}:entry;
+        if(media)media=apply(media);
+        if(focusedEpisode)focusedEpisode=apply(focusedEpisode);
+        episodes=episodes.map(apply);
+      }
+    }catch{
+      if(version===epoch && shown.id===targetId)
+        stateError="Modification refusée par Jellyfin. Réessayez.";
+    }finally{
+      if(version===epoch)stateBusy=false;
+    }
   }
   async function inspectPlayback(){
     const target=shown,request=++playbackEpoch,version=epoch;
@@ -153,6 +213,26 @@
         {/if}
       </p>
       <p>{shown.overview || "Aucun synopsis disponible."}</p>
+      <div class="vy-detail-controls" role="group" aria-label="Actions du média">
+        <button type="button" class="vy-detail-control" class:active={isFavorite}
+          aria-label={favoriteUnavailable?"Favori non vérifié":
+            isFavorite?"Retirer de ma liste":"Ajouter à ma liste"}
+          aria-pressed={isFavorite}
+          disabled={stateBusy||favoriteUnavailable}
+          onclick={()=>void mutateMedia("favorite")}>
+          <VyIcon kind="heart" size={18}/>
+          <span>{favoriteUnavailable?"Vérification du favori…":
+            isFavorite?"Dans ma liste":"Ma liste"}</span>
+        </button>
+        <button type="button" class="vy-detail-control" class:active={shown.played}
+          aria-label={shown.played?"Marquer non vu":"Marquer vu"}
+          aria-pressed={shown.played} disabled={stateBusy}
+          onclick={()=>void mutateMedia("played")}>
+          <VyIcon kind="check" size={18}/>
+          <span>{shown.played?"Déjà vu":"Marquer vu"}</span>
+        </button>
+      </div>
+      {#if stateError}<p class="vy-detail-warning" role="alert">{stateError}</p>{/if}
 
       {#if item.type==="Series" && !focusedEpisode}
         <section class="vy-seasons" aria-label="Saisons et épisodes">

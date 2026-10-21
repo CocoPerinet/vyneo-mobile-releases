@@ -49,6 +49,7 @@ const cors={"Access-Control-Allow-Origin":"*",
  "Access-Control-Allow-Headers":"authorization,content-type",
  "Access-Control-Allow-Methods":"GET,POST,DELETE,OPTIONS"};
 const actions=[],external=[],errors=[];
+const favoriteIds=new Set(),playedIds=new Set();
 let browser;
 try{
  browser=await chromium.launch({
@@ -64,12 +65,21 @@ try{
   if(method==="OPTIONS")
    return route.fulfill({status:204,headers:cors,body:""});
   if(path.includes("/Images/")||path.includes("/Images/Primary")){
-   return route.fulfill({status:200,contentType:"image/png",body:image,
+   // A corrupt Jellyfin response exercises the browser's actual image
+   // decode error path, not only the API's missing-thumbnail fallback.
+   const corrupt=path.includes("/Items/"+id(1)+"/Images/");
+   return route.fulfill({status:200,contentType:"image/png",
+    body:corrupt?Buffer.from("invalid-png-bytes"):image,
     headers:{"Access-Control-Allow-Origin":"*"}});
   }
   if(method==="POST"||method==="DELETE"){
    if(path.includes("/FavoriteItems/")||path.includes("/PlayedItems/")){
     actions.push({method,path});
+    const parts=path.split("/");
+    const target=parts.at(-1);
+    const state=path.includes("/FavoriteItems/")?favoriteIds:playedIds;
+    if(method==="POST")state.add(target);
+    else state.delete(target);
     return route.fulfill({status:204,headers:cors,body:""});
    }
   }
@@ -95,7 +105,11 @@ try{
    const kind=qs.get("IncludeItemTypes"),filters=qs.get("Filters");
    const start=Number(qs.get("StartIndex")??0);
    const limit=Number(qs.get("Limit")??96);
-   if(kind==="Season"){
+   if(qs.has("SearchTerm")){
+    const term=qs.get("SearchTerm");
+    if(term==="alpha")await new Promise(resolve=>setTimeout(resolve,900));
+    payload={Items:[films[term==="alpha"?0:1]],TotalRecordCount:1};
+   }else if(kind==="Season"){
     payload={Items:[{Id:id(9000),SeriesId:id(100),IndexNumber:2,
      PremiereDate:"2026-09-15"}],TotalRecordCount:1};
    }else if(kind==="Series"&&qs.get("Ids")){
@@ -122,10 +136,12 @@ try{
     return route.fulfill({status:503,headers:cors,body:"Parent temporarily unavailable"});
    const mediaId=path.split("/").at(-1);
    const episode=nextUp.find(ep=>ep.Id===mediaId);
-   if(episode)payload=episode;
+   if(episode)payload={...episode,UserData:{...episode.UserData,
+    Played:playedIds.has(mediaId)}};
    else if(seriesIds.includes(mediaId)){
     payload={...films[0],Id:mediaId,Type:"Series",Name:"Série parente",
-      UserData:{PlayedPercentage:55,Played:false,IsFavorite:false}};
+      UserData:{PlayedPercentage:55,Played:false,
+        IsFavorite:favoriteIds.has(mediaId)}};
    }else payload=films.find(f=>f.Id===mediaId)??films[0];
   }
   return route.fulfill({status:200,headers:{"Content-Type":"application/json",
@@ -153,7 +169,38 @@ try{
  assert.equal(await page.locator(".vy-shelves .vy-shelf-count").count(),0);
  await page.getByRole("heading",{name:"Nouvelles saisons et suites"})
    .waitFor({timeout:12000});
- assert.equal(await page.locator(".vy-universe-tile").count(),6);
+ assert.equal(await page.locator(".vy-universe-tile").count(),7);
+ assert.equal(await page.locator(".vy-header .vy-nav").getByRole("button",
+  {name:"Univers",exact:true}).count(),0,
+  "Univers must remain a home rail, never a header tab");
+ // The final logo is lazy, far beyond the right edge of the carousel.
+ // Scroll it into view before waiting, rather than awaiting decode()
+ // indefinitely while Chromium defers the off-screen resource.
+ await page.locator('[data-vy-universe="dcu"]').scrollIntoViewIfNeeded();
+ await page.waitForFunction(()=>{
+  const img=document.querySelector('[data-vy-universe="dcu"] img');
+  return img?.complete && img.naturalWidth>0;
+ },null,{timeout:4500});
+ const newDcu=await page.locator('[data-vy-universe="dcu"] img')
+  .evaluate(img=>({loaded:img.complete&&img.naturalWidth>0,
+   filter:getComputedStyle(img).filter}));
+ assert(newDcu.loaded && newDcu.filter==="none",
+  "New DCU logo must load in its original color");
+ const logoGeometry=await page.locator(".vy-universe-tile").evaluateAll(tiles=>
+  tiles.map(tile=>{
+   const tileRect=tile.getBoundingClientRect();
+   const imgRect=tile.querySelector("img").getBoundingClientRect();
+   return {id:tile.dataset.vyUniverse,
+    inside:imgRect.top>=tileRect.top-1 &&
+      imgRect.bottom<=tileRect.bottom+1 &&
+      imgRect.left>=tileRect.left-1 &&
+      imgRect.right<=tileRect.right+1};
+  }));
+ assert(logoGeometry.every(x=>x.inside),
+  "Universe logos must fit entirely inside their cards: "+
+  JSON.stringify(logoGeometry));
+ console.log("JELLYFIN_PARITY_UNIVERSE_LOGOS_FIT_PASS");
+ console.log("JELLYFIN_PARITY_7_UNIVERSES_AND_HEADER_PASS");
  const search=await page.locator(".vy-search-icon").boundingBox();
  const input=await page.locator(".vy-search-label input").boundingBox();
  assert(search&&input);
@@ -181,6 +228,29 @@ try{
  }
  await page.setViewportSize({width:1650,height:930});
  console.log("JELLYFIN_PARITY_HOME_390_1280_1920_PASS nextup="+total);
+ const ranked=page.locator(".vy-card-ranking:has(.vy-novelty)").first();
+ await ranked.waitFor({timeout:4000});
+ const badgeGeometry=await ranked.evaluate(el=>{
+  const rank=el.querySelector(".vy-rank").getBoundingClientRect();
+  const badge=el.querySelector(".vy-novelty").getBoundingClientRect();
+  const overlaps=!(badge.right<=rank.left || badge.left>=rank.right ||
+    badge.bottom<=rank.top || badge.top>=rank.bottom);
+  return {rankTop:rank.top,badgeBottom:badge.bottom,overlaps};
+ });
+ assert(!badgeGeometry.overlaps && badgeGeometry.badgeBottom<
+   badgeGeometry.rankTop,
+   "Top 10 number and new-release badge must occupy separate corners");
+ console.log("JELLYFIN_PARITY_TOP10_BADGE_NO_COLLISION_PASS");
+ const brokenCard=page.locator(".vy-card[data-vy-card='"+id(1)+"']").first();
+ await brokenCard.scrollIntoViewIfNeeded();
+ await brokenCard.locator(".vy-card-picture img")
+  .waitFor({state:"attached",timeout:4000});
+ await page.waitForFunction(mediaId=>{
+  const img=document.querySelector(".vy-card[data-vy-card='"+mediaId+"'] .vy-card-picture img");
+  return img?.dataset.vyArtReady==="false" &&
+    !img.hasAttribute("src") && getComputedStyle(img).visibility==="hidden";
+ },id(1),{timeout:4500});
+ console.log("JELLYFIN_PARITY_CORRUPT_IMAGE_PLACEHOLDER_PASS");
  const card=page.locator(".vy-shelf[aria-label='À suivre'] .vy-card").first();
  await card.scrollIntoViewIfNeeded();
  await card.hover();
@@ -223,6 +293,55 @@ try{
  console.log("JELLYFIN_PARITY_HOVER_FAIL_CLOSED_AND_CLOSE_PASS");
  await page.mouse.move(900,25);
  await popup.waitFor({state:"hidden",timeout:2500});
+ // Detail actions mutate Jellyfin directly, and episode favorites must
+ // always update their parent series rather than the episode.
+ await card.scrollIntoViewIfNeeded();
+ await card.locator(".vy-card-main").click();
+ const detail=page.locator(".vy-detail[role='dialog']");
+ await detail.waitFor({timeout:4000});
+ await detail.getByRole("button",{name:"Retirer de ma liste"})
+   .waitFor({timeout:5000});
+ await detail.getByRole("button",{name:"Retirer de ma liste"}).click();
+ assert(actions.some(x=>x.method==="DELETE" &&
+   x.path==="/Users/"+user+"/FavoriteItems/"+hoveredEpisode.SeriesId));
+ await detail.getByRole("button",{name:"Ajouter à ma liste"}).waitFor();
+ await detail.getByRole("button",{name:"Marquer non vu"}).click();
+ assert(actions.some(x=>x.method==="DELETE" &&
+   x.path==="/Users/"+user+"/PlayedItems/"+hoveredEpisode.Id));
+ await detail.getByRole("button",{name:"Marquer vu"}).waitFor({timeout:4000});
+ await page.screenshot({path:join(out,"media-details-actions-1650.png"),
+  fullPage:false});
+ await detail.getByRole("button",{name:"Fermer"}).click();
+ await detail.waitFor({state:"hidden"});
+ console.log("JELLYFIN_PARITY_DETAIL_ACTIONS_PARENT_SAFE_PASS");
+ const beforeHide=await page.locator(".vy-shelf[aria-label='À suivre'] .vy-card").count();
+ await card.hover();
+ await popup.waitFor();
+ await popup.getByRole("button",{name:"Masquer de ce rayon sur cet appareil"}).click();
+ await page.waitForFunction(expected=>
+  document.querySelectorAll(".vy-shelf[aria-label='À suivre'] .vy-card").length===expected,
+  beforeHide-1,{timeout:3500});
+ await page.getByRole("button",{name:"Ouvrir le profil"}).click();
+ await page.getByRole("button",{name:"Réafficher les 1 titres masqués"}).click();
+ await page.waitForFunction(expected=>
+  document.querySelectorAll(".vy-shelf[aria-label='À suivre'] .vy-card").length===expected,
+  beforeHide,{timeout:3000});
+ console.log("JELLYFIN_PARITY_RESTORE_HIDDEN_NEXT_UP_PASS");
+ // A slow first search must not overwrite newer results or end the spinner.
+ const searchInput=page.getByRole("searchbox",{
+  name:"Rechercher dans ma bibliothèque"});
+ await searchInput.fill("alpha");
+ await page.waitForTimeout(340);
+ await searchInput.fill("beta");
+ await page.locator(".vy-browser .vy-card-title").first()
+  .getByText("Film de test 2",{exact:true}).waitFor({timeout:5000});
+ await page.waitForTimeout(1100);
+ assert.equal(await page.locator(".vy-browser .vy-card-title").first()
+   .textContent(),"Film de test 2");
+ assert.equal(await page.locator(".vy-browser .vy-card").count(),1);
+ await searchInput.fill("");
+ await page.locator(".vy-shelf[aria-label='À suivre']").waitFor();
+ console.log("JELLYFIN_PARITY_SEARCH_RACE_PASS");
  const arrow=page.getByRole("button",{name:"Défiler À suivre vers la droite"});
  await arrow.waitFor({timeout:3000});
  const rail=page.locator(".vy-shelf[aria-label='À suivre'] .vy-rail");
@@ -231,8 +350,10 @@ try{
  await page.waitForTimeout(600);
  assert((await rail.evaluate(x=>x.scrollLeft))>prior);
  console.log("JELLYFIN_PARITY_CAROUSEL_ARROW_PASS");
- await page.getByRole("button",{name:"Univers",exact:true}).first().click();
+ await page.getByRole("button",{name:"Explorer l'univers Pixar"}).click();
+ await page.getByRole("button",{name:/Tous les univers/}).click();
  await page.locator(".vy-universe-tile").first().waitFor();
+ assert.equal(await page.locator(".vy-universe-tile").count(),7);
  assert.equal(await page.locator(".vy-universes-page h1").count(),1);
  const universeLeft=await page.locator(".vy-universes-page .vy-universe-tile")
    .first().evaluate(el=>el.getBoundingClientRect().left);
@@ -263,9 +384,10 @@ try{
     return {label:selected.textContent,hostRight:host.right,activeRight:item.right,
      hostLeft:host.left,activeLeft:item.left};
    });
-   assert(navVisibility.activeRight<=navVisibility.hostRight+2 &&
-    navVisibility.activeLeft>=navVisibility.hostLeft-2,
-    "Active mobile navigation tab must remain visible: "+JSON.stringify(navVisibility));
+   assert(navVisibility.label==="Accueil" &&
+     navVisibility.activeRight<=navVisibility.hostRight+2 &&
+     navVisibility.activeLeft>=navVisibility.hostLeft-2,
+    "Navigation remains on Accueil when viewing Univers: "+JSON.stringify(navVisibility));
    console.log("JELLYFIN_PARITY_ACTIVE_MOBILE_TAB_PASS "+
     JSON.stringify(navVisibility));
   }

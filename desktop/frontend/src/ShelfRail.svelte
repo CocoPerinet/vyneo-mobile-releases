@@ -7,7 +7,8 @@
   type Props={
     shelf:Shelf;cache:ArtworkCache;
     onclick:(item:MediaItem)=>void;
-    onhover?:(item:MediaItem,element:HTMLElement,source:string)=>void;
+    onhover?:(item:MediaItem,element:HTMLElement,source:string,
+      trigger?:"pointer"|"keyboard")=>void;
     onleave?:()=>void;
     badge?:(item:MediaItem)=>string|null;
     showCount?:boolean;
@@ -71,7 +72,7 @@
           variant={shelf.kind??"standard"}
           reason={shelf.reasons?.[item.id]??""}
           novelty={badge?.(item)??null}
-          onhover={(element)=>onhover?.(item,element,shelf.id)}
+          onhover={(element,trigger)=>onhover?.(item,element,shelf.id,trigger)}
           onleave={onleave??(()=>{})} />
       {/each}
     </div>

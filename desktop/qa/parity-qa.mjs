@@ -11,6 +11,8 @@ mkdirSync(out,{recursive:true});
 const mime={".html":"text/html",".js":"application/javascript",
  ".css":"text/css",".png":"image/png",".svg":"image/svg+xml"};
 const image=readFileSync(join(root,"assets","icon.png"));
+const visualReference=JSON.parse(readFileSync(join(root,"desktop",
+  "parity","reference-geometry.json"),"utf8"));
 const http=createServer((req,res)=>{
  const name=decodeURIComponent(new URL(req.url??"/","http://127.0.0.1").pathname);
  const full=resolve(dist,"."+name.replace(/^\/$/,"/index.html"));
@@ -215,6 +217,41 @@ try{
  console.log("JELLYFIN_PARITY_RAIL_GEOMETRY "+JSON.stringify(railGeometry));
  assert(railGeometry.firstLeft>=42 && railGeometry.firstLeft<=75,
     "Initial shelf card must align with the Jellyfin 3.3% outer inset");
+ // Audit's Block A: measure the actual rendered Desktop against the exact
+ // CSS values from the original Jellyfin skin at the same 1650×930 viewport.
+ const metrics=await page.evaluate(()=>{
+  const css=(selector)=>getComputedStyle(document.querySelector(selector));
+  return {
+   headerHeight:document.querySelector(".vy-header").getBoundingClientRect().height,
+   navFont:parseFloat(css(".vy-nav button").fontSize),
+   navRadius:parseFloat(css(".vy-nav button").borderTopLeftRadius),
+   searchHeight:document.querySelector(".vy-search-label").getBoundingClientRect().height,
+   searchWidth:document.querySelector(".vy-search-label").getBoundingClientRect().width,
+   searchFont:parseFloat(css(".vy-search-label input").fontSize),
+   heroMinHeight:parseFloat(css(".vy-hero").minHeight),
+   shelfMargin:parseFloat(css(".vy-shelves").marginTop),
+   cardWidth:document.querySelector(".vy-shelf .vy-card").getBoundingClientRect().width,
+   railGap:parseFloat(css(".vy-shelf .vy-rail").gap),
+   sectionHeadingFont:parseFloat(css(".vy-shelf-heading h2").fontSize)
+  };
+ });
+ const approximate=(a,b,delta=1)=>Math.abs(a-b)<=delta;
+ assert(approximate(metrics.headerHeight,visualReference.header.minHeightPx,2),
+  "Header height differs from Jellyfin CSS: "+JSON.stringify(metrics));
+ assert(approximate(metrics.navFont,visualReference.header.navFontPx,.25));
+ assert(metrics.navRadius>=visualReference.header.navPillRadiusMinPx);
+ assert(approximate(metrics.searchHeight,visualReference.header.searchHeightPx,1));
+ assert(approximate(metrics.searchWidth,visualReference.header.searchWidthPx,1));
+ assert(approximate(metrics.searchFont,visualReference.header.searchInputFontPx,.25));
+ assert(approximate(metrics.heroMinHeight,Math.min(
+  visualReference.hero.minHeightVh/100*visualReference.viewport.height,
+  visualReference.hero.maxHeightPx),2));
+ assert(approximate(metrics.shelfMargin,-visualReference.hero.shelfOverlapPx,1));
+ assert(approximate(metrics.cardWidth,visualReference.rails.cardWidthPx,1));
+ assert(approximate(metrics.railGap,visualReference.rails.gapPx,1));
+ assert(approximate(metrics.sectionHeadingFont,
+  visualReference.rails.headingFontPx,.25));
+ console.log("JELLYFIN_PARITY_SOURCE_GEOMETRY_PASS "+JSON.stringify(metrics));
  assert(railGeometry.scrollLeft<=4,"Initial rail must not auto-scroll");
  await page.screenshot({path:join(out,"home-1650.png"),fullPage:false});
  for(const viewport of [{width:390,height:844},{width:1280,height:800},
@@ -278,6 +315,16 @@ try{
    "The hover must read the series favorite state");
  await page.screenshot({path:join(out,"hover-1650.png"),fullPage:false});
  console.log("JELLYFIN_PARITY_HOVER_ACTIONS_PASS");
+ const hoverDimensions=await popup.evaluate(el=>{
+  const button=el.querySelector(".vy-icon-primary");
+  return {width:el.getBoundingClientRect().width,
+    actionWidth:button.getBoundingClientRect().width};
+ });
+ assert(approximate(hoverDimensions.width,visualReference.hover.widthPx,1));
+ assert(approximate(hoverDimensions.actionWidth,
+  visualReference.hover.actionDiameterPx,1));
+ console.log("JELLYFIN_PARITY_HOVER_SOURCE_GEOMETRY_PASS "+
+   JSON.stringify(hoverDimensions));
  await popup.getByRole("button",{name:"Marquer vu"}).click();
  assert(actions.some(x=>x.method==="POST" &&
   x.path==="/Users/"+user+"/PlayedItems/"+hoveredEpisode.Id));
@@ -293,6 +340,30 @@ try{
  console.log("JELLYFIN_PARITY_HOVER_FAIL_CLOSED_AND_CLOSE_PASS");
  await page.mouse.move(900,25);
  await popup.waitFor({state:"hidden",timeout:2500});
+ // The original audit required a keyboard-operable hover card, not merely a
+ // mouse popup. ArrowDown opens and focuses actions; Escape restores focus.
+ const keyboardCard=page.locator(".vy-shelf[aria-label='À suivre'] .vy-card").nth(3);
+ await keyboardCard.scrollIntoViewIfNeeded();
+ const keyboardButton=keyboardCard.locator(".vy-card-main");
+ await keyboardButton.focus();
+ await keyboardButton.press("ArrowDown");
+ await popup.waitFor({timeout:3500});
+ await page.waitForFunction(()=>
+  document.activeElement?.matches(".vy-hover-popup .vy-icon-primary"),null,
+  {timeout:2500});
+ const hoverBounds=await popup.boundingBox();
+ assert(hoverBounds && hoverBounds.x>=13 &&
+  hoverBounds.x+hoverBounds.width<=1650-13 &&
+  hoverBounds.y>=14 && hoverBounds.y+hoverBounds.height<=930,
+  "Keyboard popup must stay on-screen");
+ await page.keyboard.press("Tab");
+ assert.equal(await popup.evaluate(el=>el.contains(document.activeElement)),true,
+  "Tab must reach another popup action");
+ await page.keyboard.press("Escape");
+ await popup.waitFor({state:"hidden",timeout:2500});
+ assert.equal(await keyboardButton.evaluate(el=>el===document.activeElement),true,
+  "Escape must restore focus to the initiating card");
+ console.log("JELLYFIN_PARITY_HOVER_KEYBOARD_ESCAPE_PASS");
  // Detail actions mutate Jellyfin directly, and episode favorites must
  // always update their parent series rather than the episode.
  await card.scrollIntoViewIfNeeded();

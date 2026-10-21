@@ -75,6 +75,7 @@
   let verifiedHeroFavorite=$state<{id:string;favorite:boolean}|null>(null);
   let hoverOpenTimer:ReturnType<typeof setTimeout>|null=null;
   let hoverCloseTimer:ReturnType<typeof setTimeout>|null=null;
+  let hoverKeyboardOrigin:HTMLElement|null=null;
   let catalogs=$state<Record<CatalogKind,CatalogState>>({
     Movie:freshCatalog(),Series:freshCatalog(),Anime:freshCatalog()
   });
@@ -194,12 +195,16 @@
       avatarUrl=URL.createObjectURL(image);
     }).catch(()=>{});
   }
-  function closeHover(){
+  function closeHover(restoreKeyboardFocus=false){
     if(hoverOpenTimer!==null)clearTimeout(hoverOpenTimer);
     if(hoverCloseTimer!==null)clearTimeout(hoverCloseTimer);
-    hoverOpenTimer=null;hoverCloseTimer=null;hover=null;hoverError="";
+    const origin=hoverKeyboardOrigin;
+    hoverOpenTimer=null;hoverCloseTimer=null;hoverKeyboardOrigin=null;
+    hover=null;hoverError="";
     hoverDetailsPending=false;
     hoverFavoriteUnavailable=false;
+    if(restoreKeyboardFocus && origin?.isConnected)
+      origin.focus({preventScroll:true});
   }
   function detailFor(item:MediaItem,uid:string):Promise<MediaItem>{
     const key=uid+":"+item.id.toLowerCase();
@@ -246,15 +251,21 @@
         hover?.item.id===item.id)hoverDetailsPending=false;
     }
   }
-  function requestHover(item:MediaItem,element:HTMLElement,source:string){
-    if(!window.matchMedia("(hover:hover) and (pointer:fine)").matches)return;
+  function requestHover(item:MediaItem,element:HTMLElement,source:string,
+    trigger:"pointer"|"keyboard"="pointer"){
+    if(trigger==="pointer" &&
+      !window.matchMedia("(hover:hover) and (pointer:fine)").matches)return;
     if(hoverOpenTimer!==null)clearTimeout(hoverOpenTimer);
     if(hoverCloseTimer!==null)clearTimeout(hoverCloseTimer);
+    hoverKeyboardOrigin=trigger==="keyboard"
+      ?element.querySelector<HTMLElement>(".vy-card-main"):null;
     const generation=epoch;
-    const rect=element.getBoundingClientRect();
     hoverOpenTimer=setTimeout(()=>{
+      hoverOpenTimer=null;
       if(generation!==epoch || !element.isConnected || !session)return;
-      const width=Math.min(330,window.innerWidth-28);
+      // Use the current bounding box, not one captured before delayed scroll.
+      const rect=element.getBoundingClientRect();
+      const width=Math.min(320,window.innerWidth-28);
       const x=Math.max(14,Math.min(window.innerWidth-width-14,
         rect.left+(rect.width-width)/2));
       const y=Math.max(86,Math.min(rect.top-95,
@@ -262,13 +273,21 @@
       hover={item,x,y,source};hoverError="";
       hoverFavoriteUnavailable=false;
       void hydrateHover(item,generation,session.userId);
-    },420);
+      if(trigger==="keyboard")
+        requestAnimationFrame(()=>{
+          if(hover?.item.id===item.id)
+            document.querySelector<HTMLButtonElement>(
+              ".vy-hover-popup .vy-icon-primary")?.focus({preventScroll:true});
+        });
+    },trigger==="keyboard"?0:420);
   }
   function requestHideHover(){
     if(hoverOpenTimer!==null)clearTimeout(hoverOpenTimer);
     hoverOpenTimer=null;
     if(hoverCloseTimer!==null)clearTimeout(hoverCloseTimer);
-    hoverCloseTimer=setTimeout(()=>{hover=null;hoverError="";},210);
+    if(document.activeElement?.closest(".vy-hover-popup"))return;
+    hoverCloseTimer=setTimeout(()=>{hover=null;hoverError="";
+      hoverKeyboardOrigin=null;},210);
   }
   function holdHover(){
     if(hoverCloseTimer!==null)clearTimeout(hoverCloseTimer);
@@ -563,7 +582,14 @@
     closeHover();requestAnimationFrame(keepActiveNavVisible);
   }}
   onkeydown={(event)=>{
-    if(event.key==="Escape"){profileOpen=false;closeHover();}
+    if(event.key==="Escape"){
+      profileOpen=false;
+      const returnFocus=!!hoverKeyboardOrigin &&
+        event.target instanceof Element &&
+        !!event.target.closest(".vy-hover-popup");
+      closeHover(returnFocus);
+      if(returnFocus)event.preventDefault();
+    }
   }}
   onclick={(event)=>{
     if(profileOpen && event.target instanceof Element &&
@@ -677,7 +703,8 @@
             {#each searchRows as item (item.id)}
               <MediaCard {item} cache={artwork}
                 novelty={badgeFor(item)}
-                onhover={(element)=>requestHover(item,element,"search")}
+                onhover={(element,trigger)=>
+                  requestHover(item,element,"search",trigger)}
                 onleave={requestHideHover}
                 onclick={openMedia} />
             {/each}
@@ -871,7 +898,8 @@
             {#each gridItems as item (item.id)}
               <MediaCard {item} cache={artwork}
                 novelty={badgeFor(item)}
-                onhover={(element)=>requestHover(item,element,"catalog")}
+                onhover={(element,trigger)=>
+                  requestHover(item,element,"catalog",trigger)}
                 onleave={requestHideHover}
                 onclick={openMedia} />
             {/each}

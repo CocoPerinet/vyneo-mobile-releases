@@ -10,7 +10,7 @@
     variant?:"standard"|"top10"|"universe";
     reason?:string;
     novelty?:string|null;
-    onhover?:(element:HTMLElement)=>void;
+    onhover?:(element:HTMLElement,trigger?:"pointer"|"keyboard")=>void;
     onleave?:()=>void;
   };
   let {item,cache,onclick,rank=0,variant="standard",
@@ -36,7 +36,15 @@
   data-vy-card={item.id}>
   <button type="button" class="vy-card-main"
     onclick={()=>onclick(item)}
-    aria-label={"Détails : "+item.title}>
+    aria-label={"Détails : "+item.title}
+    aria-haspopup={onhover?"dialog":undefined}
+    aria-keyshortcuts={onhover?"ArrowDown":undefined}
+    onkeydown={(event)=>{
+      if(event.key!=="ArrowDown" || event.repeat || !onhover)return;
+      event.preventDefault();
+      const card=event.currentTarget.closest(".vy-card");
+      if(card instanceof HTMLElement)onhover(card,"keyboard");
+    }}>
     <span class="vy-card-picture">
       {#if rank>0}
         <span class="vy-rank" aria-hidden="true">{rank}</span>

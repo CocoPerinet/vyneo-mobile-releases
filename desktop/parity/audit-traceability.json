@@ -1,0 +1,146 @@
+{
+  "audit": "docs/AUDIT-PARITE-JELLYFIN-20261020.md",
+  "policy": "Obligatoire pour chaque PR de parité. Ne jamais promouvoir synthetic-validated en real-validated sans preuve d'une vraie session Jellyfin.",
+  "originalAuditDate": "2026-10-20",
+  "referenceSources": {
+    "index.html": {
+      "path": "/opt/zurg/jellyfin-vyneo/index.html",
+      "sha256": "9615a19a629a821953acdb7a4958cef1e786c20d01f25125006986aa2463edda"
+    },
+    "skin.css": {
+      "path": "/opt/zurg/jellyfin-vyneo/web/skin.css",
+      "sha256": "dd443b05161aa48bc8b414a168df1fe83df674c5d583a99798f1af579d1e08fa"
+    },
+    "inject.js": {
+      "path": "/opt/zurg/jellyfin-vyneo/web/inject.js",
+      "sha256": "8c134b53787e1d0f1363e5af667c7101304b5fa71017d175e441334ae9569876"
+    },
+    "SecureApp.svelte": {
+      "path": "/home/coco/vyneo-next/beta-web/src/secure/SecureApp.svelte",
+      "sha256": "39f724aadc5163d7e64f2c812f1e436beea33358818db2897d97a11cea8c013d"
+    }
+  },
+  "items": [
+    {
+      "block": "A",
+      "id": "header",
+      "title": "Header, navigation, recherche, avatar",
+      "acceptance": "Extraire tailles, gaps, rayon, typographie et obtenir un rendu équivalent pour 1280/1650/1920 px",
+      "status": "source-reviewed",
+      "reference": "skin.css:119-319",
+      "automation": "desktop/qa/parity-qa.mjs",
+      "evidence": "Audit source 2026-10-20 / tests synthétiques 0.2.4 (pas de capture Jellyfin réelle)"
+    },
+    {
+      "block": "A",
+      "id": "hero",
+      "title": "Bannière, ratios, fondu et commandes",
+      "acceptance": "Reprendre min-height, marge sous header, fondu, actions et chevauchement des rayons",
+      "status": "source-reviewed",
+      "reference": "skin.css:824-967",
+      "automation": "desktop/qa/parity-qa.mjs",
+      "evidence": "Audit source 2026-10-20 / tests synthétiques 0.2.4 (pas de capture Jellyfin réelle)"
+    },
+    {
+      "block": "A",
+      "id": "circular-controls",
+      "title": "Alignement icônes et boutons",
+      "acceptance": "Comparer centres optiques des glyphes avec les boutons Jellyfin",
+      "status": "synthetic-validated",
+      "reference": "skin.css:915-938",
+      "automation": "desktop/qa/parity-qa.mjs",
+      "evidence": "Audit source 2026-10-20 / tests synthétiques 0.2.4 (pas de capture Jellyfin réelle)"
+    },
+    {
+      "block": "A",
+      "id": "rails",
+      "title": "Sections, tailles, flèches et clavier",
+      "acceptance": "Supprimer compteurs hors wishlist et faire fonctionner flèches, scroll-snap et clavier",
+      "status": "synthetic-validated",
+      "reference": "skin.css:975-1130",
+      "automation": "desktop/qa/parity-qa.mjs",
+      "evidence": "Audit source 2026-10-20 / tests synthétiques 0.2.4 (pas de capture Jellyfin réelle)"
+    },
+    {
+      "block": "B",
+      "id": "hover-details",
+      "title": "Popup média au survol",
+      "acceptance": "Calquer largeur, espacement, animation, images, badges et actions autorisées",
+      "status": "source-reviewed",
+      "reference": "skin.css:772-822",
+      "automation": "desktop/qa/parity-qa.mjs",
+      "evidence": "Audit source 2026-10-20 / tests synthétiques 0.2.4 (pas de capture Jellyfin réelle)"
+    },
+    {
+      "block": "B",
+      "id": "hover-accessibility",
+      "title": "Hover/fermeture souris, clavier et focus",
+      "acceptance": "Assurer accès clavier, gestion des bords, délais annulables et fermeture tardive",
+      "status": "pending",
+      "reference": "inject.js:~6825+",
+      "automation": "desktop/qa/parity-qa.mjs",
+      "evidence": ""
+    },
+    {
+      "block": "C",
+      "id": "next-up",
+      "title": "Correspondance À suivre",
+      "acceptance": "Comparer les identifiants réellement visibles et paginer les résultats du compte Jellyfin",
+      "status": "synthetic-validated",
+      "reference": "inject.js:NextUp",
+      "automation": "desktop/qa/parity-qa.mjs",
+      "evidence": "Audit source 2026-10-20 / tests synthétiques 0.2.4 (pas de capture Jellyfin réelle)"
+    },
+    {
+      "block": "C",
+      "id": "sequels",
+      "title": "Nouvelles saisons et suites",
+      "acceptance": "Distinguer date réelle de sortie/saison, distinguer ajout de bibliothèque et nouvel épisode",
+      "status": "synthetic-validated",
+      "reference": "inject.js:vyBadgeNouveaute",
+      "automation": "desktop/frontend/tests/new-seasons.test.ts",
+      "evidence": "Audit source 2026-10-20 / tests synthétiques 0.2.4 (pas de capture Jellyfin réelle)"
+    },
+    {
+      "block": "C",
+      "id": "universes",
+      "title": "Univers et métadonnées/LLM",
+      "acceptance": "Respecter les 7 univers, phases/chronologies et classement justifié via métadonnées Jellyfin",
+      "status": "source-reviewed",
+      "reference": "inject.js:VY_UNIVERS",
+      "automation": "desktop/frontend/tests/universes.test.ts",
+      "evidence": "Audit source 2026-10-20 / tests synthétiques 0.2.4 (pas de capture Jellyfin réelle)"
+    },
+    {
+      "block": "C",
+      "id": "novelty",
+      "title": "Badges de nouveautés",
+      "acceptance": "Classifier films, séries et saisons sans faux positifs et sans chevauchement Top 10",
+      "status": "synthetic-validated",
+      "reference": "inject.js:vyBadgeNouveaute",
+      "automation": "desktop/frontend/tests/new-seasons.test.ts",
+      "evidence": "Audit source 2026-10-20 / tests synthétiques 0.2.4 (pas de capture Jellyfin réelle)"
+    },
+    {
+      "block": "D",
+      "id": "side-by-side",
+      "title": "Comparaison de captures même viewport",
+      "acceptance": "Capturer Jellyfin personnalisé et Desktop avec même compte, résolution, contenu et scroll, documenter les deltas",
+      "status": "pending",
+      "reference": "skin.css:index.html",
+      "automation": "desktop/qa/parity-qa.mjs",
+      "evidence": ""
+    },
+    {
+      "block": "D",
+      "id": "real-library",
+      "title": "Droits, bibliothèque et lecture réels",
+      "acceptance": "Comparer les IDs À suivre, tester actions et autorisations, lecture effective sans masquer les fonctionnalités manquantes",
+      "status": "pending",
+      "reference": "inject.js:Jellyfin API",
+      "automation": "desktop/qa/parity-qa.mjs",
+      "evidence": ""
+    }
+  ],
+  "auditSha256": "85678039cfbfd6ad84b455b939e8f2543232cb77326d023bf2eb1527ccc5f8ae"
+}

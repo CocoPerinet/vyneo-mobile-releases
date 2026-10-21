@@ -1,36 +1,33 @@
 /* Vynéo Desktop parity layer based on the user's customized Jellyfin theme.
  * Not a copy of Jellyfin's runtime or its global selectors.
  * Native CSS tokens remain owned by Desktop and are safe from web upgrades. */
-:root{
-  --vy-bg:#090c12;
-  --vy-accent-2:#ff9c36;
-  --vy-text:#f2f4f8;
-  --vy-dim:#9ca4b5;
-}
+/* Color tokens are inherited from styles.css. They match the Jellyfin
+ * skin.css palette (#0a0c11 / #ffb347); do not override them here. */
 .vy-header{
-  min-height:83px;
-  padding:11px 3.3%;
-  gap:26px;
-  background:rgba(9,12,18,.96);
+  min-height:74px;
+  padding:14px clamp(16px,2.1vw,40px) 8px;
+  gap:18px;
+  background:rgba(10,12,17,.97);
   border-bottom:1px solid #ffffff10;
 }
 .vy-header.vy-header-over-hero{
-  background:linear-gradient(to bottom,rgba(7,10,15,.9),rgba(7,10,15,.08));
+  background:linear-gradient(to bottom,rgba(10,12,17,.9),
+    rgba(10,12,17,.5) 70%,transparent);
   border-bottom-color:transparent;
   backdrop-filter:none;
 }
 .vy-logo{color:var(--vy-accent-2);font-size:27px}
 .vy-logo-button{color:var(--vy-accent-2)}
-.vy-nav{gap:6px}
+.vy-nav{gap:8px}
 .vy-nav button{
-  padding:8px 13px;
-  border-radius:7px;
-  font-size:15px;
+  padding:10px 20px;
+  border-radius:999px;
+  font-size:16.5px;
   font-weight:650;
 }
 .vy-nav button.active,.vy-nav button:hover{
-  background:transparent;
-  color:#f0f2f5;
+  background:rgba(255,255,255,.12);
+  color:#fff;
 }
 .vy-toolbar{gap:16px}
 .vy-search-label{
@@ -38,12 +35,18 @@
   grid-template-columns:20px minmax(0,1fr);
   align-items:center;
   column-gap:10px;
-  width:clamp(215px,20vw,308px);
-  height:43px;
-  padding:0 16px;
+  width:clamp(210px,20vw,320px);
+  height:46px;
+  padding:0 10px 0 18px;
   border-radius:999px;
-  background:rgba(40,43,49,.68);
-  border:1px solid #ffffff15;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.10);
+}
+.vy-search-label:hover{background:rgba(255,255,255,.12)}
+.vy-search-label:focus-within{
+  background:rgba(255,255,255,.14);
+  border-color:rgba(255,179,71,.55);
+  box-shadow:0 8px 30px rgba(0,0,0,.4);
 }
 .vy-search-icon{
   display:grid;
@@ -60,7 +63,7 @@
   min-width:0;
   line-height:1.35;
   color:#f0f3fa;
-  font-size:13px;
+  font-size:15px;
   padding:0;
 }
 .vy-account{
@@ -71,43 +74,58 @@
   display:grid;
   place-items:center;
 }
+/* Geometry transcribed from skin.css lines 824-967, 2026-10-21.
+ * Hero's bottom 150px overlaps the first rail; controls float above it. */
 .vy-hero{
-  min-height:min(91vh,875px);
-  margin-top:-83px;
-  padding:132px 3.3% 205px;
-  background:#0b0c12;
+  min-height:min(78vh,820px);
+  margin-top:-74px;
+  padding:120px 3.3% 150px;
+  background:var(--vy-bg-soft);
 }
-.vy-hero-art{object-position:center 28%}
+.vy-hero-art{object-position:center 16%}
 .vy-hero-shade{
-  background:
-   linear-gradient(to top,#090c12 0%,rgba(9,12,18,.86) 12%,transparent 46%),
-   linear-gradient(to right,rgba(8,10,15,.92) 0%,rgba(8,10,15,.54) 32%,transparent 69%),
-   linear-gradient(to bottom,rgba(8,10,15,.25),transparent 32%);
+  background:linear-gradient(to top,var(--vy-bg) 2%,
+    rgba(10,12,17,.6) 20%,rgba(10,12,17,.4) 45%,
+    rgba(10,12,17,.15) 100%),
+    linear-gradient(to right,rgba(10,12,17,.75),transparent 55%);
 }
-.vy-hero-inner{max-width:625px}
-.vy-hero h1{font-size:clamp(39px,3.9vw,59px);line-height:1.08}
-.vy-hero-overview{font-size:14px;max-width:540px;color:#e0e3eb}
+.vy-hero-inner{max-width:760px}
+.vy-hero h1{font-size:clamp(28px,4.6vw,50px);line-height:1.08}
+.vy-hero-overview{font-size:15.5px;max-width:600px;color:#c6cddd;line-height:1.55}
 .vy-hero-controls{
-  bottom:155px;right:3.3%;gap:9px;
-  background:#10131b77;border:1px solid #ffffff20;
+  position:absolute;inset:0;z-index:3;
+  padding:0;border:0;border-radius:0;background:transparent;
+  backdrop-filter:none;pointer-events:none;
 }
 .vy-hero-arrow{
-  display:grid;
-  place-items:center;
-  padding:0;
-  width:32px;height:32px;
-  line-height:normal;
+  position:absolute;top:50%;width:48px;height:48px;
+  display:grid;place-items:center;padding:0;
+  border:0;border-radius:50%;font-size:26px;line-height:1;
+  background:rgba(20,22,30,.45);backdrop-filter:blur(8px);
+  transform:translateY(-50%);opacity:0;pointer-events:auto;
+  transition:opacity .18s,background-color .15s,transform .15s;
 }
-.vy-watch-button,.vy-more-button{border-radius:8px;padding:11px 23px}
-.vy-shelves{margin-top:-119px}
-.vy-shelf{margin:28px 0 22px;contain-intrinsic-size:auto 285px}
-.vy-shelf-heading{margin-bottom:9px}
-.vy-shelf-heading h2{font-size:19px;font-weight:900;color:#f0f1f6}
+.vy-hero-arrow:first-child{left:18px}
+.vy-hero-arrow:last-child{right:18px}
+.vy-hero:hover .vy-hero-arrow,.vy-hero-arrow:focus-visible{opacity:1}
+.vy-hero-arrow:hover{background:rgba(20,22,30,.7);
+  transform:translateY(-50%) scale(1.08)}
+.vy-hero-dots{position:absolute;left:0;right:0;bottom:22px;
+  justify-content:center;gap:8px;pointer-events:auto}
+.vy-hero-dots button{width:12px;height:12px;padding:0;display:grid;
+  place-items:center}
+.vy-hero-dots button span{width:8px;height:8px;border-radius:50%}
+.vy-hero-dots button.active span{width:8px;transform:scale(1.25)}
+.vy-watch-button,.vy-more-button{border-radius:10px;padding:12px 26px}
+.vy-shelves{margin-top:-150px}
+.vy-shelf{margin:30px 0;contain-intrinsic-size:auto 285px}
+.vy-shelf-heading{margin-bottom:12px}
+.vy-shelf-heading h2{font-size:21px;font-weight:800;color:#dfe4f0}
 .vy-rail-frame{position:relative;overflow:visible}
 .vy-rail{
   display:flex;
-  gap:12px;
-  padding:4px 3.3% 18px;
+  gap:13px;
+  padding:6px 3.3% 18px;
   scrollbar-width:none;
   overscroll-behavior-x:contain;
   scroll-snap-type:x proximity;
@@ -115,7 +133,7 @@
 }
 .vy-card{
   display:block;
-  flex:0 0 clamp(238px,22vw,310px);
+  flex:0 0 340px;
   width:auto;
   min-width:0;
   border:0;
@@ -234,13 +252,13 @@
 .vy-hover-popup{
   position:fixed;
   z-index:80;
-  width:min(330px,calc(100vw - 28px));
+  width:min(320px,calc(100vw - 28px));
   overflow:hidden;
   border:1px solid #ffffff20;
   border-radius:12px;
-  background:#1b1f2a;
+  background:#14171f;
   color:#f2f4f8;
-  box-shadow:0 17px 48px #000e;
+  box-shadow:0 20px 50px #000a;
   animation:vy-preview-in .14s ease-out;
 }
 @keyframes vy-preview-in{
@@ -260,7 +278,7 @@
 }
 .vy-hover-image>img{width:100%;height:100%;display:block;object-fit:cover}
 .vy-hover-image .vy-novelty{bottom:10px}
-.vy-hover-content{padding:12px 14px 13px}
+.vy-hover-content{padding:14px 16px 16px}
 .vy-hover-actions{
   display:flex;align-items:center;gap:8px;
   margin-bottom:10px;
@@ -268,8 +286,8 @@
 .vy-icon-button{
   display:grid;
   place-items:center;
-  width:33px;height:33px;
-  flex:0 0 33px;
+  width:34px;height:34px;
+  flex:0 0 34px;
   padding:0;
   margin:0;
   border-radius:50%;
@@ -286,11 +304,11 @@
   background:#fff;color:#10131b;border-color:#fff;
 }
 .vy-icon-primary:hover:not(:disabled){color:#10131b;background:#e7edf5}
-.vy-hover-title{font-size:13px;line-height:1.4;display:block;margin:2px 0 5px}
+.vy-hover-title{font-size:15px;line-height:1.45;display:block;margin:2px 0 6px}
 .vy-hover-title span{font-size:12px;color:#aab2c3;font-weight:500}
 .vy-hover-meta{
   display:flex;align-items:center;flex-wrap:wrap;
-  gap:8px;font-size:11px;color:#aab4c5;
+  gap:8px;font-size:12.5px;color:#aab4c5;
 }
 .vy-hover-score{color:#ffb64e;font-weight:700}
 .vy-hover-genres{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0}
@@ -302,7 +320,7 @@
 }
 .vy-hover-summary{
   color:#d4d9e4;
-  font-size:11px;line-height:1.45;
+  font-size:12.5px;line-height:1.45;
   margin:8px 0 0;
   display:-webkit-box;
   -webkit-line-clamp:3;

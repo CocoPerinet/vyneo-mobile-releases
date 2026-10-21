@@ -1,0 +1,21 @@
+{
+  "source": "/opt/zurg/jellyfin-vyneo/web/skin.css",
+  "sourceSha256": "dd443b05161aa48bc8b414a168df1fe83df674c5d583a99798f1af579d1e08fa",
+  "extractedAt": "2026-10-21",
+  "viewport": {"width": 1650, "height": 930},
+  "header": {
+    "minHeightPx": 74,
+    "navFontPx": 16.5,
+    "navPillRadiusMinPx": 100,
+    "searchHeightPx": 46,
+    "searchWidthPx": 320,
+    "searchInputFontPx": 15
+  },
+  "hero": {
+    "minHeightVh": 78,
+    "maxHeightPx": 820,
+    "shelfOverlapPx": 150
+  },
+  "rails": {"cardWidthPx": 340, "gapPx": 13, "headingFontPx": 21},
+  "hover": {"widthPx": 320, "actionDiameterPx": 34}
+}

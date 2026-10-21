@@ -30,7 +30,7 @@ const films=Array.from({length:220},(_,n)=>({
  DateCreated:"2026-10-17",Overview:"Un synopsis de démonstration pour Vynéo.",
  Genres:["Action"],Tags:n%2?["Marvel Cinematic Universe (MCU)"]:["Animation"],
  Studios:[{Name:n%2?"Marvel Studios":"Pixar Animation Studios"}],
- ProviderIds:{TmdbCollection:"113355"},CommunityRating:7.8,
+ ProviderIds:{TmdbCollection:"113355",Tmdb:String(n+1)},CommunityRating:7.8,
  ImageTags:{Primary:"png"},BackdropImageTags:["png"],
  UserData:{Played:n<20,IsFavorite:n<5}
 }));
@@ -79,6 +79,18 @@ try{
   external.push({url:request.url(),method});
   if(method==="OPTIONS")
    return route.fulfill({status:204,headers:cors,body:""});
+  if(path==="/tmdb/discover/movie"||path==="/tmdb/discover/tv"){
+   assert.equal(request.headers().authorization,undefined,
+     "The public popularity proxy must never receive a Jellyfin token");
+   assert.equal(qs.get("sort_by"),"popularity.desc");
+   assert.equal(qs.get("include_adult"),"false");
+   const start=(Number(qs.get("page"))-1)*20;
+   const results=path.endsWith("/movie")
+     ?Array.from({length:20},(_,n)=>({id:start+n+1,adult:false}))
+     :[];
+   return route.fulfill({status:200,contentType:"application/json",
+     headers:cors,body:bodyJson({results})});
+  }
   if(path.includes("/Images/")||path.includes("/Images/Primary")){
    // A corrupt Jellyfin response exercises the browser's actual image
    // decode error path, not only the API's missing-thumbnail fallback.
@@ -201,6 +213,25 @@ try{
  assert.equal(await page.locator(".vy-shelves .vy-shelf-count").count(),0);
  await page.getByRole("heading",{name:"Nouvelles saisons et suites"})
    .waitFor({timeout:12000});
+ await page.getByRole("heading",{name:"Tendances",exact:true})
+   .waitFor({timeout:12000});
+ const liveTrendCards=page.locator(
+  '.vy-shelf[aria-label="Tendances"] .vy-card');
+ assert((await liveTrendCards.count())>=8,
+  "True TMDb rankings must match user-authorized Jellyfin films");
+ const sectionOrder=await page.locator(".vy-shelves h2").allTextContents();
+ const order=(title)=>sectionOrder.indexOf(title);
+ assert(order("À suivre")<order("Nouvelles saisons et suites") &&
+   order("Nouvelles saisons et suites")<order("Univers") &&
+   order("Univers")<order("Tendances"),
+   "True popularity must follow the Univers rail as in Jellyfin: "+
+    JSON.stringify(sectionOrder.slice(0,7)));
+ const publicProxy=external.filter(x=>
+  new URL(x.url).pathname.startsWith("/tmdb/discover/"));
+ assert.equal(publicProxy.length,6);
+ console.log("JELLYFIN_PARITY_TRUE_TMDB_TRENDS_AUTHORIZED_PASS "+
+   JSON.stringify({cards:await liveTrendCards.count(),
+     requests:publicProxy.length}));
  await page.locator(
   '.vy-shelf[aria-label="Nouvelles saisons et suites"] '+
   '.vy-card[data-vy-card="'+id(36)+'"]'

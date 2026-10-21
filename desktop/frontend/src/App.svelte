@@ -5,6 +5,7 @@
   import {JellyfinApi} from "./api";
   import {ArtworkCache,hasArtwork,lazyArtwork} from "./artwork";
   import {buildShelves,featuredSlides} from "./discover";
+  import {matchTrending} from "./trending";
   import {newBadge,classifyNewReleases,includeNewReleaseShelf} from "./new-seasons";
   import type {RecentSeason} from "./new-seasons";
   import {UNIVERSES,groupUniverseItems} from "./universes";
@@ -54,6 +55,7 @@
   let avatarUrl=$state<string|null>(null);
   let session=$state<SessionPublic|null>(null);
   let data=$state<LibrarySnapshot>(empty());
+  let trending=$state<MediaItem[]>([]);
   let recentSeasons=$state<RecentSeason[]>([]);
   let seriesEvidence=$state<MediaItem[]>([]);
   let hiddenCards=$state<string[]>([]);
@@ -119,6 +121,16 @@
     if(!session)return [];
     const rows=includeNewReleaseShelf(buildShelves(data,session.userId),
       data,recentSeasons,seriesEvidence);
+    // Never fabricate "Tendances" from ratings: this is a real TMDb
+    // popularity match against the user's previously authorized catalog.
+    if(trending.length>=3){
+      const preferred=rows.findIndex(row=>row.id==="new-seasons");
+      const after=preferred>=0?preferred:
+        rows.findIndex(row=>row.id==="next-up");
+      rows.splice(after<0?0:after+1,0,{
+        id:"trending",title:"Tendances",items:trending,kind:"standard"
+      });
+    }
     return rows.filter(row=>row.id!=="universes").map(row=>
       row.id==="next-up" || row.id==="resume"?
       {...row,items:row.items.filter(item=>!hiddenCards.includes(item.id))}:row
@@ -139,7 +151,7 @@
       return badge?.label.startsWith("Nouvelle saison")
         ?"NOUVELLE SAISON":"NOUVEAU";
     }
-    if(isIn("top-ten"))return "TENDANCE";
+    if(isIn("trending"))return "TENDANCE";
     if(isIn("for-you"))return "POUR VOUS";
     return "À LA UNE";
   });
@@ -387,6 +399,7 @@
         nextUp:data.nextUp.map(rewrite),watched:data.watched.map(rewrite),
         favorites:data.favorites.map(rewrite),
         candidates:data.candidates?.map(rewrite)};
+      trending=trending.map(rewrite);
       catalogs=Object.fromEntries(Object.entries(catalogs).map(([key,value])=>
         [key,{...value,items:value.items.map(rewrite)}])
       ) as Record<CatalogKind,CatalogState>;
@@ -548,7 +561,7 @@
   }
   function acceptSession(authenticated:SessionPublic){
     session=authenticated;profileOpen=false;
-    recentSeasons=[];seriesEvidence=[];hiddenCards=[];
+    recentSeasons=[];seriesEvidence=[];hiddenCards=[];trending=[];
     universeCatalog=[];activeUniverse=null;universeError="";
     universeReturnFocus=null;universeReturnItemId=null;
     closeHover();clearAvatar();hoverDetailsCache.clear();
@@ -648,18 +661,28 @@
     });
     // Optional, lower-priority discovery feed. The first home render and
     // its shelves never wait on this larger user-authorized query.
+    // Popularity and the user-scoped candidate sample run only in the
+    // background. The first paint and progression shelves never wait.
+    // The pinned Jellyfin-hosted TMDb proxy receives NO access token.
+    const popularity=api.getTrendingRanks().catch(()=>[]);
     void api.getCandidates().then(items=>{
       if(generation!==epoch || version!==refreshVersion ||
          !api.session || session?.userId!==api.session.userId)return;
       data={...data,candidates:items};
+      void popularity.then(ranks=>{
+        if(generation!==epoch || version!==refreshVersion ||
+           !api.session || session?.userId!==api.session.userId)return;
+        const matched=matchTrending([...data.recent,...items],ranks,18);
+        trending=matched.length>=3?matched:[];
+      });
     }).catch(()=>{
-      // Keep existing shelves on timeout, denial or offline network.
+      // Never claim popularity when the authorized candidate scan failed.
     });
   }
   async function logout(){
     epoch++;refreshVersion++;profileOpen=false;credentialStored=false;
     closeHover();clearAvatar();hoverDetailsCache.clear();
-    hiddenCards=[];recentSeasons=[];seriesEvidence=[];
+    hiddenCards=[];recentSeasons=[];seriesEvidence=[];trending=[];
     universeCatalog=[];activeUniverse=null;universeError="";
     universeReturnFocus=null;universeReturnItemId=null;
     if(searchTimer!==null)clearTimeout(searchTimer);

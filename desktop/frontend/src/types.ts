@@ -69,6 +69,7 @@ export interface MediaItem {
   seasonId?:string|null;
   playedPercentage?:number|null;
   franchiseId?:string|null;
+  tmdbId?:string|null;
   tvdbCollectionIds?:string[];
   seasonNumber?:number|null;
   episodeNumber?:number|null;

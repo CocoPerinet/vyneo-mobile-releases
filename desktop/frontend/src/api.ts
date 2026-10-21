@@ -1,6 +1,7 @@
 import type {MediaItem,MediaType,SessionPublic,CatalogKind,CatalogPage,CatalogLibraryIds,SeasonSummary,EpisodePage,PlaybackProbe} from "./types";
 import {parseSeasons,parsePlaybackInfo} from "./media-details";
 import type {RecentSeason} from "./new-seasons";
+import type {TrendingRank} from "./trending";
 import {candidateOffsets,CANDIDATE_BATCH_SIZE} from "./candidate-pages";
 
 export const SERVER_ORIGIN="https://cocojellyfin.duckdns.org:38443";
@@ -65,6 +66,7 @@ export function normalizeItem(v:unknown):MediaItem|null {
       ud.PlayedPercentage>=0 && ud.PlayedPercentage<=100
       ?ud.PlayedPercentage:null,
     franchiseId:collectionIds(providers.TmdbCollection)[0]??null,
+    tmdbId:collectionIds(providers.Tmdb)[0]??null,
     // TVDb often stores multiple collection IDs joined by ';'. These
     // group spin-offs (including TV series), but also editorial lists:
     // classification must verify a shared dominant tag before using them.
@@ -462,6 +464,65 @@ export class JellyfinApi {
     this.assertSession(uid,generation);
     if(content.size>524288 || content.size===0)return null;
     return content;
+  }
+  /** Public TMDb popularity *through the pinned Jellyfin-hosted proxy*.
+   * Do not reuse this.json: that method attaches the private Jellyfin token.
+   * Never pass credentials to the TMDb endpoint or trust its results as
+   * evidence that a user has access to the corresponding Jellyfin title. */
+  async getTrendingRanks():Promise<TrendingRank[]>{
+    const uid=this.requireUser(),generation=this.authGeneration;
+    const read=async(kind:"movie"|"tv",page:number):Promise<TrendingRank[]>=>{
+      const url=new URL("/tmdb/discover/"+kind,this.origin);
+      url.search=new URLSearchParams({
+        sort_by:"popularity.desc",language:"fr-FR",
+        page:String(page),include_adult:"false"
+      }).toString();
+      if(url.origin!==this.origin)throw new Error("TRENDING_ORIGIN_INVALID");
+      let response:Response;
+      try{
+        response=await this.fetcher(url,{
+          method:"GET",headers:{Accept:"application/json"},
+          mode:"cors",credentials:"omit",cache:"no-store",redirect:"error",
+          referrerPolicy:"no-referrer",signal:AbortSignal.timeout(6000)
+        });
+      }catch{return [];}
+      this.assertSession(uid,generation);
+      if(!response.ok || response.redirected ||
+        !(response.headers.get("Content-Type")??"").toLowerCase()
+          .startsWith("application/json"))return [];
+      const length=response.headers.get("Content-Length");
+      if(length && Number(length)>524288)return [];
+      let parsed:Record<string,unknown>;
+      try{
+        const text=await response.text();
+        if(text.length>524288)return [];
+        parsed=obj(JSON.parse(text));
+      }catch{return [];}
+      this.assertSession(uid,generation);
+      if(!Array.isArray(parsed.results) ||
+        parsed.results.length>20)return [];
+      const type=kind==="movie"?"Movie":"Series";
+      return parsed.results.flatMap((row,index)=>{
+        const meta=obj(row),id=meta.id;
+        if(meta.adult===true || !Number.isSafeInteger(id) ||
+          (id as number)<1 || (id as number)>999_999_999_999)
+          return [];
+        return [{
+          type,tmdbId:String(id),
+          rank:(page-1)*20+index+1
+        }];
+      });
+    };
+    const ranked:TrendingRank[]=[];
+    for(let page=1;page<=3;page++){
+      this.assertSession(uid,generation);
+      const results=await Promise.all([
+        read("movie",page),read("tv",page)
+      ]);
+      this.assertSession(uid,generation);
+      ranked.push(...results[0],...results[1]);
+    }
+    return ranked;
   }
   async getRecent():Promise<MediaItem[]>{
     return this.items(this.userItems({

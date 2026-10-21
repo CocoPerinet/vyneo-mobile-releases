@@ -141,6 +141,51 @@ describe("Jellyfin UI parity uses real scoped API metadata",()=>{
    expect(last.url.href).not.toContain(TOKEN);
    expect(last.options.credentials).toBe("omit");
  });
+ it("reads genuine TMDb popularity from the pinned proxy without any private authorization header",async()=>{
+   const publicCalls:Array<{url:URL;options:RequestInit}>=[];
+   const f=async(input:RequestInfo|URL,options:RequestInit={})=>{
+     const url=new URL(String(input));
+     if(url.pathname.startsWith("/tmdb/discover/")){
+       publicCalls.push({url,options});
+       const offset=(Number(url.searchParams.get("page"))-1)*20;
+       return new Response(JSON.stringify({
+         results:[{id:200+offset+1},{id:200+offset+2},
+           {id:200+offset+3,adult:true}]
+       }),{status:200,headers:{"Content-Type":"application/json"}});
+     }
+     return fixture().fetcher(input,options);
+   };
+   const api=new JellyfinApi({fetcher:f as typeof fetch});
+   await api.login("Alice","password");
+   const ranks=await api.getTrendingRanks();
+   expect(publicCalls).toHaveLength(6);
+   expect(publicCalls.map(x=>x.url.pathname)).toEqual([
+     "/tmdb/discover/movie","/tmdb/discover/tv",
+     "/tmdb/discover/movie","/tmdb/discover/tv",
+     "/tmdb/discover/movie","/tmdb/discover/tv"
+   ]);
+   expect(publicCalls.every(({url,options})=>
+     url.origin===SERVER_ORIGIN &&
+     url.searchParams.get("sort_by")==="popularity.desc" &&
+     url.searchParams.get("include_adult")==="false" &&
+     options.credentials==="omit" && options.method==="GET" &&
+     !(options.headers as Record<string,string>).Authorization &&
+     !url.href.includes(TOKEN))).toBe(true);
+   expect(ranks).toHaveLength(12);
+   expect(ranks.every(x=>x.tmdbId!=="203")).toBe(true);
+ });
+ it("does not invent trends from an unavailable TMDb proxy",async()=>{
+   const {fetcher}=fixture();
+   const denied=async(input:RequestInfo|URL,options:RequestInit={})=>{
+     const url=new URL(String(input));
+     if(url.pathname.startsWith("/tmdb/discover/"))
+       return new Response("not available",{status:503});
+     return fetcher(input,options);
+   };
+   const api=new JellyfinApi({fetcher:denied as typeof fetch});
+   await api.login("Alice","password");
+   expect(await api.getTrendingRanks()).toEqual([]);
+ });
  it("enriches over 300 unique NextUp series without losing the last 150",async()=>{
    const {api,calls}=fixture({seriesMatchSelection:true});
    await api.login("Alice","password");

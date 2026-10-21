@@ -81,7 +81,8 @@ export function featuredSlides(rows:Shelf[],limit=16):MediaItem[]{
     used.add(key);selected.push(item);
   };
   const news=rows.find(row=>row.id==="new-seasons")?.items??[];
-  const trend=rows.find(row=>row.id==="top-ten")?.items??[];
+  const trend=rows.find(row=>row.id==="trending")?.items??
+    rows.find(row=>row.id==="top-ten")?.items??[];
   const personal=rows.find(row=>row.id==="for-you")?.items??[];
   const editorial=rows.filter(row=>row.id.startsWith("editorial-"))
     .flatMap(row=>row.items);

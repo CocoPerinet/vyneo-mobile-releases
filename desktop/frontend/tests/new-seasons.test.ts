@@ -133,6 +133,48 @@ describe("Jellyfin parity: seasons, sequels and novelty badges",()=>{
     expect(result.newReleases).toEqual([]);
     expect(result.nextUp.map(x=>x.id)).toEqual([episode.id]);
   });
+  it("recognizes an evidenced TVDb spin-off without assuming the collection is a franchise",()=>{
+    const seed=item(401,"Series",{played:true,year:2020,
+      premiereDate:"2020-01-01",tags:["Chronologie commune"],
+      tvdbCollectionIds:["8841"],genres:["Science-fiction"]});
+    const old=item(402,"Series",{year:2018,
+      premiereDate:"2018-01-01",tags:["Chronologie commune"],
+      tvdbCollectionIds:["8841"],genres:["Science-fiction"]});
+    const newSpinOff=item(403,"Series",{year:2026,
+      premiereDate:"2026-10-09",tags:["Chronologie commune"],
+      tvdbCollectionIds:["8841"],genres:["Science-fiction"]});
+    const intrusion=item(404,"Movie",{year:2026,
+      premiereDate:"2026-10-01",tags:["Palmarès annuel"],
+      tvdbCollectionIds:["8841"]});
+    const data={...library([]),watched:[seed],
+      recent:[old,newSpinOff,intrusion],candidates:[]};
+    expect(classifyNewReleases(data,[],[],now).newReleases.map(x=>x.id))
+      .toEqual([newSpinOff.id]);
+  });
+  it("ignores incoherent TVDb editorial groups despite shared collection IDs",()=>{
+    const seed=item(405,"Series",{played:true,
+      tags:["Horreur"],tvdbCollectionIds:["999"]});
+    const group=[item(406,"Series",{tags:["Science-fiction"],
+      tvdbCollectionIds:["999"]}),item(407,"Movie",{
+      tags:["Animation"],tvdbCollectionIds:["999"]}),
+      item(408,"Series",{tags:["Thriller"],tvdbCollectionIds:["999"]})];
+    expect(classifyNewReleases({
+      ...library([]),watched:[seed],recent:group
+    },[],[],now).newReleases).toEqual([]);
+  });
+  it("does not treat an untagged anime bonus film as a main TVDb sequel",()=>{
+    const seed=item(409,"Series",{played:true,genres:["Anime"],
+      tags:["Dragon Ball"],tvdbCollectionIds:["812"]});
+    const another=item(410,"Series",{genres:["Anime"],
+      tags:["Dragon Ball"],tvdbCollectionIds:["812"],
+      premiereDate:"2024-01-01"});
+    const bonus=item(411,"Movie",{genres:["Action"],
+      tags:["Dragon Ball"],tvdbCollectionIds:["812"],
+      premiereDate:"2026-10-01"});
+    expect(classifyNewReleases({
+      ...library([]),watched:[seed],recent:[another,bonus]
+    },[],[],now).newReleases).toEqual([]);
+  });
   it("adds the adaptive shelf only when backed by recent real evidence",()=>{
     const row:Shelf={id:"next-up",title:"À suivre",items:[ep]};
     const newRows=includeNewReleaseShelf([row],library([ep]),

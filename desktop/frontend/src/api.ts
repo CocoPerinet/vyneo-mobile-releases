@@ -15,6 +15,10 @@ const string=(v:unknown,max=500):string=>
   typeof v==="string"?v.slice(0,max):"";
 const validId=(v:unknown):v is string=>
   typeof v==="string" && ID.test(v);
+const collectionIds=(value:unknown):string[]=>
+  typeof value==="string"
+    ?[...new Set(value.split(/[;\s]+/).filter(id=>/^\d{1,16}$/.test(id)))].slice(0,12)
+    :[];
 
 export function normalizeItem(v:unknown):MediaItem|null {
   const row=obj(v),id=row.Id,type=row.Type;
@@ -60,9 +64,11 @@ export function normalizeItem(v:unknown):MediaItem|null {
       Number.isFinite(ud.PlayedPercentage) &&
       ud.PlayedPercentage>=0 && ud.PlayedPercentage<=100
       ?ud.PlayedPercentage:null,
-    franchiseId:typeof providers.TmdbCollection==="string" &&
-      /^\d{1,16}$/.test(providers.TmdbCollection)
-      ?providers.TmdbCollection:null,
+    franchiseId:collectionIds(providers.TmdbCollection)[0]??null,
+    // TVDb often stores multiple collection IDs joined by ';'. These
+    // group spin-offs (including TV series), but also editorial lists:
+    // classification must verify a shared dominant tag before using them.
+    tvdbCollectionIds:collectionIds(providers.TvdbCollection),
     seasonNumber:typeof row.ParentIndexNumber==="number" &&
       Number.isSafeInteger(row.ParentIndexNumber) &&
       row.ParentIndexNumber>=0 && row.ParentIndexNumber<=1000

@@ -106,6 +106,19 @@ describe("Jellyfin UI parity uses real scoped API metadata",()=>{
    const entries=await interrupted.api.getNextUp();
    expect(entries).toHaveLength(300);
  });
+ it("normalizes multiple TVDb collection IDs without trusting arbitrary strings",()=>{
+   const normalized=normalizeItem({Id:id(449),Type:"Series",
+     Name:"Série dérivée",ProviderIds:{
+       TvdbCollection:"54; 17; 54; not-an-id; 9001",
+       TmdbCollection:"812"
+     }})!;
+   expect(normalized.franchiseId).toBe("812");
+   expect(normalized.tvdbCollectionIds).toEqual(["54","17","9001"]);
+   expect(normalizeItem({Id:id(450),Type:"Series",
+     Name:"No match",ProviderIds:{
+       TvdbCollection:"malformed-id<script>"
+     }})?.tvdbCollectionIds).toEqual([]);
+ });
  it("identifies recent seasons by PremiereDate, never import date",async()=>{
    const {api,calls}=fixture();await api.login("Alice","password");
    const seasons=await api.getRecentSeasons(now);

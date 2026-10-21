@@ -56,6 +56,86 @@ export function newBadge(item:MediaItem,
       title:"Série sortie depuis moins de deux mois"};
   return null;
 }
+// Jellyfin injector's vySuitesEtDerives treats TVDbCollection as less
+// reliable than TMDbCollection: a collection can also be an editorial
+// ranking, not a narrative franchise. Accept only a dominant metadata tag
+// carried by at least 70% of >=3 visible group members; the watched seed
+// and the proposed title must both carry it. No additional network access.
+const normalizedTags=(item:MediaItem):Set<string>=>
+  new Set((item.tags??[]).map(tag=>tag.trim().toLocaleLowerCase("fr"))
+    .filter(tag=>tag.length>1));
+function tvdbRecentReleases(data:LibrarySnapshot,nowMs:number):MediaItem[]{
+  const allowed=(item:MediaItem)=>item.type==="Movie" ||
+    item.type==="Series";
+  const all=new Map<string,MediaItem>();
+  for(const item of [...data.watched,...(data.candidates??[]),...data.recent]){
+    const key=item.id.toLowerCase();
+    if(allowed(item) && !all.has(key))all.set(key,item);
+  }
+  const watchedIds=new Set(data.watched
+    .filter(item=>allowed(item) && item.played)
+    .map(item=>item.id.toLowerCase()));
+  const availableIds=new Set([...(data.candidates??[]),...data.recent]
+    .filter(allowed).map(item=>item.id.toLowerCase()));
+  const frequency=new Map<string,number>();
+  const groups=new Map<string,MediaItem[]>();
+  const tags=new Map<string,Set<string>>();
+  for(const item of all.values()){
+    const t=normalizedTags(item);
+    tags.set(item.id.toLowerCase(),t);
+    for(const tag of t)frequency.set(tag,(frequency.get(tag)??0)+1);
+    for(const id of new Set(item.tvdbCollectionIds??[])){
+      if(!/^\d{1,16}$/.test(id))continue;
+      if(!groups.has(id))groups.set(id,[]);
+      groups.get(id)!.push(item);
+    }
+  }
+  const date=(item:MediaItem)=>{
+    const t=release(item.premiereDate);
+    return Number.isFinite(t)?t:
+      item.year!==null?Date.UTC(item.year,0,1):Number.MAX_SAFE_INTEGER;
+  };
+  const output=new Map<string,MediaItem>();
+  for(const group of groups.values()){
+    if(group.length<3)continue;
+    const counts=new Map<string,number>();
+    for(const item of group){
+      for(const tag of tags.get(item.id.toLowerCase())??[])
+        if((frequency.get(tag)??0)<=200)
+          counts.set(tag,(counts.get(tag)??0)+1);
+    }
+    const candidates=[...counts.entries()].sort((a,b)=>
+      b[1]-a[1] || a[0].localeCompare(b[0],"fr"));
+    const dominant=candidates[0];
+    if(!dominant || dominant[1]/group.length<0.7)continue;
+    const [tag]=dominant;
+    const seeds=group.filter(item=>
+      watchedIds.has(item.id.toLowerCase()) &&
+      tags.get(item.id.toLowerCase())?.has(tag));
+    if(!seeds.length)continue;
+    // The original Jellyfin theme skips an untagged anime side-film when
+    // its only engagement evidence comes from an Anime series.
+    const sourceAnimeOnly=seeds.every(item=>isAnime(item));
+    const potential=group.filter(item=>
+      !item.played && !watchedIds.has(item.id.toLowerCase()) &&
+      availableIds.has(item.id.toLowerCase()) &&
+      tags.get(item.id.toLowerCase())?.has(tag) &&
+      !(sourceAnimeOnly && item.type==="Movie" && !isAnime(item)))
+      .sort((a,b)=>date(a)-date(b) || a.title.localeCompare(b.title,"fr"));
+    const seenSaga=new Set<string>();
+    let picked=0;
+    for(const candidate of potential){
+      if(picked>=4)break;
+      const saga=candidate.franchiseId;
+      if(saga && seenSaga.has(saga))continue;
+      if(saga)seenSaga.add(saga);
+      picked++;
+      if(within(candidate.premiereDate,nowMs-SIXTY,nowMs))
+        output.set(candidate.id.toLowerCase(),candidate);
+    }
+  }
+  return [...output.values()];
+}
 function isRealEngagement(item:MediaItem):boolean{
   return item.type==="Series" &&
     (item.playedPercentage??0)>=15;
@@ -135,6 +215,8 @@ export function classifyNewReleases(data:LibrarySnapshot,
   }
   const latest=new Map<string,MediaItem>();
   for(const row of sequels)latest.set(row.id.toLowerCase(),row);
+  for(const row of tvdbRecentReleases(data,nowMs))
+    latest.set(row.id.toLowerCase(),row);
   for(const {series} of matched.values())latest.set(series.id.toLowerCase(),series);
   const output=[...latest.values()].sort((a,b)=>{
     const aDate=matched.get(a.id.toLowerCase())?.season.premiereDate??a.premiereDate;

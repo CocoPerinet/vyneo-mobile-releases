@@ -2,6 +2,7 @@
 
 mod quality_policy;
 mod credentials;
+mod native_stream;
 
 use std::time::Duration;
 use tauri::{
@@ -56,11 +57,28 @@ async fn check_signed_update(app: tauri::AppHandle) {
 }
 
 fn main() {
+    // Encrypted Jellyfin credentials stay with the vault; these temporary
+    // media capabilities are entirely in memory and vanish on process exit.
+    let media = std::sync::Arc::new(native_stream::Tickets::new()
+        .expect("Cannot initialize secure Jellyfin client"));
+    let protocol_media = media.clone();
     tauri::Builder::default()
+        .manage(media)
+        .register_asynchronous_uri_scheme_protocol(
+            "vyneo-media", move |_ctx, request, responder| {
+                let state = protocol_media.clone();
+                std::thread::spawn(move || {
+                    responder.respond(native_stream::handle_request(state, request));
+                });
+            }
+        )
         .invoke_handler(tauri::generate_handler![
             credentials::save_saved_session,
             credentials::read_saved_session,
             credentials::forget_saved_session,
+            native_stream::create_native_stream_ticket,
+            native_stream::stop_native_stream_ticket,
+            native_stream::stop_all_native_streams,
         ])
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(main) = app.get_webview_window("main") {

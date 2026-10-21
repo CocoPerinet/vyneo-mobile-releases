@@ -1,5 +1,8 @@
 <script lang="ts">
-  import {onMount} from "svelte";
+  import {onMount,tick} from "svelte";
+  import {isTauri} from "@tauri-apps/api/core";
+  import {selectDirectMp4} from "./native-playback";
+  import type {NativeStreamTicket} from "./native-playback";
   import type {JellyfinApi} from "./api";
   import type {MediaAction} from "./media-actions";
   import VyIcon from "./VyIcon.svelte";
@@ -29,6 +32,13 @@
   let playback=$state<PlaybackProbe|null>(null);
   let playbackBusy=$state(false);
   let playbackError=$state("");
+  let streamTicket=$state<NativeStreamTicket|null>(null);
+  let streamBusy=$state(false);
+  let streamError=$state("");
+  let streamStarted=$state(false);
+  let videoElement:HTMLVideoElement|undefined;
+  let streamEpoch=0;
+  const nativeAvailable=isTauri();
   let favoriteParent=$state<{id:string;isFavorite:boolean}|null>(null);
   let stateBusy=$state(false);
   let stateError=$state("");
@@ -56,7 +66,10 @@
   onMount(()=>{
     closeButton?.focus();
     void hydrate();
-    return ()=>{epoch++;seasonEpoch++;playbackEpoch++;};
+    return ()=>{
+      epoch++;seasonEpoch++;playbackEpoch++;streamEpoch++;
+      stopStream();
+    };
   });
   async function hydrate(){
     const version=epoch;
@@ -92,6 +105,7 @@
     }catch{/* Original catalog card remains available. */}
   }
   function chooseSeason(id:string){
+    streamEpoch++;stopStream();streamError="";
     seasonEpoch++;
     activeSeason=id;episodes=[];episodeTotal=null;nextOffset=0;
     episodeError="";episodeLoading=false;focusedEpisode=null;
@@ -122,6 +136,7 @@
     }
   }
   function focusEpisode(episode:MediaItem){
+    streamEpoch++;stopStream();streamError="";
     focusedEpisode=episode;playback=null;playbackError="";
     playbackBusy=false;playbackEpoch++;stateError="";
   }
@@ -176,6 +191,46 @@
       if(version===epoch && request===playbackEpoch)playbackBusy=false;
     }
   }
+  function stopStream(){
+    const current=streamTicket;
+    videoElement?.pause();
+    if(videoElement)videoElement.removeAttribute("src");
+    streamTicket=null;streamBusy=false;streamStarted=false;
+    if(current)void api.endNativePlayback(current.ticket).catch(()=>{});
+  }
+  async function startNativeVideo(){
+    if(streamBusy || !nativeAvailable)return;
+    const target=shown,version=epoch,request=++streamEpoch;
+    stopStream();streamBusy=true;streamError="";
+    try{
+      const probe=playback??await api.getPlaybackInfo(target.id);
+      if(epoch!==version || request!==streamEpoch ||
+        shown.id!==target.id)return;
+      playback=probe;
+      const source=selectDirectMp4(probe);
+      if(!source?.id){
+        streamError="Aucune source MP4 H.264/AAC en lecture directe. "+
+          "Le transcodage Jellyfin n'est pas encore intégré.";
+        return;
+      }
+      const ticket=await api.beginNativeDirectPlayback(target.id,source.id);
+      if(epoch!==version || request!==streamEpoch ||
+        shown.id!==target.id){
+        await api.endNativePlayback(ticket.ticket).catch(()=>{});
+        return;
+      }
+      streamTicket=ticket;
+      await tick();
+      if(request!==streamEpoch)return;
+      try{await videoElement?.play();}
+      catch{/* Autoplay may be refused after async negotiation: use controls. */}
+    }catch{
+      if(epoch===version && request===streamEpoch)
+        streamError="Lecture impossible. Vérifiez le format et l'accès à Jellyfin.";
+    }finally{
+      if(epoch===version && request===streamEpoch)streamBusy=false;
+    }
+  }
   function handleKey(event:KeyboardEvent){
     if(event.key==="Escape"){event.preventDefault();onclose();}
   }
@@ -195,7 +250,8 @@
     <div class="vy-detail-body">
       {#if focusedEpisode}
         <button class="vy-detail-back" type="button"
-          onclick={()=>{focusedEpisode=null;playback=null;
+          onclick={()=>{streamEpoch++;stopStream();streamError="";
+            focusedEpisode=null;playback=null;
             playbackBusy=false;playbackEpoch++;}}>
           ‹ Retour à {media?.title??item.title}
         </button>
@@ -297,9 +353,45 @@
         <section class="vy-playback-check" aria-label="Compatibilité du média">
           <h3>Lecture et qualité</h3>
           <p class="vy-detail-muted">
-            Vérifiez les sources et pistes visibles par votre compte Jellyfin.
-            La compatibilité reste à certifier avec le futur lecteur.
+            Un premier lecteur natif prend en charge les sources MP4
+            compatibles H.264/AAC. Les autres formats exigent encore le
+            transcodage du serveur Jellyfin.
           </p>
+          {#if nativeAvailable}
+            <div class="vy-direct-play-actions">
+              <button type="button" class="vy-detail-action"
+                disabled={streamBusy || playbackBusy}
+                onclick={()=>void startNativeVideo()}>
+                <VyIcon kind="play" size={17}/>
+                {streamBusy?"Ouverture…":"Lire dans Vynéo (MP4)"}
+              </button>
+              {#if streamTicket}
+                <button type="button" class="vy-detail-action"
+                  onclick={()=>{streamEpoch++;stopStream();}}>
+                  Arrêter la lecture
+                </button>
+              {/if}
+            </div>
+          {/if}
+          {#if streamError}
+            <p class="vy-detail-warning" role="alert">{streamError}</p>
+          {/if}
+          {#if streamTicket}
+            <div class="vy-native-player">
+              <video bind:this={videoElement}
+                src={streamTicket.url} controls playsinline preload="metadata"
+                aria-label={"Lecteur vidéo : "+shown.title}
+                onplaying={()=>{streamStarted=true;}}
+                onerror={()=>{streamError="Flux indisponible ou codec non pris en charge.";
+                  streamEpoch++;stopStream();}}></video>
+              {#if !streamStarted}
+                <p class="vy-detail-muted" role="status">
+                  En attente de la première image. Utilisez Lecture si le
+                  navigateur intégré bloque le démarrage automatique.
+                </p>
+              {/if}
+            </div>
+          {/if}
           <button type="button" class="vy-detail-action" disabled={playbackBusy}
             onclick={()=>void inspectPlayback()}>
             {playbackBusy?"Analyse en cours…":"Vérifier les formats disponibles"}
@@ -350,14 +442,16 @@
             {/each}
           {/if}
           <div class="vy-unavailable">
-            Le lecteur vidéo natif et le réglage de qualité automatique
-            ne sont pas encore activés. Ce diagnostic ne lance aucune lecture.
+            {nativeAvailable
+              ?"Version expérimentale : le lecteur MP4 est intégré, mais le suivi de progression, la qualité automatique, les sous-titres et les autres codecs restent à valider avant publication stable."
+              :"La lecture MP4 intégrée nécessite la version native Tauri. Ce diagnostic seul ne lance aucune lecture."}
           </div>
         </section>
       {:else if item.type==="Series"}
         <div class="vy-unavailable">
           Choisissez un épisode pour vérifier ses pistes vidéo, audio et sous-titres.
-          Le lecteur natif n'est pas encore activé.
+          Le lecteur MP4 expérimental apparaît après sélection d'un épisode
+          dans l'application native.
         </div>
       {/if}
     </div>

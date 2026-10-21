@@ -1,4 +1,7 @@
 import type {MediaItem,MediaType,SessionPublic,CatalogKind,CatalogPage,CatalogLibraryIds,LibraryGroupKind,SeasonSummary,EpisodePage,PlaybackProbe} from "./types";
+import {invoke,isTauri} from "@tauri-apps/api/core";
+import {validateStreamTicket} from "./native-playback";
+import type {NativeStreamTicket} from "./native-playback";
 import {parseSeasons,parsePlaybackInfo} from "./media-details";
 import type {RecentSeason} from "./new-seasons";
 import type {TrendingRank} from "./trending";
@@ -159,6 +162,9 @@ export class JellyfinApi {
       ?{userId:this.userId,username:this.username}:null;
   }
   logout(){
+    // Immediate native revocation when switching Jellyfin accounts. The
+    // Tauri command is idempotent and cannot affect the server's sessions.
+    if(isTauri())void invoke("stop_all_native_streams").catch(()=>{});
     this.authGeneration++;
     this.libraryRoots=null;
     this.token=null;this.userId=null;this.username=null;
@@ -447,6 +453,33 @@ export class JellyfinApi {
     });
     this.assertSession(uid,generation);
     return parsePlaybackInfo(raw);
+  }
+  /** Only the built-in Tauri WebView can read the local custom protocol.
+   * Never put the Jellyfin bearer token in a media URL or localStorage. */
+  async beginNativeDirectPlayback(itemId:string,mediaSourceId:string):
+    Promise<NativeStreamTicket>{
+    const uid=this.requireUser(),epoch=this.authGeneration;
+    if(!validId(itemId) || !validId(mediaSourceId))
+      throw new Error("STREAM_SCOPE_INVALID");
+    if(!isTauri())throw new Error("NATIVE_PLAYER_REQUIRED");
+    const raw=await invoke<unknown>("create_native_stream_ticket",{
+      itemId,mediaSourceId,userId:uid,
+      accessToken:this.token,deviceId:this.deviceId
+    });
+    const ticket=validateStreamTicket(raw);
+    if(epoch!==this.authGeneration || this.userId!==uid){
+      await this.endNativePlayback(ticket.ticket);
+      throw new Error("SESSION_CHANGED");
+    }
+    return ticket;
+  }
+  async endNativePlayback(ticket:string):Promise<void>{
+    if(!isTauri() || !validId(ticket))return;
+    await invoke("stop_native_stream_ticket",{ticket});
+  }
+  async endAllNativePlayback():Promise<void>{
+    if(!isTauri())return;
+    await invoke("stop_all_native_streams");
   }
   async getUniverseCatalog():Promise<MediaItem[]>{
     const uid=this.requireUser(),generation=this.authGeneration;

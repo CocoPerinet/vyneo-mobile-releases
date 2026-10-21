@@ -613,3 +613,14 @@
 .vy-group-index .vy-card-picture img{
   position:relative;z-index:1;
 }
+
+/* Experimental first-party player: no external Jellyfin SPA or embedded
+ * remote iframe. Only the short-lived Tauri custom-protocol ticket is in src. */
+.vy-direct-play-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.vy-direct-play-actions .vy-detail-action{display:inline-flex;
+  align-items:center;justify-content:center;gap:8px}
+.vy-native-player{width:100%;max-width:1024px;margin:18px 0;
+  border-radius:12px;overflow:hidden;background:#000}
+.vy-native-player video{display:block;width:100%;height:auto;
+  max-height:65vh;aspect-ratio:16/9;background:#000}
+.vy-native-player p{padding:9px 13px;margin:0}

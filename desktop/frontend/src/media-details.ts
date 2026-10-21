@@ -58,6 +58,7 @@ export function parsePlaybackInfo(payload:unknown):PlaybackProbe{
       });
     }
     sources.push({
+      id:typeof row.Id==="string" && ID.test(row.Id)?row.Id:null,
       title:text(row.Name,120)||"Source vidéo",
       container:text(row.Container,40).toUpperCase(),
       bitrate:whole(row.Bitrate,1,1_000_000_000),

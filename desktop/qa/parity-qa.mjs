@@ -826,6 +826,12 @@ try{
  assert.equal(await groupContents.count(),2);
  await groupContents.first().getByRole("button",{name:/Détails/}).click();
  await page.locator(".vy-detail-screen").waitFor({timeout:3500});
+ assert.equal(await page.locator(".vy-native-player video").count(),0,
+  "Browser-only parity test must not simulate native video playback");
+ assert.equal(await page.getByRole("button",{
+  name:"Lire dans Vynéo (MP4)"
+ }).count(),0,
+ "Tauri media controls are not available in an unprivileged web browser");
  await page.keyboard.press("Escape");
  await page.locator(".vy-detail-screen").waitFor({state:"hidden",timeout:3000});
  await page.getByRole("button",{name:"Toutes les collections"}).click();

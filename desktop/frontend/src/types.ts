@@ -34,6 +34,8 @@ export interface PlaybackTrack {
   isExternal:boolean;
 }
 export interface PlaybackSource {
+  /** Validated Jellyfin media-source GUID; never a file path or URL. */
+  id:string|null;
   title:string;
   container:string;
   bitrate:number|null;

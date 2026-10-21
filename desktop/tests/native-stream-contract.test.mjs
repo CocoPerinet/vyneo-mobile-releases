@@ -1,0 +1,35 @@
+import {test} from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+const get=file=>readFileSync(new URL("../"+file,import.meta.url),"utf8");
+test("native player is scoped to a fixed TLS Jellyfin origin",()=>{
+  const rust=get("src-tauri/src/native_stream.rs");
+  const app=get("src-tauri/src/main.rs");
+  const api=get("frontend/src/api.ts");
+  assert.match(rust, /const JELLYFIN_ORIGIN: &str = "https:\/\/cocojellyfin\.duckdns\.org:38443";/);
+  assert.match(rust, /reqwest::redirect::Policy::none\(\)/);
+  assert.match(rust, /const CHUNK: u64 = 2 \* 1024 \* 1024/);
+  assert.match(rust, /\.header\(header::RANGE, range\)/);
+  assert.match(rust, /request\.uri\(\)\.query\(\)\.is_some\(\)/);
+  assert.match(rust, /expires: Instant/);
+  assert.match(rust, /Uuid::new_v4/);
+  assert.match(rust, /map\.clear\(\)/);
+  assert.doesNotMatch(rust, /api_key|header\(header::LOCATION/);
+  assert.match(app, /register_asynchronous_uri_scheme_protocol/);
+  assert.match(app, /"vyneo-media"/);
+  assert.match(app, /stop_all_native_streams/);
+  assert.match(api, /SESSION_CHANGED/);
+  assert.match(api, /validateStreamTicket\(raw\)/);
+});
+test("video CSP allows only Tauri custom media and no token-bearing URLs",()=>{
+  const html=get("frontend/index.html");
+  assert.match(html, /media-src 'self' http:\/\/vyneo-media\.localhost vyneo-media:/);
+  assert.match(html,/connect-src 'self' https:\/\/cocojellyfin\.duckdns\.org:38443/);
+  assert.doesNotMatch(html,/upgrade-insecure-requests/);
+  const ui=get("frontend/src/MediaDetails.svelte");
+  assert.match(ui, /selectDirectMp4\(probe\)/);
+  assert.match(ui, /src=\{streamTicket\.url\}/);
+  assert.match(ui, /onerror=/);
+  assert.match(ui, /stopStream\(\)/);
+  assert.doesNotMatch(ui,/\/Videos\//);
+});

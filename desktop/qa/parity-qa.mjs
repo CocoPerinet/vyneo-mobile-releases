@@ -616,7 +616,7 @@ try{
    console.log("JELLYFIN_PARITY_ACTIVE_MOBILE_TAB_PASS "+
     JSON.stringify(navVisibility));
   }
-  const modalGeometry=await dialog.locator(".vy-universe-panel").evaluate(el=>{
+  const modalGeometry=await dialog.evaluate(el=>{
    const rect=el.getBoundingClientRect();
    const viewport=document.documentElement.clientWidth;
    return {x:rect.left,right:rect.right,width:rect.width,

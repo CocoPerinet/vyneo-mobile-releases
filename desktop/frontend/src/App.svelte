@@ -973,7 +973,7 @@
         class:vy-universe-under-detail={!!selected} role="presentation">
         <button type="button" tabindex="-1" class="vy-universe-backdrop"
           aria-label="Fermer cet univers" onclick={closeUniverse}></button>
-        <section class="vy-universe-panel" role="dialog"
+        <div class="vy-universe-panel" role="dialog"
           aria-hidden={selected?"true":undefined}
           aria-modal={selected?undefined:"true"}
           aria-label={UNIVERSES.find(u=>u.id===activeUniverse)?.label??"Univers"}>
@@ -1034,7 +1034,7 @@
             <p class="vy-empty">Aucun titre de cet univers n'est présent dans
               votre bibliothèque accessible.</p>
           {/if}
-        </section>
+        </div>
       </div>
     {/if}
     {#if hover && !selected}

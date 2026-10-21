@@ -218,9 +218,26 @@ try{
   "Jellyfin targets 16 curated slides, not five: "+curatedHeroCount);
  console.log("JELLYFIN_PARITY_CURATED_HERO_BANNER_COUNT "+
    JSON.stringify({count:curatedHeroCount,target:16}));
+ // A real spin-off can precede an engaged S2E1 when both are recent.
+ // Assert the source-specific badge on each relevant slide, not a fabricated
+ // claim that every carousel must start with the same category.
+ const seriesHero=heroDots.getByRole("button",{
+  name:/Bannière \d+ : Série 1$/
+ }).first();
+ await seriesHero.waitFor({timeout:2500});
+ await seriesHero.click();
  assert.equal(await page.locator(".vy-hero .vy-kicker").textContent(),
   "NOUVELLE SAISON",
-  "A proven S2E1 must have source priority and the correct hero badge");
+  "An engaged S2E1 must retain its own new-season hero badge");
+ const freshFilmHero=heroDots.getByRole("button",{
+  name:/Bannière \d+ : Film de test 36$/
+ }).first();
+ await freshFilmHero.waitFor({timeout:2500});
+ await freshFilmHero.click();
+ assert.equal(await page.locator(".vy-hero .vy-kicker").textContent(),
+  "NOUVEAU",
+  "A TVDb derivative must retain its new-release source badge");
+ console.log("JELLYFIN_PARITY_HERO_NOVELTY_SOURCE_LABELS_PASS");
  await page.getByRole("button",{name:"Bannière suivante"}).click();
  await page.waitForFunction(before=>
   document.querySelector(".vy-hero h1")?.textContent!==before,heroTitle);

@@ -532,10 +532,16 @@ try{
  assert.equal(await tabs.nth(0).getAttribute("aria-selected"),"true");
  await page.keyboard.press("End");
  assert.equal(await tabs.nth(2).getAttribute("aria-selected"),"true");
- const first=page.locator(
+ const candidate=page.locator(
   '.vy-universe-entry:has(button[aria-label="Ajouter à ma liste"]):has(button[aria-label="Marquer vu"])'
  ).first();
- const firstId=await first.getAttribute("data-vy-universe-item");
+ const firstId=await candidate.getAttribute("data-vy-universe-item");
+ assert(firstId,"A mutable universe action requires an item identity");
+ // The action changes its own aria-label; anchor all subsequent checks
+ // to the immutable media ID, not to the pre-mutation button state.
+ const first=page.locator(
+  '.vy-universe-entry[data-vy-universe-item="'+firstId+'"]'
+ );
  await first.getByRole("button",{name:"Ajouter à ma liste"}).click();
  assert(actions.some(x=>x.method==="POST" &&
   x.path==="/Users/"+user+"/FavoriteItems/"+firstId));

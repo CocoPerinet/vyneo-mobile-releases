@@ -43,3 +43,27 @@ export function htmlVideoFailureMessage(code:number|null):string{
     return "Le flux vidéo a rencontré une erreur réseau.";
   return "Le flux vidéo est indisponible. Réessayez.";
 }
+
+
+// Never display an upstream exception verbatim: it may contain a signed
+// media URL, HTTP headers or a Jellyfin token. Each reason is a fixed code.
+export function playbackInspectionErrorMessage(error:unknown):string{
+  const code=error instanceof Error?error.message:error;
+  if(code==="REQUEST_TIMEOUT")
+    return "Jellyfin a mis trop de temps à analyser ce média. "+
+      "Réessayez : le premier accès à un fichier STRM peut être plus lent.";
+  if(code==="SESSION_EXPIRED")
+    return "La session Jellyfin a expiré. Reconnectez-vous avant de "+
+      "vérifier les formats.";
+  if(code==="NETWORK_UNAVAILABLE")
+    return "Impossible de joindre Jellyfin pour analyser ce média. "+
+      "Vérifiez la connexion puis réessayez.";
+  if(code==="REQUEST_DENIED")
+    return "Jellyfin n'a pas pu fournir les informations du média "+
+      "(accès refusé ou erreur du serveur).";
+  if(code==="PLAYBACK_INFO_INVALID" || code==="RESPONSE_INVALID" ||
+     code==="RESPONSE_TOO_LARGE")
+    return "Jellyfin a renvoyé des informations techniques non "+
+      "exploitables pour ce média.";
+  return "Informations techniques indisponibles pour ce média.";
+}

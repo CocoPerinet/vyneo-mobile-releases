@@ -1,5 +1,6 @@
 import {describe,it,expect,vi} from "vitest";
-import {JellyfinApi,normalizeItem,SERVER_ORIGIN} from "../src/api";
+import {JellyfinApi,normalizeItem,SERVER_ORIGIN,
+  PLAYBACK_INSPECTION_TIMEOUT_MS} from "../src/api";
 import {parsePlaybackInfo,parseSeasons} from "../src/media-details";
 
 const USER="a".repeat(32),SHOW="b".repeat(32),SEASON="c".repeat(32);
@@ -123,7 +124,13 @@ describe("read-only native media details",()=>{
     expect(calls.every(x=>!x.url.href.includes(TOKEN))).toBe(true);
     expect(calls.every(x=>x.opts.credentials==="omit")).toBe(true);
     expect(calls.some(x=>x.url.pathname.endsWith("/PlaybackInfo"))).toBe(false);
-    const probe=await api.getPlaybackInfo(FILM);
+    const timeout=vi.spyOn(AbortSignal,"timeout");
+    let probe;
+    try{
+      probe=await api.getPlaybackInfo(FILM);
+      expect(timeout).toHaveBeenCalledWith(PLAYBACK_INSPECTION_TIMEOUT_MS);
+      expect(PLAYBACK_INSPECTION_TIMEOUT_MS).toBe(25_000);
+    }finally{timeout.mockRestore();}
     expect(probe.sources[0].tracks).toHaveLength(3);
     expect(calls.at(-1)?.url.searchParams.get("userId")).toBe(USER);
     expect(calls.at(-1)?.opts.headers).toMatchObject({
@@ -141,6 +148,21 @@ describe("read-only native media details",()=>{
     release();
     await expect(pending).rejects.toThrow("SESSION_CHANGED");
     await expect(api.getSeriesSeasons(SHOW)).rejects.toThrow("AUTH_REQUIRED");
+  });
+  it("classifies a fetch timeout without forwarding a sensitive error",async()=>{
+    const fetcher=vi.fn(async()=>{
+      throw new DOMException(
+        "Sensitive upstream URL: https://private.invalid/?api_key=SECRET",
+        "TimeoutError");
+    }) as typeof fetch;
+    const api=new JellyfinApi({fetcher});
+    await expect(api.login("Alice","password"))
+      .rejects.toThrow("REQUEST_TIMEOUT");
+    const failingNetwork=vi.fn(async()=>{
+      throw new TypeError("Sensitive path https://private.invalid/");
+    }) as typeof fetch;
+    await expect(new JellyfinApi({fetcher:failingNetwork})
+      .login("Alice","password")).rejects.toThrow("NETWORK_UNAVAILABLE");
   });
   it("rejects invalid ids and episodes parameters before sending requests",async()=>{
     const {api,calls}=fixture();

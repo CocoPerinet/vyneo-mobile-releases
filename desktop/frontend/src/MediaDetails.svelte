@@ -7,7 +7,7 @@
   import type {NativeStreamTicket} from "./native-playback";
   import {PlaybackReporter,playbackClock} from "./playback-report";
   import {unavailablePlaybackMessage,nativeHlsFailureMessage,
-    htmlVideoFailureMessage} from "./playback-errors";
+    htmlVideoFailureMessage,playbackInspectionErrorMessage} from "./playback-errors";
   import type {JellyfinApi} from "./api";
   import type {MediaAction} from "./media-actions";
   import VyIcon from "./VyIcon.svelte";
@@ -198,9 +198,9 @@
       const result=await api.getPlaybackInfo(target.id);
       if(version!==epoch || request!==playbackEpoch || shown.id!==target.id)return;
       playback=result;
-    }catch{
+    }catch(error){
       if(version===epoch && request===playbackEpoch)
-        playbackError="Informations techniques indisponibles pour ce média.";
+        playbackError=playbackInspectionErrorMessage(error);
     }finally{
       if(version===epoch && request===playbackEpoch)playbackBusy=false;
     }

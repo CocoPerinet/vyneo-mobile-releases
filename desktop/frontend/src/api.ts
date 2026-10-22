@@ -12,6 +12,9 @@ import type {TrendingRank} from "./trending";
 import {candidateOffsets,CANDIDATE_BATCH_SIZE} from "./candidate-pages";
 
 export const SERVER_ORIGIN="https://cocojellyfin.duckdns.org:38443";
+// Remote STRM media inspection can require a cold Jellyfin/ffprobe fetch.
+// Nginx confirmed our previous 12s abort produced HTTP 499 for real items.
+export const PLAYBACK_INSPECTION_TIMEOUT_MS=25_000;
 const ID=/^[a-f0-9]{32}$/i;
 const TOKEN=/^[a-z0-9._\-]{12,2048}$/i;
 const TYPES=new Set<MediaType>(["Movie","Series","Episode","BoxSet","Playlist"]);
@@ -204,7 +207,14 @@ export class JellyfinApi {
         signal:AbortSignal.timeout(options.timeoutMs??12000),
         ...(options.method==="POST"?{body:JSON.stringify(options.body)}:{})
       });
-    }catch{throw new Error("NETWORK_UNAVAILABLE");}
+    }catch(error){
+      // AbortSignal.timeout() aborts a slow upstream request. Preserve this
+      // useful classification without exposing the URL, token or exception.
+      if(error instanceof Error &&
+         (error.name==="TimeoutError" || error.name==="AbortError"))
+        throw new Error("REQUEST_TIMEOUT");
+      throw new Error("NETWORK_UNAVAILABLE");
+    }
     if(!response.ok || response.redirected ||
        !(response.headers.get("Content-Type")??"")
          .toLowerCase().startsWith("application/json"))
@@ -566,7 +576,7 @@ export class JellyfinApi {
     // or expose Jellyfin paths, stream URLs, secrets or transcode arguments.
     const qs=new URLSearchParams({userId:uid});
     const raw=await this.json("/Items/"+itemId+"/PlaybackInfo?"+qs,{
-      maxBytes:786432
+      maxBytes:786432,timeoutMs:PLAYBACK_INSPECTION_TIMEOUT_MS
     });
     this.assertSession(uid,generation);
     return parsePlaybackInfo(raw);

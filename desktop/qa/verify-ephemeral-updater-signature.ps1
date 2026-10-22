@@ -39,15 +39,24 @@ try {
   try {
     # Suppress key-generation output. The private key is never printed,
     # uploaded as an artifact, or checked into the repository.
-    npm.cmd run tauri -- signer generate --ci -w $key *> $null
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $key) -or
-        -not (Test-Path -LiteralPath $pub)) {
-      throw 'EPHEMERAL_KEY_GENERATION_FAILED'
-    }
-    npm.cmd run tauri -- signer sign -f $key $artifactPath *> $null
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $sig)) {
-      throw 'EPHEMERAL_NSIS_SIGNATURE_FAILED'
-    }
+    # PowerShell 5.1 converts native warnings on stderr to error records.
+    # Tauri warns about passwordless keys; here they are disposable and
+    # quarantined in RUNNER_TEMP. Check the real exit code, not the warning.
+    $previousPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = 'Continue'
+      npm.cmd run tauri -- signer generate --ci -w $key *> $null
+      $generateExit = $LASTEXITCODE
+      if ($generateExit -ne 0 -or -not (Test-Path -LiteralPath $key) -or
+          -not (Test-Path -LiteralPath $pub)) {
+        throw 'EPHEMERAL_KEY_GENERATION_FAILED'
+      }
+      npm.cmd run tauri -- signer sign -f $key $artifactPath *> $null
+      $signExit = $LASTEXITCODE
+      if ($signExit -ne 0 -or -not (Test-Path -LiteralPath $sig)) {
+        throw 'EPHEMERAL_NSIS_SIGNATURE_FAILED'
+      }
+    } finally { $ErrorActionPreference = $previousPreference }
 
     cargo run --quiet --locked --manifest-path $verifier -- $pub $sig $artifactPath
     if ($LASTEXITCODE -ne 0) { throw 'VALID_SIGNED_NSIS_REJECTED' }
@@ -65,8 +74,13 @@ try {
       $stream.WriteByte($byte -bxor 1)
     } finally { $stream.Dispose() }
 
-    cargo run --quiet --locked --manifest-path $verifier -- $pub $sig $mutated *> $null
-    if ($LASTEXITCODE -eq 0) {
+    $previousPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = 'Continue'
+      cargo run --quiet --locked --manifest-path $verifier -- $pub $sig $mutated *> $null
+      $tamperExit = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $previousPreference }
+    if ($tamperExit -eq 0) {
       throw 'TAMPERED_SIGNED_NSIS_WAS_ACCEPTED'
     }
 

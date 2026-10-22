@@ -42,7 +42,9 @@ test("HLS uses local capability assets with pinned Jellyfin origin",()=>{
   const page=get("frontend/src/MediaDetails.svelte");
   assert.match(page,/import\("hls.js"\)/);
   assert.match(page,/selectJellyfinHls\(\{/);
-  assert.match(page,/negotiatePlaybackInfo\(target\.id\)/);
+  assert.match(page,/negotiatePlaybackInfo\(target\.id,\s*selectedAudioIndex/);
+  assert.match(page,/AudioStreamIndex|audioStreamIndex/);
+  assert.match(page,/getSubtitleVtt/);
   assert.match(page,/negotiation\.hlsPaths\[source\.id\]/);
   assert.match(page,/if\(!videoElement\)/);
   assert.match(page,/stopStream\(true\)/);

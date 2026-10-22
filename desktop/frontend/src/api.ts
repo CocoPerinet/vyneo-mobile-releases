@@ -597,7 +597,7 @@ export class JellyfinApi {
    * The caller must construct and revoke its own ephemeral Blob URL.
    */
   async getSubtitleVtt(itemId:string,mediaSourceId:string,
-    streamIndex:number):Promise<string>{
+    streamIndex:number,abort?:AbortSignal):Promise<string>{
     const uid=this.requireUser(),generation=this.authGeneration;
     if(!validId(itemId) || !validId(mediaSourceId) ||
        !Number.isSafeInteger(streamIndex) || streamIndex<0 ||
@@ -613,8 +613,10 @@ export class JellyfinApi {
           Accept:"text/vtt,text/plain;q=0.5"
         },mode:"cors",credentials:"omit",cache:"no-store",
         redirect:"error",referrerPolicy:"no-referrer",
-        // Embedded subtitle extraction can be a cold 60-second ffmpeg job.
-        signal:AbortSignal.timeout(95000)
+        // A cold STRM subtitle extraction may take a minute. The UI can
+        // still cancel it promptly on track change or player teardown.
+        signal:abort?AbortSignal.any([abort,AbortSignal.timeout(95000)]):
+          AbortSignal.timeout(95000)
       });
     }catch{
       throw new Error("SUBTITLE_NETWORK");

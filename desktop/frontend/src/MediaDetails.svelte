@@ -63,6 +63,7 @@
   let subtitleLoading=$state(false);
   let subtitleError=$state("");
   let subtitleEpoch=0;
+  let subtitleAbort:AbortController|null=null;
   let retainedSeekSeconds:number|null=null;
   let retainedVolume:number|null=null;
   let retainedMuted:boolean|null=null;
@@ -268,6 +269,8 @@
   }
   function clearSubtitleBlob(){
     subtitleEpoch++;
+    subtitleAbort?.abort();
+    subtitleAbort=null;
     const old=subtitleBlobUrl;
     subtitleBlobUrl=null;
     subtitleLoading=false;
@@ -296,9 +299,11 @@
     // Never request their raw stream as text or create a <track> element.
     if(graphicSubtitleIndex(source,index))return;
     const request=subtitleEpoch,version=epoch,target=shown.id;
-    subtitleLoading=true;
+    const controller=new AbortController();
+    subtitleAbort=controller;subtitleLoading=true;
     try{
-      const vtt=await api.getSubtitleVtt(target,source.id,index);
+      const vtt=await api.getSubtitleVtt(target,source.id,index,
+        controller.signal);
       if(request!==subtitleEpoch || version!==epoch ||
          shown.id!==target || !streamTicket)return;
       subtitleBlobUrl=URL.createObjectURL(new Blob([vtt],{
@@ -308,6 +313,7 @@
       if(request===subtitleEpoch && version===epoch)
         subtitleError="Sous-titres momentanément indisponibles pour cette piste.";
     }finally{
+      if(subtitleAbort===controller)subtitleAbort=null;
       if(request===subtitleEpoch)subtitleLoading=false;
     }
   }
@@ -323,7 +329,7 @@
     void startNativeVideo(previousSource);
   }
   async function chooseSubtitle(value:string){
-    if(streamBusy || subtitleLoading)return;
+    if(streamBusy)return;
     const index=value==="off"?null:Number(value);
     if(index!==null && !hasTrack(tracksSource,"Subtitle",index)){
       subtitleError="Piste de sous-titres non disponible.";
@@ -765,7 +771,7 @@
                 <label>
                   <span>Sous-titres</span>
                   <select value={selectedSubtitleIndex===null?"off":String(selectedSubtitleIndex)}
-                    disabled={subtitleLoading || streamBusy || playbackBusy}
+                    disabled={streamBusy || playbackBusy}
                     onchange={(event)=>void chooseSubtitle(event.currentTarget.value)}>
                     <option value="off">Désactivés</option>
                     {#each subtitleTracks as track (track.index)}
@@ -790,11 +796,21 @@
                 {/if}
                 {#if subtitleLoading}
                   <p class="vy-detail-muted" role="status">
-                    Préparation des sous-titres…
+                    Extraction des sous-titres Jellyfin en cours. Sur certains
+                    fichiers distants, elle peut prendre plus d'une minute.
+                    Vous pouvez choisir « Désactivés » pour annuler.
                   </p>
                 {/if}
                 {#if subtitleError}
                   <p class="vy-detail-warning" role="status">{subtitleError}</p>
+                  {#if selectedSubtitleIndex!==null &&
+                    !graphicSubtitleIndex(tracksSource,selectedSubtitleIndex)}
+                    <button type="button" class="vy-detail-action"
+                      disabled={subtitleLoading || streamBusy}
+                      onclick={()=>void loadSelectedSubtitle()}>
+                      Réessayer les sous-titres
+                    </button>
+                  {/if}
                 {/if}
               {/if}
             </div>
@@ -850,7 +866,7 @@
           {/if}
           <div class="vy-unavailable">
             {nativeAvailable
-              ?"Version expérimentale : HLS utilise le transcodage Jellyfin. Le suivi de progression, les sous-titres et la qualité automatique restent à valider avant publication stable."
+              ?"Préversion : pistes audio et sous-titres disponibles. L'incrustation graphique coûte davantage de ressources ; synchronisation et qualité automatique restent à valider avant publication stable."
               :"La lecture intégrée nécessite la version native Tauri. Ce diagnostic seul ne lance aucune lecture."}
           </div>
         </section>

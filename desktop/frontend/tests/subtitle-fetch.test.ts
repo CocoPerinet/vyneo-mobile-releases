@@ -73,6 +73,20 @@ describe("bounded credential-free WebVTT subtitle delivery",()=>{
         .rejects.toThrow(reason);
     }
   });
+  it("cancels a pending cold remote SRT extraction without waiting 95 seconds",async()=>{
+    const {api,calls}=await session((_url,options)=>
+      new Promise<Response>((_resolve,reject)=>{
+        options.signal?.addEventListener("abort",()=>reject(
+          new DOMException("AbortError","AbortError")),{once:true});
+      }));
+    const controller=new AbortController();
+    const pending=api.getSubtitleVtt(ITEM,SOURCE,3,controller.signal);
+    expect(calls).toHaveLength(3);
+    expect(calls[2].options.signal?.aborted).toBe(false);
+    controller.abort();
+    await expect(pending).rejects.toThrow("SUBTITLE_NETWORK");
+    expect(calls[2].options.signal?.aborted).toBe(true);
+  });
   it("rejects reads after logout or a failed connection",async()=>{
     const {api}=await session(()=>new Response("WEBVTT\n"));
     api.logout();

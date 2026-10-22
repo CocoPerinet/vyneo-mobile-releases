@@ -23,6 +23,12 @@ test("synthetic WebView2 media QA is compile-time isolated from production",()=>
   assert.match(qa,/is_fixture\(grant:&StreamGrant\)/);
   assert.match(runner,/--debug --no-bundle --features native-e2e-qa/);
   assert.match(runner,/windowsHide:true/);
+  assert.match(runner,/QA_EXISTING_RUST_TOOLCHAIN_REQUIRED/);
+  assert.match(runner,/join\(cargoDir,"cargo.exe"\)/);
+  assert.match(runner,/env\[key\]=cargoDir\+";"/);
+  assert.match(runner,/originalCargo=readFileSync\(cargoToml\)/);
+  assert.match(runner,/QA_UNEXPECTED_CARGO_TOML_MUTATION/);
+  assert.match(runner,/writeFileSync\(cargoToml,originalCargo\)/);
   assert.match(runner,/QA_ZERO_INSTALLER_ZERO_REAL_CREDENTIALS/);
   assert.match(runner,/m.audioRmsPeak>=0.008/);
   assert.match(fixtureJs,/new window.AudioContext\(\)/);

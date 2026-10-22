@@ -99,11 +99,21 @@ async function build(){
   console.log("QA_NATIVE_WEBVIEW2_BUILD_ISOLATED_NO_BUNDLE");
   const args=["/d","/s","/c",
     "npm run tauri -- build --debug --no-bundle --features native-e2e-qa --config src-tauri/tauri.jellyfin-qa.conf.json"];
-  const process=spawn("cmd.exe",args,{
-    cwd:desktop,windowsHide:true,stdio:["ignore","pipe","pipe"]
+  // SSH/Task Scheduler shells may not expose the existing Rust toolchain.
+  // Never download Rust or install anything during a disposable QA run.
+  const cargoDir=join(process.env.USERPROFILE??"",".cargo","bin");
+  assert(existsSync(join(cargoDir,"cargo.exe")),
+    "QA_EXISTING_RUST_TOOLCHAIN_REQUIRED");
+  const env={...process.env};
+  const key=Object.keys(env).find(name=>name.toLowerCase()==="path")??"Path";
+  env[key]=cargoDir+";"+(env[key]??"");
+  const cargoToml=join(desktop,"src-tauri","Cargo.toml");
+  const originalCargo=readFileSync(cargoToml);
+  const child=spawn("cmd.exe",args,{
+    cwd:desktop,windowsHide:true,stdio:["ignore","pipe","pipe"],env
   });
   let tail="";
-  for(const pipe of [process.stdout,process.stderr]){
+  for(const pipe of [child.stdout,child.stderr]){
     pipe.on("data",chunk=>{
       tail=(tail+String(chunk)).slice(-8500);
     });
@@ -111,21 +121,37 @@ async function build(){
   let timer;
   const timed=new Promise((_,reject)=>{
     timer=setTimeout(()=>{
-      process.kill();
+      child.kill();
       reject(new Error("QA_COMPILATION_TIMEOUT"));
     },maxBuildMs);
   });
   try{
     const exit=await Promise.race([
       new Promise((resolve,reject)=>{
-        process.once("error",reject);
-        process.once("exit",(code)=>resolve(code));
+        child.once("error",reject);
+        child.once("exit",(code)=>resolve(code));
       }),timed
     ]);
     assert.equal(exit,0,"QA_BUILD_FAILED: "+tail.slice(-2200));
     assert(existsSync(exe),"QA_DEBUG_BINARY_MISSING");
     console.log("QA_NATIVE_WEBVIEW2_COMPILED_NO_INSTALLER");
-  }finally{clearTimeout(timer);}
+  }finally{
+    clearTimeout(timer);
+    // Tauri 2 normalizes build dependencies in Cargo.toml during the build.
+    // Preserve this QA clone byte-for-byte for the next run. Never reset
+    // other files, and fail loudly on any unexpected Cargo mutation.
+    const current=readFileSync(cargoToml);
+    if(!current.equals(originalCargo)){
+      const before=originalCargo.toString("utf8");
+      const normalized=before.replace(
+        'tauri-build = "=2.7.3"',
+        'tauri-build = { version = "=2.7.3", features = [] }'
+      );
+      assert.equal(current.toString("utf8"),normalized,
+        "QA_UNEXPECTED_CARGO_TOML_MUTATION");
+      writeFileSync(cargoToml,originalCargo);
+    }
+  }
 }
 async function main(){
   if(process.platform!=="win32")

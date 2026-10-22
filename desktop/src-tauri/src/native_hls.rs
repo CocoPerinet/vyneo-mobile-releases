@@ -146,8 +146,24 @@ fn sanitized_upstream(
     }
     if url.fragment().is_some() { return Err("HLS_ASSET_FRAGMENT"); }
     let prefix = format!("/videos/{item}/").to_ascii_lowercase();
-    if !url.path().to_ascii_lowercase().starts_with(&prefix) {
-        return Err("HLS_ASSET_ITEM_PATH");
+    let lower_path=url.path().to_ascii_lowercase();
+    if !lower_path.starts_with(&prefix) {
+        // Do not surface paths, GUIDs, stream URLs or original references.
+        // Classify ONLY their route family in this never-released QA build.
+        let parts=lower_path.split('/').filter(|x|!x.is_empty())
+            .take(2).collect::<Vec<_>>();
+        let reason=match parts.as_slice() {
+            ["videos", id] if *id == item.to_ascii_lowercase() =>
+                "HLS_ASSET_VIDEO_ROOT",
+            ["videos", _] => "HLS_ASSET_OTHER_VIDEO_ID",
+            ["audio", _] => "HLS_ASSET_AUDIO_ROUTE",
+            ["hls", _] => "HLS_ASSET_HLS_ROUTE",
+            ["items", _] => "HLS_ASSET_ITEMS_ROUTE",
+            _ if lower_path.contains(&item.to_ascii_lowercase()) =>
+                "HLS_ASSET_UNEXPECTED_ITEM_ROUTE",
+            _ => "HLS_ASSET_OTHER_ROUTE",
+        };
+        return Err(reason);
     }
     // Some Jellyfin HLS manifests include a token in every segment URL.
     // Drop that token and authorize upstream ONLY with the private header.
@@ -497,7 +513,13 @@ mod tests {
             ("https://cocojellyfin.duckdns.org:443/Videos/",
                 "HLS_ASSET_PORT"),
             ("https://cocojellyfin.duckdns.org:38443/Admin/Users",
-                "HLS_ASSET_ITEM_PATH")
+                "HLS_ASSET_OTHER_ROUTE"),
+            ("https://cocojellyfin.duckdns.org:38443/Audio/x/hls1/main/0.ts",
+                "HLS_ASSET_AUDIO_ROUTE"),
+            ("https://cocojellyfin.duckdns.org:38443/Hls/any/main.m3u8",
+                "HLS_ASSET_HLS_ROUTE"),
+            ("https://cocojellyfin.duckdns.org:38443/Videos/cccccccccccccccccccccccccccccccc/hls1/main/0.ts",
+                "HLS_ASSET_OTHER_VIDEO_ID")
         ];
         for (reference,reason) in guarded {
             assert_eq!(sanitized_upstream(&base,reference,&"a".repeat(32)),

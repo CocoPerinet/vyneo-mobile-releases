@@ -79,7 +79,9 @@ test("HLS QA reports only fixed reason codes and hides them in stable releases",
   assert.match(hls,/cfg\(feature="interactive-jellyfin-qa"\)/);
   assert.match(hls,/cfg\(not\(feature="interactive-jellyfin-qa"\)\)/);
   for(const reason of ["HLS_ASSET_SCHEME","HLS_ASSET_HOST",
-    "HLS_ASSET_PORT","HLS_ASSET_ITEM_PATH","HLS_ASSET_CREDENTIALS"])
+    "HLS_ASSET_PORT","HLS_ASSET_OTHER_VIDEO_ID",
+    "HLS_ASSET_AUDIO_ROUTE","HLS_ASSET_HLS_ROUTE","HLS_ASSET_OTHER_ROUTE",
+    "HLS_ASSET_CREDENTIALS"])
     assert.ok(hls.includes(reason));
   assert.doesNotMatch(hls,/HLS_ASSET_SCOPE/);
   assert.match(hls,/HLS_ENCRYPTION_UNSUPPORTED/);

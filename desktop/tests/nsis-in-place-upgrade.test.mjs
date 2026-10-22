@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const read=(path)=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
-const workflow=read('../.github/workflows/desktop.yml');
+const workflow=read('../.github/workflows/desktop.yml').replace(/\r\n/g,'\n');
 const runner=read('qa/nsis-in-place-upgrade.ps1');
 
 test('disposable PR Windows runner alone can test NSIS in-place upgrades',()=>{

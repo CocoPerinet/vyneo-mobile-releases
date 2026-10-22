@@ -23,7 +23,10 @@ $entries = @(Get-ItemProperty -Path @(
   'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
   'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
   'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
-) -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -ceq $base.productName })
+) -ErrorAction SilentlyContinue | Where-Object {
+  $_.PSObject.Properties.Match('DisplayName').Count -gt 0 -and
+  $_.DisplayName -ceq $base.productName
+})
 if ($entries.Count -ne 1 -or $entries[0].DisplayVersion -cne '0.2.4') {
   throw 'EXACTLY_ONE_VYNEO_STABLE_024_REQUIRED'
 }
@@ -35,10 +38,18 @@ $destination = Join-Path $env:TEMP 'vyneo-auth-qa-portable'
 try {
   Push-Location $desktop
   try {
-    npm.cmd run check
-    if ($LASTEXITCODE -ne 0) { throw 'AUTH_QA_FRONTEND_CHECK_FAILED' }
-    npm.cmd run tauri -- build --debug --no-bundle --features interactive-jellyfin-qa --config src-tauri/tauri.authenticated-qa.conf.json
-    if ($LASTEXITCODE -ne 0) { throw 'AUTH_QA_BUILD_FAILED' }
+    # PowerShell 5.1 promotes harmless native stderr (Vite/Rust warnings)
+    # to error records. Validate the real exit code for each command.
+    $oldPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = 'Continue'
+      npm.cmd run check
+      $checkExit = $LASTEXITCODE
+      if ($checkExit -ne 0) { throw 'AUTH_QA_FRONTEND_CHECK_FAILED' }
+      npm.cmd run tauri -- build --debug --no-bundle --features interactive-jellyfin-qa --config src-tauri/tauri.authenticated-qa.conf.json
+      $buildExit = $LASTEXITCODE
+      if ($buildExit -ne 0) { throw 'AUTH_QA_BUILD_FAILED' }
+    } finally { $ErrorActionPreference = $oldPreference }
   } finally { Pop-Location }
   if (-not (Test-Path -LiteralPath $qaBinary)) {
     throw 'AUTH_QA_PORTABLE_BINARY_MISSING'

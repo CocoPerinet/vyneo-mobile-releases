@@ -50,6 +50,7 @@ test("real-user QA cannot read, write or clear any OS credential vault",()=>{
 test("QA preparation is build only on COCO, not a second app installation",()=>{
   assert.match(runner,/COMPUTERNAME -notin @\('JJJ','COCO'\)/);
   assert.match(runner,/EXACTLY_ONE_VYNEO_STABLE_024_REQUIRED/);
+  assert.match(runner,/PSObject\.Properties\.Match\('DisplayName'\)\.Count -gt 0/);
   assert.match(runner,/Get-FileHash -LiteralPath \$stableExe -Algorithm SHA256/);
   assert.match(runner,/--debug --no-bundle --features interactive-jellyfin-qa --config/);
   assert.match(runner,/AUTH_QA_PORTABLE_BINARY_MISSING/);

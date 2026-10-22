@@ -51,6 +51,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
   color:white;border:1px solid #ffffff24;border-radius:8px;
   padding:10px 13px;font-weight:700}
 .vy-account-menu button:hover{background:#41495d}
+.vy-account-menu button:disabled{opacity:.6;cursor:progress}
+.vy-account-menu .vy-update-notice{margin:7px 0 12px;line-height:1.45;
+  overflow-wrap:anywhere}
 .vy-hero{position:relative;isolation:isolate;min-height:min(70vh,650px);
   display:flex;align-items:center;margin-top:-74px;padding:130px 3.3% 155px;
   overflow:hidden;background:linear-gradient(120deg,#172032,#10131b 68%,#282032)}

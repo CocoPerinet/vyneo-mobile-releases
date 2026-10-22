@@ -8,6 +8,7 @@ mod native_hls;
 mod native_e2e_qa;
 
 use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     menu::MenuBuilder,
     tray::TrayIconBuilder,
@@ -20,43 +21,75 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 const UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 const UPDATE_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(180);
 
+// Only one update check, download or installation may run per process.
+// The permit also releases its lock if a future gets cancelled or times out.
+static UPDATE_RUNNING: AtomicBool = AtomicBool::new(false);
+struct UpdatePermit;
+impl UpdatePermit {
+    fn claim() -> Option<Self> {
+        UPDATE_RUNNING.compare_exchange(false,true,
+            Ordering::AcqRel,Ordering::Acquire).ok().map(|_|Self)
+    }
+}
+impl Drop for UpdatePermit {
+    fn drop(&mut self) {
+        UPDATE_RUNNING.store(false,Ordering::Release);
+    }
+}
+
 // The bundled Svelte/TypeScript app owns all UI and talks directly to
 // the Jellyfin media API. We never run the external Jellyfin browser SPA.
-async fn check_signed_update(app: tauri::AppHandle) {
-    let check = tokio::time::timeout(UPDATE_CHECK_TIMEOUT, async {
-        let updater = app.updater()?;
+async fn check_signed_update(
+    app: tauri::AppHandle,
+) -> Result<&'static str,&'static str> {
+    // This must never attempt updater network access inside the isolated QA
+    // executable; no credentials, release feed or second installation there.
+    if cfg!(feature="native-e2e-qa") { return Err("UPDATE_DISABLED_IN_QA"); }
+    let _permit=UpdatePermit::claim().ok_or("UPDATE_BUSY")?;
+    let check=tokio::time::timeout(UPDATE_CHECK_TIMEOUT, async {
+        let updater=app.updater()?;
         updater.check().await
     }).await;
-    if let Ok(Ok(Some(update))) = check {
-        // Never install an unexpected update silently. The stable and Preview
-        // editions each check their own distinct, signature-enforced feed.
-        let (send, receive) = tokio::sync::oneshot::channel();
-        app.dialog()
-            .message(format!(
-                "Vynéo {} est disponible. Installer cette mise à jour signée maintenant ?",
-                update.version
-            ))
-            .title("Mise à jour Vynéo")
-            .buttons(MessageDialogButtons::YesNo)
-            .show(move |approved| { let _ = send.send(approved); });
-        if !matches!(receive.await, Ok(true)) {
-            return;
-        }
-        let package = tokio::time::timeout(
-            UPDATE_DOWNLOAD_TIMEOUT,
-            update.download(|_, _| {}, || {}),
-        ).await;
-        if let Ok(Ok(bytes)) = package {
-            // The updater independently verifies minisign, its embedded
-            // key, the signed version and platform before installing.
-            if update.install(&bytes).is_ok() {
-                #[cfg(not(target_os = "windows"))]
-                app.restart();
-                #[cfg(target_os = "windows")]
-                return;
-            }
-        }
+    let update=match check {
+        Ok(Ok(Some(update)))=>update,
+        Ok(Ok(None))=>return Ok("up-to-date"),
+        Ok(Err(_))=>return Err("UPDATE_CHECK_FAILED"),
+        Err(_)=>return Err("UPDATE_CHECK_TIMEOUT"),
+    };
+    // Explicit approval remains mandatory for startup and manual checks.
+    let (send,receive)=tokio::sync::oneshot::channel();
+    app.dialog()
+        .message(format!(
+            "Vynéo {} est disponible. Installer cette mise à jour signée maintenant ?",
+            update.version
+        ))
+        .title("Mise à jour Vynéo")
+        .buttons(MessageDialogButtons::YesNo)
+        .show(move |approved| { let _=send.send(approved); });
+    if !matches!(receive.await, Ok(true)) {
+        return Ok("declined");
     }
+    let bytes=match tokio::time::timeout(
+        UPDATE_DOWNLOAD_TIMEOUT,
+        update.download(|_,_|{},||{}),
+    ).await {
+        Ok(Ok(bytes))=>bytes,
+        Ok(Err(_))=>return Err("UPDATE_DOWNLOAD_FAILED"),
+        Err(_)=>return Err("UPDATE_DOWNLOAD_TIMEOUT"),
+    };
+    // Signature verification is enforced by Tauri's updater plugin.
+    // We never accept a URL or public key supplied by renderer JavaScript.
+    update.install(&bytes).map_err(|_|"UPDATE_INSTALL_FAILED")?;
+    #[cfg(not(target_os="windows"))]
+    app.restart();
+    Ok("install-started")
+}
+
+#[tauri::command]
+async fn check_signed_update_now(
+    app: tauri::AppHandle,
+) -> Result<&'static str,String> {
+    check_signed_update(app).await.map_err(str::to_owned)
 }
 
 fn main() {
@@ -76,6 +109,7 @@ fn main() {
             }
         )
         .invoke_handler(tauri::generate_handler![
+            check_signed_update_now,
             credentials::save_saved_session,
             credentials::read_saved_session,
             credentials::forget_saved_session,
@@ -151,7 +185,10 @@ fn main() {
             }
             }
             if !cfg!(feature="native-e2e-qa") {
-                tauri::async_runtime::spawn(check_signed_update(app.handle().clone()));
+                let handle=app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let _=check_signed_update(handle).await;
+                });
             }
             Ok(())
         })

@@ -2,6 +2,7 @@
   import type {LibrarySnapshot,MediaItem,SessionPublic,ViewKey,Shelf,CatalogKind,LibraryGroupKind} from "./types";
   import {onMount} from "svelte";
   import {nativeVault} from "./credential-vault";
+  import {nativeUpdater,updateNotice,updateFailure} from "./native-updater";
   import {JellyfinApi} from "./api";
   import {ArtworkCache,hasArtwork,lazyArtwork} from "./artwork";
   import {buildShelves,featuredSlides,orderHomeShelves} from "./discover";
@@ -55,6 +56,8 @@
   let credentialStored=$state(false);
   let restoreBusy=$state(true);
   let profileOpen=$state(false);
+  let updateBusy=$state(false);
+  let updaterNotice=$state("");
   let avatarUrl=$state<string|null>(null);
   let session=$state<SessionPublic|null>(null);
   let data=$state<LibrarySnapshot>(empty());
@@ -828,6 +831,15 @@
       // Never claim popularity when the authorized candidate scan failed.
     });
   }
+  async function checkUpdates(){
+    if(updateBusy || !nativeUpdater.available)return;
+    updateBusy=true;updaterNotice="";
+    try{
+      updaterNotice=updateNotice(await nativeUpdater.check());
+    }catch(error){
+      updaterNotice=updateFailure(error);
+    }finally{updateBusy=false;}
+  }
   async function logout(){
     epoch++;refreshVersion++;profileOpen=false;credentialStored=false;
     closeHover();clearAvatar();hoverDetailsCache.clear();
@@ -1003,6 +1015,15 @@
                 (credentialStored
                   ?"Connexion mémorisée sur cet appareil"
                   :"Session active, non mémorisée")}</small>
+              {#if nativeUpdater.available}
+                <button type="button" disabled={updateBusy}
+                  onclick={()=>void checkUpdates()}>
+                  {updateBusy?"Recherche de mise à jour…":"Vérifier les mises à jour"}
+                </button>
+                {#if updaterNotice}
+                  <small class="vy-update-notice" role="status">{updaterNotice}</small>
+                {/if}
+              {/if}
               {#if hiddenCards.length}
                 <button type="button" onclick={restoreHiddenCards}>
                   Réafficher les {hiddenCards.length} titres masqués

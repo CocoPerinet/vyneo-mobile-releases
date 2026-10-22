@@ -48,7 +48,16 @@ async fn check_signed_update(
     // This must never attempt updater network access inside the isolated QA
     // executable; no credentials, release feed or second installation there.
     if cfg!(feature="native-e2e-qa") { return Err("UPDATE_DISABLED_IN_QA"); }
-    let _permit=UpdatePermit::claim().ok_or("UPDATE_BUSY")?;
+    let permit=UpdatePermit::claim().ok_or("UPDATE_BUSY")?;
+    check_signed_update_with_permit(app,permit).await
+}
+
+// The automatic caller reserves the same permit before consuming its
+// six-hour slot. It must not claim a check happened when one was busy.
+async fn check_signed_update_with_permit(
+    app: tauri::AppHandle,
+    _permit: UpdatePermit,
+) -> Result<&'static str,&'static str> {
     let check=tokio::time::timeout(UPDATE_CHECK_TIMEOUT, async {
         let updater=app.updater()?;
         updater.check().await
@@ -93,15 +102,23 @@ async fn check_signed_update(
 fn update_recheck_due(last: Option<Instant>, now: Instant) -> bool {
     last.map_or(true,|at|now.saturating_duration_since(at)>=AUTOMATIC_UPDATE_INTERVAL)
 }
+fn reserve_automatic_update_check(
+    last: &mut Option<Instant>,
+    now: Instant,
+) -> Option<UpdatePermit> {
+    if !update_recheck_due(*last,now) { return None; }
+    let permit=UpdatePermit::claim()?;
+    *last=Some(now);
+    Some(permit)
+}
 fn schedule_update_if_due(app: tauri::AppHandle) {
     if cfg!(feature="native-e2e-qa") { return; }
     let Ok(mut last)=LAST_AUTO_UPDATE_CHECK.lock() else { return; };
-    let now=Instant::now();
-    if !update_recheck_due(*last,now) { return; }
-    *last=Some(now);
+    let Some(permit)=reserve_automatic_update_check(&mut last,Instant::now())
+        else { return; };
     drop(last);
     tauri::async_runtime::spawn(async move {
-        let _=check_signed_update(app).await;
+        let _=check_signed_update_with_permit(app,permit).await;
     });
 }
 
@@ -121,6 +138,26 @@ mod update_tests {
         assert!(UpdatePermit::claim().is_none());
         drop(permit);
         assert!(UpdatePermit::claim().is_some());
+        assert!(!UPDATE_RUNNING.load(Ordering::Acquire));
+
+        // A manual check in flight must NOT consume the automatic 6h slot.
+        let now=Instant::now();
+        let mut last=None;
+        let manual=UpdatePermit::claim().expect("manual update owns permit");
+        assert!(reserve_automatic_update_check(&mut last,now).is_none());
+        assert_eq!(last,None);
+        drop(manual);
+
+        // The next real opening may check immediately, but not twice.
+        let automatic=reserve_automatic_update_check(&mut last,now)
+            .expect("automatic check starts after manual check");
+        assert_eq!(last,Some(now));
+        assert!(UpdatePermit::claim().is_none());
+        drop(automatic);
+        assert!(reserve_automatic_update_check(
+            &mut last,now+Duration::from_secs(60)).is_none());
+        assert!(reserve_automatic_update_check(
+            &mut last,now+AUTOMATIC_UPDATE_INTERVAL).is_some());
         assert!(!UPDATE_RUNNING.load(Ordering::Acquire));
     }
 

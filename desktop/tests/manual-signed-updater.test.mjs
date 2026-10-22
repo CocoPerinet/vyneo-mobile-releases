@@ -23,7 +23,9 @@ test("native update flow cannot be reentered or given an untrusted URL",()=>{
   assert.match(main,/static UPDATE_RUNNING: AtomicBool/);
   assert.match(main,/compare_exchange\(false,true/);
   assert.match(main,/impl Drop for UpdatePermit/);
-  assert.match(main,/let _permit=UpdatePermit::claim\(\)/);
+  assert.match(main,/let permit=UpdatePermit::claim\(\)/);
+  assert.match(main,/check_signed_update_with_permit\(app,permit\)/);
+  assert.match(main,/let Some\(permit\)=reserve_automatic_update_check/);
   assert.match(main,/UPDATE_BUSY/);
   assert.match(main,/if cfg!\(feature="native-e2e-qa"\)/);
   assert.match(main,/UPDATE_DISABLED_IN_QA/);

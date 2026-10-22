@@ -63,6 +63,16 @@ fn private_base(item: &str) -> Result<reqwest::Url, ()> {
         .map_err(|_| ())
 }
 
+// Jellyfin legitimately emits 36-character hyphenated UUIDs in the HLS
+// master and child asset paths, even though Tauri tickets use 32 hex chars.
+// Match the exact UUID rather than weakening the per-item path restriction.
+fn same_media_item(segment: &str, compact_item: &str) -> bool {
+    (segment.len()==32 || segment.len()==36)
+        && uuid::Uuid::parse_str(segment).ok()
+            .is_some_and(|id| id.simple().to_string()
+                .eq_ignore_ascii_case(compact_item))
+}
+
 /** The Jellyfin POST /PlaybackInfo chooses the codecs, session and
  * stream-specific parameters. Never guess the transcode URL locally: use
  * only its vetted, token-free master playlist with the pinned origin. */
@@ -83,8 +93,7 @@ pub(crate) fn validated_playlist_url(
     if parts.len()!=4 || !parts[0].is_empty()
         || !parts[1].eq_ignore_ascii_case("videos")
         || !parts[3].eq_ignore_ascii_case("master.m3u8")
-        || parts[2].replace('-',"").to_ascii_lowercase()
-            !=item.to_ascii_lowercase()
+        || !same_media_item(parts[2],item)
     { return None; }
     let mut source_matched=false;
     let mut video_matched=false;
@@ -145,15 +154,19 @@ fn sanitized_upstream(
         return Err("HLS_ASSET_CREDENTIALS");
     }
     if url.fragment().is_some() { return Err("HLS_ASSET_FRAGMENT"); }
-    let prefix = format!("/videos/{item}/").to_ascii_lowercase();
     let lower_path=url.path().to_ascii_lowercase();
-    if !lower_path.starts_with(&prefix) {
+    let parts=url.path().split('/').collect::<Vec<_>>();
+    if parts.len()<4 || !parts[0].is_empty()
+        || !parts[1].eq_ignore_ascii_case("videos")
+        || !same_media_item(parts[2],item)
+        || parts[3].is_empty()
+    {
         // Do not surface paths, GUIDs, stream URLs or original references.
         // Classify ONLY their route family in this never-released QA build.
         let parts=lower_path.split('/').filter(|x|!x.is_empty())
             .take(2).collect::<Vec<_>>();
         let reason=match parts.as_slice() {
-            ["videos", id] if *id == item.to_ascii_lowercase() =>
+            ["videos", id] if same_media_item(id,item) =>
                 "HLS_ASSET_VIDEO_ROOT",
             ["videos", _] => "HLS_ASSET_OTHER_VIDEO_ID",
             ["audio", _] => "HLS_ASSET_AUDIO_ROUTE",
@@ -531,6 +544,46 @@ mod tests {
             &"a".repeat(32)).unwrap();
         assert!(url.as_str().contains("MediaSourceId=s"));
         assert!(!url.as_str().contains("SECRET"));
+    }
+    #[test]
+    fn jellyfin_hyphenated_item_hls_manifest_is_allowed_only_for_same_uuid() {
+        let item="a".repeat(32);
+        let source="b".repeat(32);
+        let uuid="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+        let master=format!(
+            "/Videos/{uuid}/master.m3u8?MediaSourceId={source}&VideoCodec=h264&AudioCodec=aac&SegmentContainer=ts"
+        );
+        let base=validated_playlist_url(&item,&source,&master).unwrap();
+        let asset=sanitized_upstream(
+            &base,"hls1/main/playlist.m3u8",&item).unwrap();
+        assert_eq!(asset.path(),
+            format!("/Videos/{uuid}/hls1/main/playlist.m3u8"));
+        let grant=fixture();
+        let synthetic="#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-STREAM-INF:BANDWIDTH=1000000\nhls1/main/playlist.m3u8\n";
+        let result=rewrite_playlist(synthetic,&base,&grant,&"d".repeat(32))
+            .unwrap();
+        assert!(result.contains("vyneo-media.localhost/hls/"));
+        assert!(!result.contains(uuid));
+        let authorized=grant.assets.lock().unwrap();
+        assert_eq!(authorized.len(),1);
+        assert!(authorized.values().all(|url|
+            url.path().starts_with(&format!("/Videos/{uuid}/"))));
+        drop(authorized);
+        for bad in [
+            "https://cocojellyfin.duckdns.org:38443/Videos/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/hls1/main/0.ts",
+            "https://cocojellyfin.duckdns.org:38443/Videos/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaab/hls1/main/0.ts",
+            "https://cocojellyfin.duckdns.org:38443/Videos/aaaaaaaa-aaaaaaaa-aaaa-aaaa-aaaaaaaa/hls1/main/0.ts"
+        ] {
+            assert_eq!(sanitized_upstream(&base,bad,&item),
+                Err("HLS_ASSET_OTHER_VIDEO_ID"));
+        }
+        assert!(validated_playlist_url(&item,&source,
+            &master.replace(uuid,"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"))
+            .is_none());
+        assert!(sanitized_upstream(
+            &base,"https://evil.example/hls1/main/0.ts",&item).is_err());
+        assert!(sanitized_upstream(
+            &base,"/Users/Me",&item).is_err());
     }
     #[test]
     fn manifest_rewrite_removes_all_upstream_urls_and_tokens() {

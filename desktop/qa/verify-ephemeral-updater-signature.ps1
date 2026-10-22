@@ -87,6 +87,10 @@ try {
     Write-Output 'VYNEO_EPHEMERAL_SIGNED_NSIS_VALID_PASS'
     Write-Output 'VYNEO_EPHEMERAL_TAMPERED_NSIS_REJECTED_PASS'
     Write-Output 'QA_NO_PRODUCTION_SIGNING_KEY_NO_RELEASE_NO_INSTALL'
+    # GitHub's pwsh wrapper exits with the last native command exit code.
+    # The intentionally FAILED signature verification sets it to 1, despite
+    # being a successful negative test. Clear it ONLY after asserting rejection.
+    $global:LASTEXITCODE = 0
   } finally {
     Pop-Location
   }

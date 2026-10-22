@@ -56,6 +56,10 @@ test('signed updater fixture uses ephemeral Minisign proof and rejects tampering
   assert.match(signer,/cargo run --quiet --locked --manifest-path \$verifier -- \$pub \$sig \$mutated/);
   assert.match(signer,/if \(\$tamperExit -eq 0\)/);
   assert.match(signer,/EPHEMERAL_TAMPERED_NSIS_REJECTED_PASS/);
+  assert.match(signer,/\$global:LASTEXITCODE = 0/);
+  assert.ok(signer.indexOf('TAMPERED_SIGNED_NSIS_WAS_ACCEPTED') <
+    signer.indexOf('$global:LASTEXITCODE = 0'),
+    'only reset native process status after proving tampering was rejected');
   assert.match(signer,/Remove-Item -LiteralPath \$dir -Recurse -Force/);
   assert.match(signer,/PREEXISTING_SIGNATURE_MUST_NOT_BE_OVERWRITTEN/);
   assert.doesNotMatch(signer,/gh release (upload|create)|Invoke-WebRequest|https?:\/\//);

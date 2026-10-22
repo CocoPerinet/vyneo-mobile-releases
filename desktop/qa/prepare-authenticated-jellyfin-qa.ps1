@@ -3,7 +3,7 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-if ($env:COMPUTERNAME -cne 'COCO' -or $env:USERNAME -cne 'bindl') {
+if ($env:COMPUTERNAME -notin @('JJJ','COCO') -or $env:USERNAME -cne 'bindl') {
   throw 'ONLY_AUTHORIZED_WINDOWS_COCO_QA'
 }
 $desktop = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path

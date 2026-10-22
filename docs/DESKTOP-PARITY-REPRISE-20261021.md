@@ -1346,3 +1346,33 @@ une mise à jour signée publiée et déclenchée par le client en
 conditions réelles, ni une lecture STRM Jellyfin authentifiée
 avec progression et sous-titres dans le compte de l'utilisateur.
 Aucun tag, aucune publication, aucune nouvelle installation.
+
+## 22 octobre : QA native authentifiée préparée sans seconde installation
+
+**Objectif :** lever ensuite le bloc D réel, sans accéder au coffre stable et sans installer de second logiciel.
+
+- Fonction Cargo interactive-jellyfin-qa : disponible uniquement en compilation debug. Toute tentative de compilation en release avec cette fonction est interdite par compile_error.
+- Configuration Tauri dédiée tauri.authenticated-qa.conf.json : identifiant fr.visyren.vyneo.desktop.authqa distinct de Stable, Preview et QA HLS synthétique. Frontend Svelte réel de la PR, aucun paquet de mise à jour généré.
+- Authentification Quick Connect dans ce client temporaire : session en mémoire seulement ; les commandes de lecture, écriture et suppression du coffre Windows sont désactivées dans la fonction QA, et le service d'identifiants OS de cette identité n'est pas autorisé.
+- Tout appel à l'updater et toute vérification automatique sont bloqués par UPDATE_DISABLED_IN_QA. Aucun tray ; la fermeture de la fenêtre termine ce client de test au lieu de le cacher.
+- L'interface retire la case Rester connecté en QA et indique explicitement que la session ne sera pas mémorisée.
+- Le script qa/prepare-authenticated-jellyfin-qa.ps1 exige le compte Windows autorisé, le clone QA E:, une installation Stable 0.2.4 unique, et vérifie le SHA-256 de son binaire avant et après compilation.
+- Le script utilise le compilateur Rust déjà présent, compile en --debug --no-bundle, copie uniquement le binaire portable dans le répertoire temporaire Windows, puis restaure les octets originaux de Cargo.toml si Tauri l'a normalisé. Il ne lance aucune fenêtre ou tâche et n'installe aucun programme.
+
+**Validations exécutées sur Windows COCO, commit code 8369016 :**
+- 44 tests Node réussis, 164 Vitest réussis, 18 tests Rust de la fonction interactive-jellyfin-qa réussis.
+- Svelte-check : 0 erreur et 0 avertissement ; construction Vite réussie (avertissement non bloquant sur la taille du chunk hls.js).
+- Compilation Tauri native --debug --no-bundle avec la fonction QA : PASS. Binaire portable préparé dans %TEMP%/vyneo-auth-qa-portable/vyneo-auth-qa.exe, non exécuté.
+- Après compilation : registre Windows = 1 seule Vynéo Stable 0.2.4, processus stable = 1, 0 processus QA, 0 tâche QA, clone Git QA propre.
+
+**Lancement interactif préparé, mais non exécuté :** le script
+desktop/qa/launch-authenticated-jellyfin-qa.ps1 est réservé au PC autorisé,
+refuse tout lancement sans le commutateur explicite Approved, contrôle
+la stable unique et le binaire QA déjà compilé, puis crée au besoin
+une tâche InteractiveToken limitée à 15 minutes. Un contrôle de
+démarrage et un nettoyage borné de la seule tâche QA sont prévus,
+sans manipuler les tâches ni le processus Stable.
+Quatre tests Node dédiés aux frontières de cette QA ont réussi ;
+ce sont des tests statiques et non un test de la connexion réelle.
+
+**Preuve restant impérative :** aucune approbation Quick Connect réelle, aucun accès au profil Jellyfin ni lecture STRM réelle, aucune comparaison des IDs/sous-titres/progression du même compte. Le bloc D side-by-side et real-library reste PENDING ; aucune fusion, aucun tag ni publication. Le test de lecture doit être autorisé volontairement par l'utilisateur et peut modifier son historique Jellyfin.

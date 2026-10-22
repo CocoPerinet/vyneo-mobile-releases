@@ -12,6 +12,7 @@ const vault=read("src-tauri/src/credentials.rs");
 const client=read("frontend/src/App.svelte");
 const updater=read("frontend/src/native-updater.ts");
 const runner=read("qa/prepare-authenticated-jellyfin-qa.ps1");
+const launcher=read("qa/launch-authenticated-jellyfin-qa.ps1");
 
 test("authenticated real Jellyfin QA is a distinct unbundled debug-only identity",()=>{
   assert.equal(cfg.identifier,"fr.visyren.vyneo.desktop.authqa");
@@ -61,4 +62,20 @@ test("QA preparation is build only on COCO, not a second app installation",()=>{
   assert.match(runner,/VYNEO_AUTHENTICATED_QA_COMPILED_NO_INSTALL_NO_LAUNCH/);
   assert.doesNotMatch(runner,/Start-Process|Register-ScheduledTask|Install-Package|winget install|gh release (create|upload)|TAURI_SIGNING_PRIVATE_KEY|save_saved_session/);
   assert.doesNotMatch(read("../.github/workflows/desktop.yml"),/interactive-jellyfin-qa|authenticated-qa/);
+});
+
+test("interactive session launcher requires approval, isolates and cleans its task",()=>{
+  assert.match(launcher,/param\(\[switch\]\$Approved\)/);
+  assert.match(launcher,/if \(-not \$Approved\) \{ throw 'AUTH_QA_USER_APPROVAL_REQUIRED' \}/);
+  assert.match(launcher,/ONLY_AUTHORIZED_WINDOWS_COCO_QA/);
+  assert.match(launcher,/STABLE_SINGLE_INSTALLATION_REQUIRED/);
+  assert.match(launcher,/QA_ALREADY_RUNNING/);
+  assert.match(launcher,/New-ScheduledTaskPrincipal[\s\S]*?-LogonType Interactive -RunLevel Limited/);
+  assert.match(launcher,/New-ScheduledTaskSettingsSet -ExecutionTimeLimit[\s\S]*?-Minutes 15/);
+  assert.match(launcher,/Get-ScheduledTask -TaskName 'VyneoAuthenticatedJellyfinQA\*'/);
+  assert.match(launcher,/Actions\[0\]\.Execute -ceq \$exe/);
+  assert.match(launcher,/Unregister-ScheduledTask -TaskName \$taskName -Confirm:\$false/);
+  assert.match(launcher,/QA_QUICK_CONNECT_REQUIRES_HUMAN_APPROVAL/);
+  assert.match(launcher,/QA_INTERACTIVE_WINDOW_FAILED_TO_START/);
+  assert.doesNotMatch(launcher,/save_saved_session|AuthenticateWithQuickConnect|QuickConnect\/Connect|gh release|Install-Package|Copy-Item|\\AppData\\Local\\Vynéo\\vyneo-desktop\.exe/);
 });

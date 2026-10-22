@@ -679,7 +679,7 @@
                     srclang={activeSubtitle.language || "und"}
                     label={displayTrack(activeSubtitle)} default
                     onload={(event)=>{
-                      event.currentTarget.track.mode="showing";
+                      (event.currentTarget as HTMLTrackElement).track.mode="showing";
                     }}/>
                 {/if}
               </video>

@@ -56,7 +56,13 @@ test("video CSP allows only Tauri custom media and no token-bearing URLs",()=>{
   assert.match(html,/connect-src 'self' https:\/\/cocojellyfin\.duckdns\.org:38443/);
   assert.doesNotMatch(html,/upgrade-insecure-requests/);
   const ui=get("frontend/src/MediaDetails.svelte");
-  assert.match(ui, /selectDirectMp4\(probe\)/);
+  // Direct MP4 remains selectable by codec, but explicit audio switching
+  // only permits the server-negotiated HLS path with the selected source.
+  assert.match(ui, /selectDirectMp4\(\{\.\.\.probe,sources:candidates\}\)/);
+  assert.match(ui, /selectedAudioIndex===null/);
+  assert.match(ui, /negotiation\.hlsPaths\[source\.id\]/);
+  assert.match(ui, /getSubtitleVtt/);
+  assert.match(ui, /URL\.revokeObjectURL\(old\)/);
   assert.match(ui, /src=\{streamKind==="direct"\?streamTicket\.url:undefined\}/);
   assert.match(ui, /onerror=/);
   assert.match(ui, /stopStream\(\)/);

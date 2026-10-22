@@ -33,6 +33,11 @@ if ($entries.Count -ne 1 -or $entries[0].DisplayVersion -cne '0.2.4') {
 $stableExe = Join-Path ([string]$entries[0].InstallLocation).Trim('"') 'vyneo-desktop.exe'
 if (-not (Test-Path -LiteralPath $stableExe)) { throw 'STABLE_EXE_NOT_FOUND' }
 $hashBefore = (Get-FileHash -LiteralPath $stableExe -Algorithm SHA256).Hash
+# Tauri normalizes an equivalent pinned tauri-build TOML dependency.
+# Restore exactly the source bytes that existed before the QA build.
+$cargoToml = Join-Path $desktop 'src-tauri/Cargo.toml'
+$cargoBefore = [System.IO.File]::ReadAllBytes($cargoToml)
+$cargoHashBefore = (Get-FileHash -LiteralPath $cargoToml -Algorithm SHA256).Hash
 $qaBinary = Join-Path $desktop 'src-tauri/target/debug/vyneo-desktop.exe'
 $destination = Join-Path $env:TEMP 'vyneo-auth-qa-portable'
 try {
@@ -70,6 +75,11 @@ try {
   Write-Output 'VYNEO_AUTHENTICATED_QA_COMPILED_NO_INSTALL_NO_LAUNCH'
   Write-Output ('QA_PORTABLE_PATH=' + (Join-Path $destination 'vyneo-auth-qa.exe'))
 } finally {
+  # Keep the QA clone's input files bit-for-bit unchanged even if a
+  # compilation fails after Tauri has normalized Cargo.toml.
+  if ((Get-FileHash -LiteralPath $cargoToml -Algorithm SHA256).Hash -cne $cargoHashBefore) {
+    [System.IO.File]::WriteAllBytes($cargoToml,$cargoBefore)
+  }
   if (-not (Test-Path -LiteralPath $stableExe) -or
       (Get-FileHash -LiteralPath $stableExe -Algorithm SHA256).Hash -cne $hashBefore) {
     throw 'QA_CHANGED_STABLE_BINARY'

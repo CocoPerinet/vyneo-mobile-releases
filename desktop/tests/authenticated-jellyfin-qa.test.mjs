@@ -53,6 +53,7 @@ test("QA preparation is build only on COCO, not a second app installation",()=>{
   assert.match(runner,/PSObject\.Properties\.Match\('DisplayName'\)\.Count -gt 0/);
   assert.match(runner,/Get-FileHash -LiteralPath \$stableExe -Algorithm SHA256/);
   assert.match(runner,/--debug --no-bundle --features interactive-jellyfin-qa --config/);
+  assert.match(runner,/EXISTING_RUST_TOOLCHAIN_NOT_FOUND/);
   assert.match(runner,/AUTH_QA_PORTABLE_BINARY_MISSING/);
   assert.match(runner,/VYNEO_AUTHENTICATED_QA_COMPILED_NO_INSTALL_NO_LAUNCH/);
   assert.doesNotMatch(runner,/Start-Process|Register-ScheduledTask|Install-Package|winget install|gh release (create|upload)|TAURI_SIGNING_PRIVATE_KEY|save_saved_session/);

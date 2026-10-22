@@ -36,6 +36,14 @@ $hashBefore = (Get-FileHash -LiteralPath $stableExe -Algorithm SHA256).Hash
 $qaBinary = Join-Path $desktop 'src-tauri/target/debug/vyneo-desktop.exe'
 $destination = Join-Path $env:TEMP 'vyneo-auth-qa-portable'
 try {
+  # SSH PowerShell does not always inherit the interactive Rust PATH.
+  # Use the ALREADY installed toolchain, without touching system settings.
+  $cargoBin = Join-Path $env:USERPROFILE '.cargo/bin'
+  if (-not (Test-Path -LiteralPath (Join-Path $cargoBin 'cargo.exe'))) {
+    throw 'EXISTING_RUST_TOOLCHAIN_NOT_FOUND'
+  }
+  $oldPath = $env:PATH
+  $env:PATH = $cargoBin + ';' + $oldPath
   Push-Location $desktop
   try {
     # PowerShell 5.1 promotes harmless native stderr (Vite/Rust warnings)
@@ -50,7 +58,10 @@ try {
       $buildExit = $LASTEXITCODE
       if ($buildExit -ne 0) { throw 'AUTH_QA_BUILD_FAILED' }
     } finally { $ErrorActionPreference = $oldPreference }
-  } finally { Pop-Location }
+  } finally {
+    Pop-Location
+    $env:PATH = $oldPath
+  }
   if (-not (Test-Path -LiteralPath $qaBinary)) {
     throw 'AUTH_QA_PORTABLE_BINARY_MISSING'
   }

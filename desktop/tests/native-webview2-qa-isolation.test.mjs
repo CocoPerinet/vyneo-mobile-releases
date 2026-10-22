@@ -28,6 +28,7 @@ test("synthetic WebView2 media QA is compile-time isolated from production",()=>
   assert.match(runner,/env\[key\]=cargoDir\+";"/);
   assert.match(runner,/originalCargo=readFileSync\(cargoToml\)/);
   assert.match(runner,/QA_UNEXPECTED_CARGO_TOML_MUTATION/);
+  assert.match(runner,/text\.replaceAll\("\\r\\n","\\n"\)/);
   assert.match(runner,/writeFileSync\(cargoToml,originalCargo\)/);
   assert.match(runner,/QA_ZERO_INSTALLER_ZERO_REAL_CREDENTIALS/);
   assert.match(runner,/m.audioRmsPeak>=0.008/);

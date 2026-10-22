@@ -147,7 +147,10 @@ async function build(){
         'tauri-build = "=2.7.3"',
         'tauri-build = { version = "=2.7.3", features = [] }'
       );
-      assert.equal(current.toString("utf8"),normalized,
+      // Tauri also converts CRLF to LF on Windows in some versions.
+      // Normalize line endings only for comparison; restore original bytes.
+      const lf=text=>text.replaceAll("\r\n","\n");
+      assert.equal(lf(current.toString("utf8")),lf(normalized),
         "QA_UNEXPECTED_CARGO_TOML_MUTATION");
       writeFileSync(cargoToml,originalCargo);
     }

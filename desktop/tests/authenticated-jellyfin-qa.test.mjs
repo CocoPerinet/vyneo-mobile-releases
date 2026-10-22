@@ -78,7 +78,10 @@ test("HLS QA reports only fixed reason codes and hides them in stable releases",
   assert.match(hls,/access-control-allow-origin/);
   assert.match(hls,/cfg\(feature="interactive-jellyfin-qa"\)/);
   assert.match(hls,/cfg\(not\(feature="interactive-jellyfin-qa"\)\)/);
-  assert.match(hls,/HLS_ASSET_SCOPE/);
+  for(const reason of ["HLS_ASSET_SCHEME","HLS_ASSET_HOST",
+    "HLS_ASSET_PORT","HLS_ASSET_ITEM_PATH","HLS_ASSET_CREDENTIALS"])
+    assert.ok(hls.includes(reason));
+  assert.doesNotMatch(hls,/HLS_ASSET_SCOPE/);
   assert.match(hls,/HLS_ENCRYPTION_UNSUPPORTED/);
   assert.match(hls,/HLS_UPSTREAM_HTTP_STATUS/);
   assert.match(hls,/let Some\(origin\) = acceptable_origin\(&request\) else \{\s*return bad\(StatusCode::FORBIDDEN\)/);

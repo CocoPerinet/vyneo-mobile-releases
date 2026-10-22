@@ -127,22 +127,27 @@ fn index_url(grant: &StreamGrant) -> Result<reqwest::Url, ()> {
 
 fn sanitized_upstream(
     base: &reqwest::Url, reference: &str, item: &str
-) -> Result<reqwest::Url, ()> {
+) -> Result<reqwest::Url, &'static str> {
+    // These codes are static and safe. They contain neither a URL, item ID
+    // nor credentials. Only the debug interactive QA exposes them to WebView2.
     if reference.is_empty() || reference.chars().any(|c| c.is_control()) {
-        return Err(());
+        return Err("HLS_ASSET_INVALID_REFERENCE");
     }
-    let mut url = base.join(reference).map_err(|_| ())?;
-    if url.scheme() != "https"
-        || url.host_str() != Some("cocojellyfin.duckdns.org")
-        || url.port_or_known_default() != Some(38443)
-        || !url.username().is_empty() || url.password().is_some()
-        || url.fragment().is_some()
-    {
-        return Err(());
+    let mut url = base.join(reference).map_err(|_| "HLS_ASSET_URL_PARSE")?;
+    if url.scheme() != "https" { return Err("HLS_ASSET_SCHEME"); }
+    if url.host_str() != Some("cocojellyfin.duckdns.org") {
+        return Err("HLS_ASSET_HOST");
     }
+    if url.port_or_known_default() != Some(38443) {
+        return Err("HLS_ASSET_PORT");
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("HLS_ASSET_CREDENTIALS");
+    }
+    if url.fragment().is_some() { return Err("HLS_ASSET_FRAGMENT"); }
     let prefix = format!("/videos/{item}/").to_ascii_lowercase();
     if !url.path().to_ascii_lowercase().starts_with(&prefix) {
-        return Err(());
+        return Err("HLS_ASSET_ITEM_PATH");
     }
     // Some Jellyfin HLS manifests include a token in every segment URL.
     // Drop that token and authorize upstream ONLY with the private header.
@@ -183,7 +188,7 @@ pub(crate) fn rewrite_playlist(
     let replace = |reference: &str,
                    pending: &mut HashMap<String, reqwest::Url>|
         -> Result<String, &'static str> {
-        let target = sanitized_upstream(base, reference, &grant.item).map_err(|_| "HLS_ASSET_SCOPE")?;
+        let target = sanitized_upstream(base, reference, &grant.item)?;
         let existing = original.iter().chain(pending.iter())
             .find(|(_, url)| **url == target)
             .map(|(id, _)| id.clone());
@@ -483,6 +488,20 @@ mod tests {
             "https://cocojellyfin.duckdns.org:38443/Videos/cccc/clip.ts",
             "//evil.example/video.ts","file:///etc/passwd"] {
             assert!(sanitized_upstream(&base,raw,&"a".repeat(32)).is_err());
+        }
+        // Preserve the established fixed destination, port, and item scope.
+        let guarded=[
+            ("https://evil.example/test.mp4","HLS_ASSET_HOST"),
+            ("http://cocojellyfin.duckdns.org:38443/Videos/",
+                "HLS_ASSET_SCHEME"),
+            ("https://cocojellyfin.duckdns.org:443/Videos/",
+                "HLS_ASSET_PORT"),
+            ("https://cocojellyfin.duckdns.org:38443/Admin/Users",
+                "HLS_ASSET_ITEM_PATH")
+        ];
+        for (reference,reason) in guarded {
+            assert_eq!(sanitized_upstream(&base,reference,&"a".repeat(32)),
+                Err(reason));
         }
         let url=sanitized_upstream(
             &base,

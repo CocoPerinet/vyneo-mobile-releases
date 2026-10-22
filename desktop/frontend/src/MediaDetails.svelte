@@ -63,6 +63,8 @@
   let subtitleError=$state("");
   let subtitleEpoch=0;
   let retainedSeekSeconds:number|null=null;
+  let retainedVolume:number|null=null;
+  let retainedMuted:boolean|null=null;
   let resumeApplied=false;
   let videoElement=$state<HTMLVideoElement|undefined>(undefined);
   let streamEpoch=0;
@@ -274,7 +276,8 @@
   }
   function resetTrackSelection(){
     selectedAudioIndex=null;selectedSubtitleIndex=null;
-    retainedSeekSeconds=null;sourceInUse=null;subtitleError="";
+    retainedSeekSeconds=null;retainedVolume=null;retainedMuted=null;
+    sourceInUse=null;subtitleError="";
     clearSubtitleBlob();
   }
   async function loadSelectedSubtitle(){
@@ -323,6 +326,8 @@
     if(!streamTicket)return; // Selected before first playback.
     retainedSeekSeconds=typeof seconds==="number" &&
       Number.isFinite(seconds) && seconds>0?seconds:null;
+    retainedVolume=videoElement?.volume??null;
+    retainedMuted=videoElement?.muted??null;
     streamEpoch++;
     stopStream();
     void startNativeVideo(previousSource);
@@ -351,7 +356,9 @@
   }
   async function startNativeVideo(preferredSourceId?:string|null){
     if(streamBusy || !nativeAvailable)return;
-    if(!preferredSourceId)retainedSeekSeconds=null;
+    if(!preferredSourceId){
+      retainedSeekSeconds=null;retainedVolume=null;retainedMuted=null;
+    }
     const target=shown,version=epoch,request=++streamEpoch;
     // Remember the source before stopStream discards its old capability.
     const selectedSource=preferredSourceId??tracksSource?.id;
@@ -369,8 +376,12 @@
         shown.id!==target.id)return;
       const probe=negotiation.probe;
       playback=probe;
+      // During a track change keep the same media source even when the
+      // user returns to "Audio automatique": never switch editions.
+      const pinnedSource=selectedAudioIndex!==null ||
+        preferredSourceId!==undefined && preferredSourceId!==null;
       const candidates=probe.sources.filter(source=>
-        selectedAudioIndex===null || source.id===selectedSource);
+        !pinnedSource || source.id===selectedSource);
       const direct=selectedAudioIndex===null?
         selectDirectMp4({...probe,sources:candidates}):null;
       const hls=direct?null:selectJellyfinHls({
@@ -417,6 +428,14 @@
         streamError="Le lecteur vidéo n'a pas pu être initialisé.";
         stopStream(true);
         return;
+      }
+      if(retainedVolume!==null){
+        videoElement.volume=retainedVolume;
+        retainedVolume=null;
+      }
+      if(retainedMuted!==null){
+        videoElement.muted=retainedMuted;
+        retainedMuted=null;
       }
       if(mode==="hls"){
         const {default:Hls}=await import("hls.js");
@@ -616,7 +635,10 @@
               </button>
               {#if streamTicket}
                 <button type="button" class="vy-detail-action"
-                  onclick={()=>{streamEpoch++;retainedSeekSeconds=null;stopStream();}}>
+                  onclick={()=>{
+                    streamEpoch++;retainedSeekSeconds=null;
+                    retainedVolume=null;retainedMuted=null;stopStream();
+                  }}>
                   Arrêter la lecture
                 </button>
               {/if}

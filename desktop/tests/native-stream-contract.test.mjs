@@ -65,6 +65,9 @@ test("video CSP allows only Tauri custom media and no token-bearing URLs",()=>{
   assert.match(ui, /negotiation\.hlsPaths\[source\.id\]/);
   assert.match(ui, /getSubtitleVtt/);
   assert.match(ui, /URL\.revokeObjectURL\(old\)/);
+  assert.match(ui, /const pinnedSource=selectedAudioIndex!==null/);
+  assert.match(ui, /retainedVolume=videoElement\?\.volume\?\?null/);
+  assert.match(ui, /videoElement\.muted=retainedMuted/);
   assert.match(ui, /src=\{streamKind==="direct"\?streamTicket\.url:undefined\}/);
   assert.match(ui, /onerror=/);
   assert.match(ui, /stopStream\(\)/);

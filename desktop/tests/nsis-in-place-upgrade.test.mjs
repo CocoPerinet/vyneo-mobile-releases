@@ -52,8 +52,8 @@ test('signed updater fixture uses ephemeral Minisign proof and rejects tampering
   assert.match(signer,/EPHEMERAL_SIGNED_QA_ONLY_ON_HOSTED_PR_WITHOUT_RELEASE_SECRET/);
   assert.match(signer,/signer generate --ci -w \$key/);
   assert.match(signer,/signer sign -f \$key \$artifactPath/);
-  assert.match(signer,/cargo run --quiet --manifest-path \$verifier -- \$pub \$sig \$artifactPath/);
-  assert.match(signer,/cargo run --quiet --manifest-path \$verifier -- \$pub \$sig \$mutated/);
+  assert.match(signer,/cargo run --quiet --locked --manifest-path \$verifier -- \$pub \$sig \$artifactPath/);
+  assert.match(signer,/cargo run --quiet --locked --manifest-path \$verifier -- \$pub \$sig \$mutated/);
   assert.match(signer,/if \(\$LASTEXITCODE -eq 0\)/);
   assert.match(signer,/EPHEMERAL_TAMPERED_NSIS_REJECTED_PASS/);
   assert.match(signer,/Remove-Item -LiteralPath \$dir -Recurse -Force/);

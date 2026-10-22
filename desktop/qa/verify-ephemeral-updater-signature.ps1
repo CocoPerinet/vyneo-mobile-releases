@@ -49,7 +49,7 @@ try {
       throw 'EPHEMERAL_NSIS_SIGNATURE_FAILED'
     }
 
-    cargo run --quiet --manifest-path $verifier -- $pub $sig $artifactPath
+    cargo run --quiet --locked --manifest-path $verifier -- $pub $sig $artifactPath
     if ($LASTEXITCODE -ne 0) { throw 'VALID_SIGNED_NSIS_REJECTED' }
 
     # Flip one byte of a COPY of the signed executable; never modify
@@ -65,7 +65,7 @@ try {
       $stream.WriteByte($byte -bxor 1)
     } finally { $stream.Dispose() }
 
-    cargo run --quiet --manifest-path $verifier -- $pub $sig $mutated *> $null
+    cargo run --quiet --locked --manifest-path $verifier -- $pub $sig $mutated *> $null
     if ($LASTEXITCODE -eq 0) {
       throw 'TAMPERED_SIGNED_NSIS_WAS_ACCEPTED'
     }

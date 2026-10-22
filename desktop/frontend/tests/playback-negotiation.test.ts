@@ -123,6 +123,84 @@ describe("negotiated Jellyfin HLS is tokenless and constrained",()=>{
     expect(posted.SubtitleStreamIndex).toBe(-1);
     expect(requests.every(r=>!r.url.href.includes(TOKEN))).toBe(true);
   });
+  it("negotiates graphical PGS burn-in only by explicit selection",async()=>{
+    const requests:Array<{url:URL,options:RequestInit}>=[];
+    let method="Encode",advertise=true;
+    const fetcher=vi.fn(async(req:RequestInfo|URL,options:RequestInit={})=>{
+      const address=new URL(String(req));
+      requests.push({url:address,options});
+      if(address.pathname==="/Users/AuthenticateByName")
+        return new Response(JSON.stringify({User:{Id:USER,Name:"QA"},
+          AccessToken:TOKEN}),{
+          headers:{"Content-Type":"application/json"}
+        });
+      if(address.pathname==="/Users/Me")
+        return new Response(JSON.stringify({Id:USER,Name:"QA"}),{
+          headers:{"Content-Type":"application/json"}
+        });
+      if(address.pathname==="/Items/"+ITEM+"/PlaybackInfo"){
+        const body=JSON.parse(String(options.body));
+        const subtitleIndex=body.SubtitleStreamIndex;
+        return new Response(JSON.stringify(sample({
+          SupportsTranscoding:advertise,
+          MediaStreams:[
+            {Type:"Video",Index:0,Codec:"h264"},
+            {Type:"Audio",Index:1,Codec:"aac"},
+            {Type:"Subtitle",Index:4,Codec:"pgssub"}
+          ],
+          TranscodingUrl:url+"&SubtitleStreamIndex="+subtitleIndex+
+            "&SubtitleMethod="+method+
+            (body.AudioStreamIndex===undefined?"":
+              "&AudioStreamIndex="+body.AudioStreamIndex)
+        })),{headers:{"Content-Type":"application/json"}});
+      }
+      throw new Error("UNEXPECTED_API");
+    }) as typeof fetch;
+    const api=new JellyfinApi({fetcher});
+    api.enableReadOnlyQa();await api.login("QA","fixture");
+    const before=requests.length;
+    await expect(api.negotiatePlaybackInfo(ITEM,{
+      mediaSourceId:SOURCE,graphicSubtitleIndex:-1
+    })).rejects.toThrow("SUBTITLE_TRACK_INVALID");
+    await expect(api.negotiatePlaybackInfo(ITEM,{
+      mediaSourceId:SOURCE,graphicSubtitleIndex:10001
+    })).rejects.toThrow("SUBTITLE_TRACK_INVALID");
+    await expect(api.negotiatePlaybackInfo(ITEM,{
+      mediaSourceId:SOURCE
+    })).rejects.toThrow("AUDIO_TRACK_INVALID");
+    expect(requests).toHaveLength(before);
+    const burn=await api.negotiatePlaybackInfo(ITEM,{
+      mediaSourceId:SOURCE,graphicSubtitleIndex:4,audioStreamIndex:1
+    });
+    expect(burn.hlsPaths[SOURCE]).toContain("SubtitleStreamIndex=4");
+    expect(burn.hlsPaths[SOURCE]).toContain("SubtitleMethod=Encode");
+    expect(burn.hlsPaths[SOURCE]).not.toContain("private-secret");
+    const body=JSON.parse(String(requests.at(-1)?.options.body));
+    expect(body.AudioStreamIndex).toBe(1);
+    expect(body.SubtitleStreamIndex).toBe(4);
+    expect(body.MediaSourceId).toBe(SOURCE);
+    expect(body.EnableDirectPlay).toBe(false);
+    expect(body.EnableDirectStream).toBe(false);
+    expect(body.AllowVideoStreamCopy).toBe(false);
+    expect(body.AlwaysBurnInSubtitleWhenTranscoding).toBe(true);
+    expect(body.DeviceProfile.SubtitleProfiles).toContainEqual({
+      Format:"pgssub",Method:"Encode"
+    });
+    expect(requests.every(r=>r.url.origin===SERVER_ORIGIN &&
+      !r.url.href.includes(TOKEN))).toBe(true);
+    method="External";
+    await expect(api.negotiatePlaybackInfo(ITEM,{
+      mediaSourceId:SOURCE,graphicSubtitleIndex:4
+    })).rejects.toThrow("SUBTITLE_BURNIN_UNAVAILABLE");
+    method="Encode";advertise=false;
+    await expect(api.negotiatePlaybackInfo(ITEM,{
+      mediaSourceId:SOURCE,graphicSubtitleIndex:4
+    })).rejects.toThrow("SUBTITLE_BURNIN_UNAVAILABLE");
+    advertise=true;
+    await expect(api.negotiatePlaybackInfo(ITEM,{
+      mediaSourceId:SOURCE,graphicSubtitleIndex:3
+    })).rejects.toThrow("SUBTITLE_BURNIN_UNAVAILABLE");
+  });
   it("POSTs a strict WebView2 device profile only when starting playback",async()=>{
     const requests:Array<{url:URL,options:RequestInit}>=[];
     const fetcher=vi.fn(async(req:RequestInfo|URL,

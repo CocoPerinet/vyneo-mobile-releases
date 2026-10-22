@@ -17,7 +17,7 @@
   import {hasArtwork,lazyArtwork} from "./artwork";
   import type {EpisodePage,MediaItem,PlaybackProbe,PlaybackSource,SeasonSummary}
     from "./types";
-  import {displayTrack,hasTrack,selectableTracks,supportsWebVttConversion}
+  import {displayTrack,graphicSubtitleIndex,hasTrack,selectableTracks}
     from "./playback-tracks";
 
   type Props={
@@ -58,6 +58,7 @@
   let sourceInUse=$state<PlaybackSource|null>(null);
   let selectedAudioIndex=$state<number|null>(null);
   let selectedSubtitleIndex=$state<number|null>(null);
+  let burnedSubtitleIndex=$state<number|null>(null);
   let subtitleBlobUrl=$state<string|null>(null);
   let subtitleLoading=$state(false);
   let subtitleError=$state("");
@@ -85,7 +86,10 @@
   let audioTracks=$derived(selectableTracks(tracksSource,"Audio"));
   let subtitleTracks=$derived(selectableTracks(tracksSource,"Subtitle"));
   let unsupportedSubtitles=$derived(tracksSource?.tracks.some(track=>
-    track.kind==="Subtitle" && !supportsWebVttConversion(track))??false);
+    track.kind==="Subtitle" && !subtitleTracks.some(other=>
+      other.index===track.index))??false);
+  let graphicalSubtitles=$derived(subtitleTracks.some(track=>
+    graphicSubtitleIndex(tracksSource,track.index)));
   let activeSubtitle=$derived(subtitleTracks.find(track=>
     track.index===selectedSubtitleIndex)??null);
   const duration=(ticks:number|null|undefined)=>
@@ -277,7 +281,7 @@
   function resetTrackSelection(){
     selectedAudioIndex=null;selectedSubtitleIndex=null;
     retainedSeekSeconds=null;retainedVolume=null;retainedMuted=null;
-    sourceInUse=null;subtitleError="";
+    burnedSubtitleIndex=null;sourceInUse=null;subtitleError="";
     clearSubtitleBlob();
   }
   async function loadSelectedSubtitle(){
@@ -288,6 +292,9 @@
       selectedSubtitleIndex=null;
       return;
     }
+    // Bitmap subtitles are already composited by Jellyfin's transcoder.
+    // Never request their raw stream as text or create a <track> element.
+    if(graphicSubtitleIndex(source,index))return;
     const request=subtitleEpoch,version=epoch,target=shown.id;
     subtitleLoading=true;
     try{
@@ -304,13 +311,32 @@
       if(request===subtitleEpoch)subtitleLoading=false;
     }
   }
+  function restartStreamPreservingState(){
+    const previousSource=sourceInUse?.id??tracksSource?.id;
+    const seconds=videoElement?.currentTime;
+    retainedSeekSeconds=typeof seconds==="number" &&
+      Number.isFinite(seconds) && seconds>0?seconds:null;
+    retainedVolume=videoElement?.volume??null;
+    retainedMuted=videoElement?.muted??null;
+    streamEpoch++;
+    stopStream();
+    void startNativeVideo(previousSource);
+  }
   async function chooseSubtitle(value:string){
+    if(streamBusy || subtitleLoading)return;
     const index=value==="off"?null:Number(value);
     if(index!==null && !hasTrack(tracksSource,"Subtitle",index)){
       subtitleError="Piste de sous-titres non disponible.";
       return;
     }
+    if(index===selectedSubtitleIndex)return;
+    const switchBurnIn=burnedSubtitleIndex!==null ||
+      graphicSubtitleIndex(tracksSource,index);
     selectedSubtitleIndex=index;
+    if(streamTicket && switchBurnIn){
+      restartStreamPreservingState();
+      return;
+    }
     await loadSelectedSubtitle();
   }
   function chooseAudio(value:string){
@@ -320,17 +346,8 @@
       return;
     }
     if(streamBusy || index===selectedAudioIndex)return;
-    const previousSource=sourceInUse?.id??tracksSource?.id;
-    const seconds=videoElement?.currentTime;
     selectedAudioIndex=index;
-    if(!streamTicket)return; // Selected before first playback.
-    retainedSeekSeconds=typeof seconds==="number" &&
-      Number.isFinite(seconds) && seconds>0?seconds:null;
-    retainedVolume=videoElement?.volume??null;
-    retainedMuted=videoElement?.muted??null;
-    streamEpoch++;
-    stopStream();
-    void startNativeVideo(previousSource);
+    if(streamTicket)restartStreamPreservingState();
   }
   function stopStream(failed=false){
     clearSubtitleBlob();
@@ -350,7 +367,7 @@
       videoElement.load();
     }
     streamTicket=null;streamKind=null;streamRuntimeTicks=null;
-    sourceInUse=null;resumeApplied=false;
+    sourceInUse=null;burnedSubtitleIndex=null;resumeApplied=false;
     streamBusy=false;streamStarted=false;
     if(current)void api.endNativePlayback(current.ticket).catch(()=>{});
   }
@@ -362,14 +379,21 @@
     const target=shown,version=epoch,request=++streamEpoch;
     // Remember the source before stopStream discards its old capability.
     const selectedSource=preferredSourceId??tracksSource?.id;
+    const graphicIndex=selectedSubtitleIndex!==null &&
+      graphicSubtitleIndex(tracksSource,selectedSubtitleIndex)
+        ?selectedSubtitleIndex:null;
     stopStream();streamBusy=true;streamError="";reportWarning="";
     playbackNotificationSent=false;
     try{
-      if(selectedAudioIndex!==null && !selectedSource)
-        throw new Error("AUDIO_TRACK_UNAVAILABLE");
+      if((selectedAudioIndex!==null || graphicIndex!==null) &&
+         !selectedSource)
+        throw new Error("TRACK_SOURCE_UNAVAILABLE");
       const negotiation=await api.negotiatePlaybackInfo(target.id,
-        selectedAudioIndex!==null?{
-          audioStreamIndex:selectedAudioIndex,
+        selectedAudioIndex!==null || graphicIndex!==null?{
+          ...(selectedAudioIndex!==null?
+            {audioStreamIndex:selectedAudioIndex}:{}),
+          ...(graphicIndex!==null?
+            {graphicSubtitleIndex:graphicIndex}:{}),
           mediaSourceId:selectedSource!
         }:undefined);
       if(epoch!==version || request!==streamEpoch ||
@@ -379,10 +403,11 @@
       // During a track change keep the same media source even when the
       // user returns to "Audio automatique": never switch editions.
       const pinnedSource=selectedAudioIndex!==null ||
+        graphicIndex!==null ||
         preferredSourceId!==undefined && preferredSourceId!==null;
       const candidates=probe.sources.filter(source=>
         !pinnedSource || source.id===selectedSource);
-      const direct=selectedAudioIndex===null?
+      const direct=selectedAudioIndex===null && graphicIndex===null?
         selectDirectMp4({...probe,sources:candidates}):null;
       const hls=direct?null:selectJellyfinHls({
         ...probe,sources:candidates.filter(source=>
@@ -415,6 +440,7 @@
         });
       }
       streamKind=mode;streamTicket=ticket;sourceInUse=source;
+      burnedSubtitleIndex=graphicIndex;
       if(selectedSubtitleIndex!==null &&
          !hasTrack(source,"Subtitle",selectedSubtitleIndex))
         selectedSubtitleIndex=null;
@@ -481,6 +507,9 @@
         streamError=error instanceof Error &&
           error.message==="AUDIO_TRACK_UNAVAILABLE"
           ?"Jellyfin ne peut pas sélectionner cette piste audio."
+          :error instanceof Error &&
+            error.message==="SUBTITLE_BURNIN_UNAVAILABLE"
+            ?"Jellyfin ne peut pas incruster cette piste graphique."
           :"Lecture impossible. Vérifiez le format et l'accès à Jellyfin.";
         // A rejected dynamic HLS import or WebView2 initialization must
         // never leave a valid server-media capability in memory.
@@ -746,10 +775,17 @@
                     {/each}
                   </select>
                 </label>
+                {#if graphicalSubtitles}
+                  <p class="vy-detail-muted">
+                    Les sous-titres graphiques utilisent une incrustation
+                    vidéo Jellyfin : transcodage plus lourd, démarrage
+                    potentiellement plus lent.
+                  </p>
+                {/if}
                 {#if unsupportedSubtitles}
                   <p class="vy-detail-muted">
-                    Sous-titres graphiques (PGS/DVD) : conversion vidéo
-                    nécessaire, non disponible dans ce lecteur pour l'instant.
+                    Certains formats de sous-titres ne sont pas pris en
+                    charge par ce lecteur.
                   </p>
                 {/if}
                 {#if subtitleLoading}

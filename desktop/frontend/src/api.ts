@@ -7,7 +7,8 @@ import type {PlaybackReport} from "./playback-report";
 import {parseNegotiatedPlayback,WEBVIEW2_DEVICE_PROFILE,NEGOTIATED_MAX_BITRATE} from "./playback-negotiation";
 import type {NegotiatedPlayback} from "./playback-negotiation";
 import {parseSeasons,parsePlaybackInfo} from "./media-details";
-import {negotiatedAudioIndexMatches} from "./playback-tracks";
+import {negotiatedAudioIndexMatches,negotiatedGraphicBurnInMatches,
+  supportsGraphicBurnIn} from "./playback-tracks";
 import type {RecentSeason} from "./new-seasons";
 import type {TrendingRank} from "./trending";
 import {candidateOffsets,CANDIDATE_BATCH_SIZE} from "./candidate-pages";
@@ -528,45 +529,66 @@ export class JellyfinApi {
    * The server supplies a negotiated URL; we strip tokens and pin its path
    * before the native protocol is permitted to use it. */
   async negotiatePlaybackInfo(itemId:string,selection?:{
-    audioStreamIndex:number;
+    audioStreamIndex?:number;
+    graphicSubtitleIndex?:number;
     mediaSourceId:string;
   }):Promise<NegotiatedPlayback>{
     const uid=this.requireUser(),generation=this.authGeneration;
     if(!validId(itemId))throw new Error("PLAYBACK_ITEM_INVALID");
+    const audio=selection?.audioStreamIndex;
+    const graphic=selection?.graphicSubtitleIndex;
     if(selection && (!validId(selection.mediaSourceId) ||
-       !Number.isSafeInteger(selection.audioStreamIndex) ||
-       selection.audioStreamIndex<0 || selection.audioStreamIndex>10000))
-      throw new Error("AUDIO_TRACK_INVALID");
+       (audio===undefined && graphic===undefined) ||
+       (audio!==undefined && (!Number.isSafeInteger(audio) ||
+         audio<0 || audio>10000)) ||
+       (graphic!==undefined && (!Number.isSafeInteger(graphic) ||
+         graphic<0 || graphic>10000))))
+      throw new Error(graphic!==undefined?
+        "SUBTITLE_TRACK_INVALID":"AUDIO_TRACK_INVALID");
+    const burnIn=graphic!==undefined;
     const raw=await this.json("/Items/"+itemId+"/PlaybackInfo",{
       method:"POST",maxBytes:786432,
       timeoutMs:PLAYBACK_INSPECTION_TIMEOUT_MS,
       body:{
         UserId:uid,MaxStreamingBitrate:NEGOTIATED_MAX_BITRATE,
         MaxAudioChannels:2,StartTimeTicks:0,
-        EnableDirectPlay:!selection,EnableDirectStream:true,
+        EnableDirectPlay:!selection,EnableDirectStream:!burnIn,
         EnableTranscoding:true,
-        AllowVideoStreamCopy:true,AllowAudioStreamCopy:true,
-        // Do not auto-burn subtitles while WebView2 controls its own
-        // text tracks. Selected audio always requires a vetted HLS URL.
-        SubtitleStreamIndex:-1,
-        ...(selection?{
-          MediaSourceId:selection.mediaSourceId,
-          AudioStreamIndex:selection.audioStreamIndex
-        }:{}),
-        DeviceProfile:WEBVIEW2_DEVICE_PROFILE
+        AllowVideoStreamCopy:!burnIn,AllowAudioStreamCopy:true,
+        // Explicit -1 disables default/forced subtitle auto-burn.
+        // Graphical tracks are burned ONLY on user selection, with server
+        // transcoding required, never by downloading an image subtitle.
+        SubtitleStreamIndex:burnIn?graphic:-1,
+        ...(burnIn?{AlwaysBurnInSubtitleWhenTranscoding:true}:{}),
+        ...(selection?{MediaSourceId:selection.mediaSourceId}:{}),
+        ...(audio!==undefined?{AudioStreamIndex:audio}:{}),
+        DeviceProfile:burnIn?{
+          ...WEBVIEW2_DEVICE_PROFILE,
+          SubtitleProfiles:[
+            {Format:"pgs",Method:"Encode"},
+            {Format:"pgssub",Method:"Encode"},
+            {Format:"dvdsub",Method:"Encode"},
+            {Format:"dvbsub",Method:"Encode"},
+            {Format:"idx",Method:"Encode"}
+          ]
+        }:WEBVIEW2_DEVICE_PROFILE
       }
     });
     this.assertSession(uid,generation);
     const result=parseNegotiatedPlayback(raw,itemId);
     if(selection){
       const source=result.probe.sources.find(source=>
-        source.id===selection.mediaSourceId &&
-        source.tracks.some(track=>track.kind==="Audio" &&
-          track.index===selection.audioStreamIndex));
-      if(!source || !negotiatedAudioIndexMatches(
-        result.hlsPaths[selection.mediaSourceId]??"",
-        selection.audioStreamIndex))
+        source.id===selection.mediaSourceId);
+      const path=result.hlsPaths[selection.mediaSourceId]??"";
+      if(audio!==undefined && (!source ||
+        !source.tracks.some(track=>track.kind==="Audio" &&
+          track.index===audio) || !negotiatedAudioIndexMatches(path,audio)))
         throw new Error("AUDIO_TRACK_UNAVAILABLE");
+      if(burnIn && (!source || !source.transcoding ||
+        !source.tracks.some(track=>track.index===graphic &&
+          supportsGraphicBurnIn(track)) ||
+        !negotiatedGraphicBurnInMatches(path,graphic!)))
+        throw new Error("SUBTITLE_BURNIN_UNAVAILABLE");
     }
     return result;
   }

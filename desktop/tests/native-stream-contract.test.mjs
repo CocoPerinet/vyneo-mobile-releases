@@ -43,6 +43,9 @@ test("HLS uses local capability assets with pinned Jellyfin origin",()=>{
   assert.match(page,/import\("hls.js"\)/);
   assert.match(page,/selectJellyfinHls\(\{/);
   assert.match(page,/negotiatePlaybackInfo\(target\.id,\s*selectedAudioIndex/);
+  assert.match(page,/graphicSubtitleIndex/);
+  assert.match(page,/restartStreamPreservingState/);
+  assert.match(page,/burnedSubtitleIndex=graphicIndex/);
   assert.match(page,/AudioStreamIndex|audioStreamIndex/);
   assert.match(page,/getSubtitleVtt/);
   assert.match(page,/negotiation\.hlsPaths\[source\.id\]/);

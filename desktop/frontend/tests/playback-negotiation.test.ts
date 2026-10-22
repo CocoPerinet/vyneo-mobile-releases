@@ -80,9 +80,13 @@ describe("negotiated Jellyfin HLS is tokenless and constrained",()=>{
       const url=new URL(String(req));requests.push({url,options});
       if(url.pathname==="/Users/AuthenticateByName")
         return new Response(JSON.stringify({User:{Id:USER,Name:"QA"},
-          AccessToken:TOKEN}));
+          AccessToken:TOKEN}),{
+          headers:{"Content-Type":"application/json"}
+        });
       if(url.pathname==="/Users/Me")
-        return new Response(JSON.stringify({Id:USER,Name:"QA"}));
+        return new Response(JSON.stringify({Id:USER,Name:"QA"}),{
+          headers:{"Content-Type":"application/json"}
+        });
       if(url.pathname==="/Items/"+ITEM+"/PlaybackInfo"){
         const body=JSON.parse(String(options.body));
         return new Response(JSON.stringify(sample({
@@ -90,7 +94,9 @@ describe("negotiated Jellyfin HLS is tokenless and constrained",()=>{
             {Type:"Audio",Index:1,Codec:"aac"},
             {Type:"Audio",Index:2,Codec:"eac3"}],
           TranscodingUrl:urlForAudio(body.AudioStreamIndex)
-        })));
+        })),{
+          headers:{"Content-Type":"application/json"}
+        });
       }
       throw new Error("UNEXPECTED_API");
     }) as typeof fetch;

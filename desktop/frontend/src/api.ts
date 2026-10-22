@@ -618,7 +618,10 @@ export class JellyfinApi {
       }
       text+=decoder.decode();
     }finally{
-      await reader.cancel().catch(()=>{});
+      // A Response cloned by a cache/test may tee its body. Awaiting
+      // cancellation can then hang until the unused second branch closes.
+      // Cancellation is best-effort; the bounded reader exits immediately.
+      void reader.cancel().catch(()=>{});
     }
     const clean=text.replace(/^\uFEFF/,"");
     if(!/^WEBVTT(?:[ \t][^\r\n]*)?(?:\r?\n|$)/.test(clean) ||

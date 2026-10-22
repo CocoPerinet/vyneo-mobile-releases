@@ -39,12 +39,12 @@ try {
   try {
     # Suppress key-generation output. The private key is never printed,
     # uploaded as an artifact, or checked into the repository.
-    npm run tauri -- signer generate --ci -w $key *> $null
+    npm.cmd run tauri -- signer generate --ci -w $key *> $null
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $key) -or
         -not (Test-Path -LiteralPath $pub)) {
       throw 'EPHEMERAL_KEY_GENERATION_FAILED'
     }
-    npm run tauri -- signer sign -f $key $artifactPath *> $null
+    npm.cmd run tauri -- signer sign -f $key $artifactPath *> $null
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $sig)) {
       throw 'EPHEMERAL_NSIS_SIGNATURE_FAILED'
     }

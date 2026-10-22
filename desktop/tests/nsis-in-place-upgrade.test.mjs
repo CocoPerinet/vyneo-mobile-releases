@@ -50,7 +50,7 @@ test('signed updater fixture uses ephemeral Minisign proof and rejects tampering
   assert.match(signer,/GITHUB_EVENT_NAME -ne 'pull_request'/);
   assert.match(signer,/RUNNER_ENVIRONMENT -ne 'github-hosted'/);
   assert.match(signer,/EPHEMERAL_SIGNED_QA_ONLY_ON_HOSTED_PR_WITHOUT_RELEASE_SECRET/);
-  assert.match(signer,/signer generate --ci -w \$key/);
+  assert.match(signer,/npm\.cmd run tauri -- signer generate --ci -w \$key/);
   assert.match(signer,/signer sign -f \$key \$artifactPath/);
   assert.match(signer,/cargo run --quiet --locked --manifest-path \$verifier -- \$pub \$sig \$artifactPath/);
   assert.match(signer,/cargo run --quiet --locked --manifest-path \$verifier -- \$pub \$sig \$mutated/);

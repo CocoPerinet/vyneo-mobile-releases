@@ -110,6 +110,23 @@ try {
   }
   Write-Output "NSIS_QA_BASELINE=$baselineTag"
 
+  # Never execute even the published stable installer before verifying it
+  # against the public key EMBEDDED in the installed stable Tauri client.
+  gh release download $baselineTag -R $repo --pattern ($oldAsset + '.sig') --dir $dir
+  if ($LASTEXITCODE -ne 0) { throw 'PREVIOUS_SIGNED_INSTALLER_SIGNATURE_MISSING' }
+  $stableSig = $oldExe + '.sig'
+  $stablePub = Join-Path $dir 'pinned-stable-public.pub'
+  $stableConfig = Get-Content -LiteralPath 'src-tauri/tauri.conf.json' -Raw |
+    ConvertFrom-Json
+  $pinnedKey = [string]$stableConfig.plugins.updater.pubkey
+  if ([string]::IsNullOrWhiteSpace($pinnedKey)) {
+    throw 'PINNED_STABLE_PUBLIC_KEY_MISSING'
+  }
+  [System.IO.File]::WriteAllText($stablePub,$pinnedKey)
+  cargo run --quiet --locked --manifest-path qa/signed-update-verifier/Cargo.toml -- $stablePub $stableSig $oldExe
+  if ($LASTEXITCODE -ne 0) { throw 'PUBLISHED_STABLE_INSTALLER_SIGNATURE_INVALID' }
+  Write-Output 'VYNEO_PUBLISHED_STABLE_PINNED_KEY_PASS'
+
   Run-Silent $oldExe
   $installedByTest = $true
   $previous = Require-One ($baselineVersion.ToString())

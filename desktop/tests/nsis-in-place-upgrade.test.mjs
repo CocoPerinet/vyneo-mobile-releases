@@ -29,6 +29,13 @@ test('upgrade QA installs the last signed stable first, checks one slot and pres
   assert.match(runner,/gh release list -R \$repo/);
   assert.match(runner,/\^desktop-v\\d\+\\\.\\d\+\\\.\\d\+\$/);
   assert.match(runner,/gh release download \$baselineTag/);
+  assert.match(runner,/PREVIOUS_SIGNED_INSTALLER_SIGNATURE_MISSING/);
+  assert.match(runner,/cargo run --quiet --locked --manifest-path qa\/signed-update-verifier\/Cargo\.toml -- \$stablePub \$stableSig \$oldExe/);
+  assert.match(runner,/PUBLISHED_STABLE_INSTALLER_SIGNATURE_INVALID/);
+  assert.match(runner,/VYNEO_PUBLISHED_STABLE_PINNED_KEY_PASS/);
+  assert.ok(runner.indexOf('VYNEO_PUBLISHED_STABLE_PINNED_KEY_PASS') <
+    runner.indexOf('Run-Silent $oldExe'),
+    'the previously published installer must verify before execution');
   assert.match(runner,/Vyneo-Desktop-\$\(\$baselineVersion\.ToString\(\)\)-windows-x64\.exe/);
   assert.match(runner,/npm run tauri -- build --bundles nsis --config \$config/);
   assert.match(runner,/bundle = @\{ createUpdaterArtifacts = \$false \}/);

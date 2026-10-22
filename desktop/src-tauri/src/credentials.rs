@@ -4,6 +4,13 @@ use keyring::{Entry, Error};
 use serde_json::{json, Value};
 
 const ACCOUNT: &str = "active-user";
+// A real Jellyfin QA session can exist ONLY in process memory.
+// Do not even open an OS vault entry in this debug-only candidate.
+fn vault_disabled_in_qa(app: &tauri::AppHandle) -> bool {
+    cfg!(feature="interactive-jellyfin-qa") ||
+        app.config().identifier == "fr.visyren.vyneo.desktop.authqa"
+}
+
 fn service(identifier: &str) -> Result<&'static str, String> {
     match identifier {
         "fr.visyren.vyneo.desktop" =>
@@ -40,6 +47,9 @@ pub fn save_saved_session(
     app: tauri::AppHandle,
     user_id: String, username: String, access_token: String,
 ) -> Result<(), String> {
+    if vault_disabled_in_qa(&app) {
+        return Err("VAULT_DISABLED_IN_QA".to_string());
+    }
     if !id_valid(&user_id) || !name_valid(&username) ||
         !token_valid(&access_token) {
         return Err("VAULT_INVALID_SESSION".to_string());
@@ -52,6 +62,7 @@ pub fn save_saved_session(
 }
 #[tauri::command]
 pub fn read_saved_session(app: tauri::AppHandle) -> Result<Option<Value>, String> {
+    if vault_disabled_in_qa(&app) { return Ok(None); }
     let stored=match vault(&app)?.get_password() {
         Ok(value)=>value,
         Err(Error::NoEntry)=>return Ok(None),
@@ -69,6 +80,7 @@ pub fn read_saved_session(app: tauri::AppHandle) -> Result<Option<Value>, String
 }
 #[tauri::command]
 pub fn forget_saved_session(app: tauri::AppHandle) -> Result<(), String> {
+    if vault_disabled_in_qa(&app) { return Ok(()); }
     match vault(&app)?.delete_credential() {
         Ok(()) | Err(Error::NoEntry)=>Ok(()),
         Err(_)=>Err("VAULT_DELETE_FAILED".to_string())
@@ -89,6 +101,7 @@ mod tests {
         assert_ne!(service("fr.visyren.vyneo.desktop.jellyfinqa").unwrap(),
             service("fr.visyren.vyneo.desktop.preview").unwrap());
         assert!(service("https://attacker.example").is_err());
+        assert!(service("fr.visyren.vyneo.desktop.authqa").is_err());
         assert!(id_valid("0123456789abcdef0123456789abcdef"));
         assert!(!id_valid("../../../etc/passwd"));
         assert!(token_valid("ThisIsAValidSecret12345"));

@@ -25,6 +25,8 @@ export function updateNotice(result:UpdateOutcome):string{
 }
 export function updateFailure(error:unknown):string{
   const code=error instanceof Error?error.message:error;
+  if(code==="UPDATE_DISABLED_IN_QA")
+    return "Mises à jour désactivées dans cette version temporaire de test.";
   if(code==="UPDATE_BUSY")return "Une vérification est déjà en cours.";
   if(code==="UPDATE_CHECK_TIMEOUT" || code==="UPDATE_DOWNLOAD_TIMEOUT")
     return "Délai dépassé. Réessayez plus tard.";

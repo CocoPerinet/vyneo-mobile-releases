@@ -29,7 +29,7 @@ describe("manually check signed updates without a second installation",()=>{
   it("maps only fixed error codes, without displaying an unsafe update URL",()=>{
     const secret="https://evil.example/update?token=SECRET";
     for(const err of [
-      "UPDATE_BUSY",new Error("UPDATE_CHECK_TIMEOUT"),
+      "UPDATE_DISABLED_IN_QA","UPDATE_BUSY",new Error("UPDATE_CHECK_TIMEOUT"),
       "UPDATE_DOWNLOAD_TIMEOUT","UPDATE_CHECK_FAILED",
       "UPDATE_DOWNLOAD_FAILED","UPDATE_INSTALL_FAILED",
       new Error(secret),secret
@@ -39,6 +39,7 @@ describe("manually check signed updates without a second installation",()=>{
       expect(msg).not.toContain(secret);
       expect(msg).not.toContain("SECRET");
     }
+    expect(updateFailure("UPDATE_DISABLED_IN_QA")).toContain("temporaire de test");
     expect(updateFailure("UPDATE_BUSY")).toContain("déjà en cours");
     expect(updateFailure("UPDATE_INSTALL_FAILED")).toContain("version actuelle");
   });

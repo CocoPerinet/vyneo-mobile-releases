@@ -1,6 +1,7 @@
 <script lang="ts">
   import type {LibrarySnapshot,MediaItem,SessionPublic,ViewKey,Shelf,CatalogKind,LibraryGroupKind} from "./types";
   import {onMount} from "svelte";
+  import {invoke} from "@tauri-apps/api/core";
   import {nativeVault} from "./credential-vault";
   import {nativeUpdater,updateNotice,updateFailure} from "./native-updater";
   import {JellyfinApi} from "./api";
@@ -53,6 +54,7 @@
   let quickRequest=0;
   let vaultNotice=$state("");
   let rememberMe=$state(true);
+  let temporaryQa=$state(false);
   let credentialStored=$state(false);
   let restoreBusy=$state(true);
   let profileOpen=$state(false);
@@ -713,10 +715,24 @@
         vaultNotice="Connexion automatique indisponible. Reconnectez-vous si nécessaire.";
     }finally{restoreBusy=false;}
   }
-  onMount(()=>{void restoreSaved();});
+  onMount(()=>{
+    void (async()=>{
+      if(nativeVault.available){
+        try{
+          // Only the compile-time isolated QA build can report true.
+          temporaryQa=(await invoke("is_temporary_qa"))===true;
+          if(temporaryQa)rememberMe=false;
+        }catch{/* Older stable builds do not expose the QA marker. */}
+      }
+      await restoreSaved();
+    })();
+  });
   async function persistLogin(authenticated:SessionPublic){
     const credential=api.savedCredential();
-    if(rememberMe && credential && nativeVault.available){
+    if(temporaryQa){
+      // QA keeps the freshly approved Jellyfin session only in memory.
+      rememberMe=false;credentialStored=false;
+    }else if(rememberMe && credential && nativeVault.available){
       try{await nativeVault.save(credential);credentialStored=true;}catch{
         vaultNotice="Connexion réussie, mais la mémorisation sécurisée est indisponible.";
       }
@@ -943,7 +959,7 @@
         {/if}
         {#if loginError}<p class="vy-auth-error" role="alert">{loginError}</p>{/if}
         {#if vaultNotice}<p class="vy-auth-hint" role="status">{vaultNotice}</p>{/if}
-        {#if nativeVault.available}
+        {#if nativeVault.available && !temporaryQa}
           <label class="vy-remember">
             <input type="checkbox" bind:checked={rememberMe} />
             <span>Rester connecté sur cet appareil</span>
@@ -969,9 +985,11 @@
           </button>
         {/if}
         <span class="vy-auth-hint">
-          {nativeVault.available
-            ?"Session enregistrée dans le coffre sécurisé de votre système."
-            :"Les identifiants ne sont pas enregistrés par Vynéo."}
+          {temporaryQa
+            ?"Version temporaire de test : aucune session mémorisée."
+            :nativeVault.available
+              ?"Session enregistrée dans le coffre sécurisé de votre système."
+              :"Les identifiants ne sont pas enregistrés par Vynéo."}
         </span>
       </form>
     </main>
@@ -1011,10 +1029,12 @@
           {#if profileOpen}
             <section class="vy-account-menu" aria-label="Profil Vynéo">
               <strong>{session.username}</strong>
-              <small>{vaultNotice ||
-                (credentialStored
-                  ?"Connexion mémorisée sur cet appareil"
-                  :"Session active, non mémorisée")}</small>
+              <small>{temporaryQa
+                ?"Session de test temporaire, non mémorisée"
+                :vaultNotice ||
+                  (credentialStored
+                    ?"Connexion mémorisée sur cet appareil"
+                    :"Session active, non mémorisée")}</small>
               {#if nativeUpdater.available}
                 <button type="button" disabled={updateBusy}
                   onclick={()=>void checkUpdates()}>

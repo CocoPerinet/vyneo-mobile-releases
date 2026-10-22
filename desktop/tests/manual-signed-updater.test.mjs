@@ -10,7 +10,7 @@ const qaConfig=JSON.parse(read("src-tauri/tauri.jellyfin-qa.conf.json"));
 
 test("existing signed updater available from account menu even when window is warm",()=>{
   assert.match(main,/\#\[tauri::command\]\s*async fn check_signed_update_now/);
-  assert.match(main,/check_signed_update_now,\s*credentials::save_saved_session/);
+  assert.match(main,/check_signed_update_now,\s*(?:is_temporary_qa,\s*)?credentials::save_saved_session/);
   assert.match(main,/tauri::async_runtime::spawn\(async move \{/);
   assert.match(app,/Vérifier les mises à jour/);
   assert.match(app,/nativeUpdater\.check\(\)/);

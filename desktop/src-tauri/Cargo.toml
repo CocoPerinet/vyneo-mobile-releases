@@ -9,6 +9,8 @@ publish = false
 [features]
 # QA build only; these synthetic media fixtures are never built into stable.
 native-e2e-qa = []
+# Portable, user-authorized real Jellyfin QA, never a release build.
+interactive-jellyfin-qa = []
 
 [build-dependencies]
 tauri-build = "=2.7.3"

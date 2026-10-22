@@ -1,4 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// A candidate allowed to access the real Jellyfin API must never be bundled
+// as a release, installed in place, or share the stable application's identity.
+#[cfg(all(feature="interactive-jellyfin-qa", not(debug_assertions)))]
+compile_error!("Interactive Jellyfin QA is restricted to unsigned debug builds");
 
 mod quality_policy;
 mod credentials;
@@ -19,6 +23,8 @@ use tauri::{
 use tauri_plugin_updater::UpdaterExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
+const INTERACTIVE_QA_IDENTIFIER: &str = "fr.visyren.vyneo.desktop.authqa";
+fn interactive_qa() -> bool { cfg!(feature="interactive-jellyfin-qa") }
 const UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 const UPDATE_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(180);
 const AUTOMATIC_UPDATE_INTERVAL: Duration = Duration::from_secs(6*60*60);
@@ -47,7 +53,7 @@ async fn check_signed_update(
 ) -> Result<&'static str,&'static str> {
     // This must never attempt updater network access inside the isolated QA
     // executable; no credentials, release feed or second installation there.
-    if cfg!(feature="native-e2e-qa") { return Err("UPDATE_DISABLED_IN_QA"); }
+    if cfg!(feature="native-e2e-qa") || interactive_qa() { return Err("UPDATE_DISABLED_IN_QA"); }
     let permit=UpdatePermit::claim().ok_or("UPDATE_BUSY")?;
     check_signed_update_with_permit(app,permit).await
 }
@@ -112,7 +118,7 @@ fn reserve_automatic_update_check(
     Some(permit)
 }
 fn schedule_update_if_due(app: tauri::AppHandle) {
-    if cfg!(feature="native-e2e-qa") { return; }
+    if cfg!(feature="native-e2e-qa") || interactive_qa() { return; }
     let Ok(mut last)=LAST_AUTO_UPDATE_CHECK.lock() else { return; };
     let Some(permit)=reserve_automatic_update_check(&mut last,Instant::now())
         else { return; };
@@ -121,6 +127,9 @@ fn schedule_update_if_due(app: tauri::AppHandle) {
         let _=check_signed_update_with_permit(app,permit).await;
     });
 }
+
+#[tauri::command]
+fn is_temporary_qa() -> bool { interactive_qa() }
 
 #[tauri::command]
 async fn check_signed_update_now(
@@ -195,6 +204,7 @@ fn main() {
         )
         .invoke_handler(tauri::generate_handler![
             check_signed_update_now,
+            is_temporary_qa,
             credentials::save_saved_session,
             credentials::read_saved_session,
             credentials::forget_saved_session,
@@ -212,6 +222,12 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            // Fail closed: the QA feature and distinct runtime identity must
+            // always travel together. The stable identifier is never reused.
+            if interactive_qa() !=
+                (app.config().identifier == INTERACTIVE_QA_IDENTIFIER) {
+                return Err("INTERACTIVE_QA_IDENTITY_MISMATCH".into());
+            }
             let main = WebviewWindowBuilder::new(
                 app,
                 "main",
@@ -234,6 +250,9 @@ fn main() {
             let close_target = main.clone();
             main.on_window_event(move |event| {
                 if let WindowEvent::CloseRequested { api, .. } = event {
+                    // A portable QA has no tray; closing its window must end
+                    // the test rather than leaving an invisible process.
+                    if interactive_qa() { return; }
                     // Warm close preserves our OWN Vynéo DOM, not Jellyfin Web.
                     // Video is paused before hiding to avoid invisible playback.
                     api.prevent_close();
@@ -246,7 +265,7 @@ fn main() {
 
             // QA smoke is a hidden throwaway process: never add a tray icon
             // or expose a second app surface to the user's live desktop.
-            if !cfg!(feature="native-e2e-qa") {
+            if !cfg!(feature="native-e2e-qa") && !interactive_qa() {
             let tray_menu = MenuBuilder::new(app)
                 .text("open", "Ouvrir Vynéo")
                 .separator()

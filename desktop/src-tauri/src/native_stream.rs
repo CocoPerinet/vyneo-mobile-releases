@@ -4,7 +4,7 @@
 use std::{
     collections::HashMap,
     io::Read,
-    sync::{atomic::{AtomicUsize, Ordering}, Arc, Mutex},
+    sync::{atomic::{AtomicBool, AtomicUsize, Ordering}, Arc, Mutex},
     time::{Duration, Instant},
 };
 use serde::Serialize;
@@ -30,6 +30,7 @@ pub(crate) struct StreamGrant {
     pub(crate) kind: StreamKind,
     pub(crate) negotiated_hls: Option<reqwest::Url>,
     pub(crate) assets: Arc<Mutex<HashMap<String, reqwest::Url>>>,
+    pub(crate) first_segment_ready: Arc<AtomicBool>,
     pub(crate) expires: Instant,
 }
 
@@ -110,6 +111,7 @@ pub fn create_native_stream_ticket(
         token: access_token, device: device_id, kind: stream_kind,
         negotiated_hls,
         assets: Arc::new(Mutex::new(HashMap::new())),
+        first_segment_ready: Arc::new(AtomicBool::new(false)),
         expires: Instant::now() + TICKET_LIFETIME,
     };
     let mut map = state.grants.lock().map_err(|_| "STREAM_STATE_ERROR")?;

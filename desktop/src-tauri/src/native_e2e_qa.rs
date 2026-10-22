@@ -72,7 +72,7 @@ pub(crate) fn serve(
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use std::sync::Mutex;
+    use std::sync::{atomic::AtomicBool, Mutex};
     use std::time::Duration;
     fn demo()->StreamGrant{
         StreamGrant {
@@ -83,6 +83,7 @@ mod tests {
                     "/Videos/{ITEM}/master.m3u8?MediaSourceId={SOURCE}&VideoCodec=h264&AudioCodec=aac&SegmentContainer=ts"
                 )).into(),
             assets:Arc::new(Mutex::new(HashMap::new())),
+            first_segment_ready:Arc::new(AtomicBool::new(false)),
             expires:Instant::now()+Duration::from_secs(60)
         }
     }

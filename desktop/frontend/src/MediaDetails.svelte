@@ -4,6 +4,8 @@
   import {selectDirectMp4,selectJellyfinHls,resumeAtSeconds,
     playbackDurationSeconds} from "./native-playback";
   import type Hls from "hls.js";
+  import {initialHlsFragmentPolicy,firstFragmentReceived}
+    from "./hls-load-policy";
   import type {NativeStreamTicket} from "./native-playback";
   import {PlaybackReporter,playbackClock} from "./playback-report";
   import {unavailablePlaybackMessage,nativeHlsFailureMessage,
@@ -324,8 +326,13 @@
           manifestLoadingMaxRetry:2,
           levelLoadingMaxRetry:2,
           fragLoadingMaxRetry:2,
+          fragLoadPolicy:initialHlsFragmentPolicy(),
         });
         hlsPlayer=engine;
+        engine.on(Hls.Events.FRAG_LOADED,()=>{
+          if(request===streamEpoch)
+            firstFragmentReceived(engine.config.fragLoadPolicy);
+        });
         engine.on(Hls.Events.MEDIA_ATTACHED,()=>{
           if(request===streamEpoch)engine.loadSource(ticket.url);
         });
@@ -352,7 +359,10 @@
         stopStream(true);
       }
     }finally{
-      if(epoch===version && request===streamEpoch)streamBusy=false;
+      // For HLS, keep "Ouverture" active until the first decodable data
+      // arrives; otherwise the user can accidentally start two transcodes.
+      if(epoch===version && request===streamEpoch && streamKind!=="hls")
+        streamBusy=false;
     }
   }
   function handleKey(event:KeyboardEvent){
@@ -517,7 +527,7 @@
                 controls playsinline preload="metadata"
                 aria-label={"Lecteur vidéo : "+shown.title}
                 onplaying={()=>{
-                  streamStarted=true;
+                  streamStarted=true;streamBusy=false;
                   if(reporter && videoElement)
                     reporter.playing(playbackClock(videoElement));
                 }}
@@ -541,7 +551,10 @@
                 }}
                 onloadedmetadata={applySavedResume}
                 ondurationchange={applySavedResume}
-                oncanplay={applySavedResume}
+                oncanplay={()=>{
+                  applySavedResume();
+                  if(streamKind==="hls")streamBusy=false;
+                }}
                 onerror={()=>{
                   // Clearing an intentional stop can emit a delayed WebView2
                   // media error. Ignore it once the capability is revoked.
@@ -554,8 +567,9 @@
                 }}></video>
               {#if !streamStarted}
                 <p class="vy-detail-muted" role="status">
-                  En attente de la première image. Utilisez Lecture si le
-                  navigateur intégré bloque le démarrage automatique.
+                  {streamKind==="hls" && streamBusy
+                    ?"Jellyfin prépare le flux et les sous-titres. Le premier démarrage d’un fichier STRM peut prendre plusieurs dizaines de secondes."
+                    :"En attente de la première image. Utilisez Lecture si le navigateur intégré bloque le démarrage automatique."}
                 </p>
               {/if}
             </div>

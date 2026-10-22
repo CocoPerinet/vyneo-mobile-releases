@@ -6,7 +6,7 @@ use std::{
     collections::HashMap,
     io::Read,
     sync::{atomic::Ordering, Arc},
-    time::Instant,
+    time::{Duration,Instant},
 };
 use tauri::http::{header, Method, Request, Response, StatusCode};
 use crate::native_stream::{StreamGrant, StreamKind, Tickets};
@@ -16,6 +16,19 @@ const MAX_PLAYLIST: usize = 512 * 1024;
 const MAX_SEGMENT: usize = 16 * 1024 * 1024;
 const MAX_ASSETS: usize = 4096;
 const PARALLEL_REQUESTS: usize = 8;
+// Jellyfin can need almost a minute to extract embedded subtitles and
+// initialize its cold STRM transcoder. Never penalize subsequent fragments.
+const COLD_SEGMENT_TIMEOUT: Duration = Duration::from_secs(90);
+const WARM_SEGMENT_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn bounded_upstream_timeout(grant:&StreamGrant,url:&reqwest::Url)->Duration {
+    if !url.path().to_ascii_lowercase().ends_with(".m3u8")
+        && !grant.first_segment_ready.load(Ordering::Acquire) {
+        COLD_SEGMENT_TIMEOUT
+    }else{
+        WARM_SEGMENT_TIMEOUT
+    }
+}
 
 struct Busy(Arc<Tickets>);
 impl Drop for Busy {
@@ -382,6 +395,7 @@ pub fn handle_request(
         grant.device,env!("CARGO_PKG_VERSION"),grant.token
     );
     let mut upstream=match state.client.get(url.clone())
+        .timeout(bounded_upstream_timeout(&grant,&url))
         .header(header::AUTHORIZATION,auth).send() {
         Ok(response)=>response,
         Err(_)=>return fail(StatusCode::BAD_GATEWAY,"HLS_UPSTREAM_NETWORK"),
@@ -423,13 +437,18 @@ pub fn handle_request(
         } else {
             content_type.split(';').next().unwrap_or("video/mp2t")
         };
-        return Response::builder().status(StatusCode::OK)
+        let reply=Response::builder().status(StatusCode::OK)
             .header(header::CONTENT_TYPE,kind)
             .header(header::CONTENT_LENGTH,data.len().to_string())
             .header(header::CACHE_CONTROL,"no-store")
             .header("access-control-allow-origin",origin)
             .header("access-control-expose-headers","content-length,content-type")
-            .body(data).unwrap_or_else(|_|fail(StatusCode::BAD_GATEWAY,"HLS_RESPONSE_BUILD"));
+            .body(data);
+        if reply.is_ok() {
+            grant.first_segment_ready.store(true,Ordering::Release);
+        }
+        return reply.unwrap_or_else(|_|
+            fail(StatusCode::BAD_GATEWAY,"HLS_RESPONSE_BUILD"));
     };
     Response::builder().status(StatusCode::OK)
         .header(header::CONTENT_TYPE,mime)
@@ -443,7 +462,7 @@ pub fn handle_request(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
+    use std::sync::{atomic::AtomicBool, Mutex};
     use std::time::Duration;
     #[test]
     fn trusted_origin_gets_cors_even_on_failure_but_foreign_origin_does_not() {
@@ -477,8 +496,25 @@ mod tests {
                     "a".repeat(32),"b".repeat(32),"c".repeat(32))
             ).unwrap()),
             assets:Arc::new(Mutex::new(HashMap::new())),
+            first_segment_ready:Arc::new(AtomicBool::new(false)),
             expires:Instant::now()+Duration::from_secs(120)
         }
+    }
+    #[test]
+    fn cold_hls_segment_gets_one_long_wait_only_until_first_valid_segment() {
+        let grant=fixture();
+        let master=private_base(&grant.item).unwrap();
+        let fragment=master.join("hls1/main/0.ts").unwrap();
+        assert_eq!(bounded_upstream_timeout(&grant,&master),
+            WARM_SEGMENT_TIMEOUT);
+        assert_eq!(bounded_upstream_timeout(&grant,&fragment),
+            COLD_SEGMENT_TIMEOUT);
+        let clone=grant.clone();
+        clone.first_segment_ready.store(true,Ordering::Release);
+        assert_eq!(bounded_upstream_timeout(&grant,&fragment),
+            WARM_SEGMENT_TIMEOUT);
+        assert_eq!(bounded_upstream_timeout(&clone,&master),
+            WARM_SEGMENT_TIMEOUT);
     }
     #[test]
     fn profile_negotiated_playlist_is_pinned_and_not_rediscovered() {

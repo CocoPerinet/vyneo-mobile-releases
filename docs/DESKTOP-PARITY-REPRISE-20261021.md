@@ -1106,3 +1106,82 @@ Cela confirme la compatibilité du **début du protocole réel**,
 pas la réussite d'une authentification ni celle d'une lecture
 réelle. L'utilisateur devra encore approuver délibérément une
 future demande dans Jellyfin pour permettre la QA du même compte.
+
+## 22 octobre, contrôle des mises à jour depuis l'application unique
+
+### Écart corrigé : session Vynéo chaude dans la zone de notification
+
+La fonction native `check_signed_update` n'était appelée qu'à
+l'ouverture du processus Tauri. Or la fermeture de fenêtre
+intercepte `CloseRequested`, garde le processus en mémoire,
+et le lancement d'une deuxième instance ramène la fenêtre
+existante au premier plan. Un utilisateur pouvait ainsi garder
+la même instance ouverte en permanence et ne pas revoir la
+proposition de mise à jour sans quitter entièrement l'application.
+
+Le commit `9629dd3` ajoute **Vérifier les mises à jour** dans
+le menu Profil natif, sans remplacer le mécanisme signé existant :
+- Commande Tauri `check_signed_update_now` accessible
+  exclusivement via le pont natif, sans URL, version, clé,
+  identifiants ou paramètres fournis par le renderer.
+- Le backend conserve le manifeste officiel du canal,
+  `requireSignedVersion=true`, `allowDowngrades=false`,
+  vérification minisign avant installation et confirmation
+  explicite Yes/No. Le bouton n'installe jamais silencieusement.
+- Un verrou atomique RAII empêche une recherche manuelle
+  concurrente à la vérification automatique du démarrage,
+  ou deux téléchargements/installations simultanés.
+- Codes de résultat bornés : à jour, reportée, installation
+  engagée, en cours et messages d'échec fixes en français.
+  Aucun contenu brut d'erreur ou URL n'est rendu dans le DOM.
+- Le bouton n'apparaît que dans l'application Tauri, pas dans
+  le navigateur d'audit. Aucun deuxième exécutable, profil,
+  raccourci ou canal de publication n'est introduit.
+
+Le commit `a0d8396` corrige le test statique de migration
+NSIS pour analyser les workflows GitHub avec les fins de ligne
+CRLF de Windows aussi bien qu'avec LF sous Linux.
+
+Le commit `f1a6ad7` ajoute un test de verrouillage Rust
+dans GitHub CI et contrôle dans le **vrai WebView2 natif**
+que l'appel Tauri existe mais est refusé avec
+`UPDATE_DISABLED_IN_QA` dans la feature `native-e2e-qa`.
+Ainsi, la QA portable n'a jamais accès à l'updater réseau
+ni à l'installation de logiciel.
+
+### Résultats réellement observés sur COCO
+
+Sur le commit `a0d8396` : **164 tests Vitest frontend PASS**,
+**34 tests Node PASS** (6 SKIP), **0 erreur et 0 avertissement
+Svelte**, build Vite, QA visuelle et décodage HLS Chromium PASS.
+Un `cargo check --bin vyneo-desktop` Windows natif a abouti,
+avec 3 avertissements Rust préexistants non bloquants.
+
+Sur `f1a6ad7`, `npm run qa:native-webview2` PASS dans
+la session Windows interactive cachée, sans installateur :
+`updaterQaGuarded=true`, 62 images H.264 décodées,
+audio AAC RMS=0.063304, pause/saut/reprise effectifs.
+Après ce test, **1 seule installation Vynéo 0.2.4**,
+1 seul processus stable, **0 tâche QA résiduelle**.
+
+Le dernier test d'installation en place sur runner GitHub,
+`VYNEO_WINDOWS_NSIS_IN_PLACE_UPGRADE_PASS`, a confirmé
+une migration réelle `0.2.4 -> 0.2.5` sans deuxième entrée
+Windows ni perte du témoin AppData (run 39696124286).
+La `0.2.5` reste un artefact temporaire du banc de test
+et n'est PAS publiée.
+
+### Limites et publication
+
+Le mécanisme automatique de démarrage existe toujours dans
+la stable installée 0.2.4 ; le **bouton manuel** sera seulement
+disponible dans la prochaine version stable après publication.
+Le test NSIS démontre le remplacement en place, pas encore
+un scénario complet de téléchargement/minisign/installation
+depuis le bouton sur un compte réel.
+
+Le bloc D `same-account real-library`/`side-by-side`
+est toujours **PENDING** : comparaison de l'interface du
+même compte Jellyfin, vraie lecture .strm, sous-titres et
+progression sauvegardée. Ne pas transformer la PR en stable,
+ne pas taguer, ne pas publier avant sa validation explicite.

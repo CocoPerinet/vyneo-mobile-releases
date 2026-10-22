@@ -30,6 +30,23 @@ fn bad(code: StatusCode) -> Response<Vec<u8>> {
         .body(Vec::new()).expect("fixed error response")
 }
 
+// Give trusted Tauri callers the actual HTTP status on failed HLS requests.
+// Earlier, missing CORS headers disguised native 4xx/5xx as ERR_FAILED.
+// Only the non-distributable interactive QA reveals bounded reason codes.
+fn fail_to_trusted_origin(
+    status: StatusCode, origin: &str, reason: &'static str
+) -> Response<Vec<u8>> {
+    let reply=Response::builder().status(status)
+        .header(header::CACHE_CONTROL,"no-store")
+        .header("access-control-allow-origin",origin)
+        .header("access-control-expose-headers","x-vyneo-qa-hls-reason");
+    #[cfg(feature="interactive-jellyfin-qa")]
+    let reply=reply.header("x-vyneo-qa-hls-reason",reason);
+    #[cfg(not(feature="interactive-jellyfin-qa"))]
+    let _=reason;
+    reply.body(Vec::new()).expect("fixed trusted-origin failure")
+}
+
 fn acceptable_origin(request: &Request<Vec<u8>>) -> Option<&str> {
     match request.headers().get(header::ORIGIN) {
         None => Some("http://tauri.localhost"),
@@ -155,24 +172,24 @@ fn asset_local_url(ticket: &str, id: &str) -> String {
 pub(crate) fn rewrite_playlist(
     manifest: &str, base: &reqwest::Url, grant: &StreamGrant,
     ticket: &str
-) -> Result<String, ()> {
+) -> Result<String, &'static str> {
     if manifest.len() > MAX_PLAYLIST
         || !manifest.trim_start().starts_with("#EXTM3U")
     {
-        return Err(());
+        return Err("HLS_INVALID_MANIFEST");
     }
-    let original = grant.assets.lock().map_err(|_| ())?.clone();
+    let original = grant.assets.lock().map_err(|_| "HLS_ASSET_STATE")?.clone();
     let mut pending: HashMap<String, reqwest::Url> = HashMap::new();
     let replace = |reference: &str,
                    pending: &mut HashMap<String, reqwest::Url>|
-        -> Result<String, ()> {
-        let target = sanitized_upstream(base, reference, &grant.item)?;
+        -> Result<String, &'static str> {
+        let target = sanitized_upstream(base, reference, &grant.item).map_err(|_| "HLS_ASSET_SCOPE")?;
         let existing = original.iter().chain(pending.iter())
             .find(|(_, url)| **url == target)
             .map(|(id, _)| id.clone());
         let key = if let Some(id) = existing { id } else {
             if original.len()+pending.len() >= MAX_ASSETS {
-                return Err(());
+                return Err("HLS_ASSET_LIMIT");
             }
             let id = uuid::Uuid::new_v4().simple().to_string();
             pending.insert(id.clone(), target);
@@ -188,15 +205,15 @@ pub(crate) fn rewrite_playlist(
         {
             // Our HLS asset proxy serves entire segments. Do not silently
             // hand MSE the wrong bytes for a byte-range-only playlist.
-            return Err(());
+            return Err("HLS_UNSUPPORTED_BYTERANGE");
         }
         if line.starts_with("#EXT-X-KEY:")
             && !line.contains("METHOD=NONE") {
             // AES-128 / DRM playlists need an explicit key model.
-            return Err(());
+            return Err("HLS_ENCRYPTION_UNSUPPORTED");
         }
         if line.starts_with("#EXT-X-SESSION-KEY:") {
-            return Err(());
+            return Err("HLS_ENCRYPTION_UNSUPPORTED");
         }
         if line.starts_with('#') && line.contains("URI=\"") {
             let mut rest = line;
@@ -205,7 +222,7 @@ pub(crate) fn rewrite_playlist(
                 let prefix_end = pos+"URI=\"".len();
                 replaced.push_str(&rest[..prefix_end]);
                 let trailing = &rest[prefix_end..];
-                let quote = trailing.find('"').ok_or(())?;
+                let quote = trailing.find('"').ok_or("HLS_URI_QUOTE")?;
                 replaced.push_str(&replace(&trailing[..quote], &mut pending)?);
                 replaced.push('"');
                 rest = &trailing[quote+1..];
@@ -226,12 +243,12 @@ pub(crate) fn rewrite_playlist(
         || lower.contains("access_token")
         || lower.contains("cocojellyfin.duckdns.org")
     {
-        return Err(());
+        return Err("HLS_SENSITIVE_MANIFEST");
     }
     // Commit capabilities only after *every* URI passed the same-origin,
     // same-item and scheme checks. An invalid manifest grants nothing.
-    let mut map = grant.assets.lock().map_err(|_| ())?;
-    if map.len()+pending.len() > MAX_ASSETS { return Err(()); }
+    let mut map = grant.assets.lock().map_err(|_| "HLS_ASSET_STATE")?;
+    if map.len()+pending.len() > MAX_ASSETS { return Err("HLS_ASSET_LIMIT"); }
     map.extend(pending);
     Ok(output)
 }
@@ -263,14 +280,16 @@ pub fn handle_request(
     let Some(origin) = acceptable_origin(&request) else {
         return bad(StatusCode::FORBIDDEN);
     };
+    let fail=|status:StatusCode,reason:&'static str|
+        fail_to_trusted_origin(status,origin,reason);
     if request.uri().query().is_some() {
-        return bad(StatusCode::NOT_FOUND);
+        return fail(StatusCode::NOT_FOUND,"HLS_NOT_FOUND");
     }
     let path=request.uri().path();
     let chunks=path.split('/').collect::<Vec<_>>();
     if chunks.len()!=4 || chunks[1]!="hls" ||
         !super::native_stream::valid_guid(chunks[2]) {
-        return bad(StatusCode::NOT_FOUND);
+        return fail(StatusCode::NOT_FOUND,"HLS_NOT_FOUND");
     }
     let key=chunks[2];
     let grant=match state.grants.lock() {
@@ -278,13 +297,13 @@ pub fn handle_request(
             grants.retain(|_, g|g.expires>Instant::now());
             grants.get(key).cloned()
         },
-        Err(_)=>return bad(StatusCode::INTERNAL_SERVER_ERROR),
+        Err(_)=>return fail(StatusCode::INTERNAL_SERVER_ERROR,"HLS_INTERNAL_SERVER_ERROR"),
     };
     let Some(grant)=grant else {
-        return bad(StatusCode::NOT_FOUND);
+        return fail(StatusCode::NOT_FOUND,"HLS_NOT_FOUND");
     };
     if grant.kind!=StreamKind::Hls {
-        return bad(StatusCode::NOT_FOUND);
+        return fail(StatusCode::NOT_FOUND,"HLS_NOT_FOUND");
     }
     if request.method()==Method::OPTIONS {
         return Response::builder().status(StatusCode::NO_CONTENT)
@@ -295,7 +314,7 @@ pub fn handle_request(
             .body(Vec::new()).expect("static cors");
     }
     if request.method()!=Method::GET {
-        return bad(StatusCode::METHOD_NOT_ALLOWED);
+        return fail(StatusCode::METHOD_NOT_ALLOWED,"HLS_METHOD_NOT_ALLOWED");
     }
     // No QA test data/code reaches a stable release binary.
     #[cfg(feature="native-e2e-qa")]
@@ -304,24 +323,24 @@ pub fn handle_request(
     }
     let url=if chunks[3]=="index.m3u8" {
         match index_url(&grant) {
-            Ok(url)=>url,Err(_)=>return bad(StatusCode::BAD_REQUEST)
+            Ok(url)=>url,Err(_)=>return fail(StatusCode::BAD_REQUEST,"HLS_BAD_REQUEST")
         }
     } else {
         if !super::native_stream::valid_guid(chunks[3]) {
-            return bad(StatusCode::NOT_FOUND);
+            return fail(StatusCode::NOT_FOUND,"HLS_NOT_FOUND");
         }
         match grant.assets.lock() {
             Ok(map)=>match map.get(chunks[3]) {
                 Some(url)=>url.clone(),
-                None=>return bad(StatusCode::NOT_FOUND)
+                None=>return fail(StatusCode::NOT_FOUND,"HLS_NOT_FOUND")
             },
-            Err(_)=>return bad(StatusCode::INTERNAL_SERVER_ERROR),
+            Err(_)=>return fail(StatusCode::INTERNAL_SERVER_ERROR,"HLS_INTERNAL_SERVER_ERROR"),
         }
     };
     let already=state.active.fetch_add(1,Ordering::SeqCst);
     if already>=PARALLEL_REQUESTS {
         state.active.fetch_sub(1,Ordering::SeqCst);
-        return bad(StatusCode::TOO_MANY_REQUESTS);
+        return fail(StatusCode::TOO_MANY_REQUESTS,"HLS_TOO_MANY_REQUESTS");
     }
     let _busy=Busy(state.clone());
     let auth=format!(
@@ -331,37 +350,37 @@ pub fn handle_request(
     let mut upstream=match state.client.get(url.clone())
         .header(header::AUTHORIZATION,auth).send() {
         Ok(response)=>response,
-        Err(_)=>return bad(StatusCode::BAD_GATEWAY),
+        Err(_)=>return fail(StatusCode::BAD_GATEWAY,"HLS_UPSTREAM_NETWORK"),
     };
     let code=upstream.status().as_u16();
     if code==401 || code==403 {
-        return bad(StatusCode::FORBIDDEN);
+        return fail(StatusCode::FORBIDDEN,"HLS_FORBIDDEN");
     }
     if code!=200 && code!=206 {
-        return bad(StatusCode::BAD_GATEWAY);
+        return fail(StatusCode::BAD_GATEWAY,"HLS_UPSTREAM_HTTP_STATUS");
     }
     let content_type=upstream.headers()
         .get(header::CONTENT_TYPE)
         .and_then(|value|value.to_str().ok()).unwrap_or("").to_string();
     let is_playlist=match media_type(&url,&content_type) {
         Ok(v)=>v,
-        Err(_)=>return bad(StatusCode::BAD_GATEWAY),
+        Err(_)=>return fail(StatusCode::BAD_GATEWAY,"HLS_UPSTREAM_MEDIA_TYPE"),
     };
     let cap=if is_playlist { MAX_PLAYLIST } else { MAX_SEGMENT };
     if upstream.content_length().is_some_and(|size|size>cap as u64) {
-        return bad(StatusCode::BAD_GATEWAY);
+        return fail(StatusCode::BAD_GATEWAY,"HLS_UPSTREAM_OVERSIZE");
     }
     let mut data=Vec::new();
     if upstream.take(cap as u64+1).read_to_end(&mut data).is_err()
         || data.is_empty() || data.len()>cap {
-        return bad(StatusCode::BAD_GATEWAY);
+        return fail(StatusCode::BAD_GATEWAY,"HLS_UPSTREAM_BODY");
     }
     let (body,mime)=if is_playlist {
         let manifest=match std::str::from_utf8(&data) {
-            Ok(text)=>text,Err(_)=>return bad(StatusCode::BAD_GATEWAY)
+            Ok(text)=>text,Err(_)=>return fail(StatusCode::BAD_GATEWAY,"HLS_MANIFEST_ENCODING")
         };
         let rewritten=match rewrite_playlist(manifest,&url,&grant,key) {
-            Ok(text)=>text,Err(_)=>return bad(StatusCode::BAD_GATEWAY)
+            Ok(text)=>text,Err(reason)=>return fail(StatusCode::BAD_GATEWAY,reason)
         };
         (rewritten.into_bytes(),"application/vnd.apple.mpegurl")
     } else {
@@ -376,7 +395,7 @@ pub fn handle_request(
             .header(header::CACHE_CONTROL,"no-store")
             .header("access-control-allow-origin",origin)
             .header("access-control-expose-headers","content-length,content-type")
-            .body(data).unwrap_or_else(|_|bad(StatusCode::BAD_GATEWAY));
+            .body(data).unwrap_or_else(|_|fail(StatusCode::BAD_GATEWAY,"HLS_RESPONSE_BUILD"));
     };
     Response::builder().status(StatusCode::OK)
         .header(header::CONTENT_TYPE,mime)
@@ -384,7 +403,7 @@ pub fn handle_request(
         .header(header::CACHE_CONTROL,"no-store")
         .header("access-control-allow-origin",origin)
         .header("access-control-expose-headers","content-length,content-type")
-        .body(body).unwrap_or_else(|_|bad(StatusCode::BAD_GATEWAY))
+        .body(body).unwrap_or_else(|_|fail(StatusCode::BAD_GATEWAY,"HLS_RESPONSE_BUILD"))
 }
 
 #[cfg(test)]
@@ -392,6 +411,27 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
     use std::time::Duration;
+    #[test]
+    fn trusted_origin_gets_cors_even_on_failure_but_foreign_origin_does_not() {
+        let state=Arc::new(Tickets::new().expect("bounded HTTP client"));
+        let request=|origin:&str|Request::builder()
+            .uri(format!("http://vyneo-media.localhost/hls/{}/index.m3u8",
+                "f".repeat(32)))
+            .header(header::ORIGIN,origin).body(Vec::new()).unwrap();
+        let trusted=handle_request(state.clone(),request("http://tauri.localhost"));
+        assert_eq!(trusted.status(),StatusCode::NOT_FOUND);
+        assert_eq!(trusted.headers().get("access-control-allow-origin")
+            .unwrap(),"http://tauri.localhost");
+        #[cfg(feature="interactive-jellyfin-qa")]
+        assert_eq!(trusted.headers().get("x-vyneo-qa-hls-reason")
+            .unwrap(),"HLS_NOT_FOUND");
+        #[cfg(not(feature="interactive-jellyfin-qa"))]
+        assert!(trusted.headers().get("x-vyneo-qa-hls-reason").is_none());
+        let foreign=handle_request(state,request("https://evil.example"));
+        assert_eq!(foreign.status(),StatusCode::FORBIDDEN);
+        assert!(foreign.headers().get("access-control-allow-origin").is_none());
+        assert!(foreign.headers().get("x-vyneo-qa-hls-reason").is_none());
+    }
     fn fixture() -> StreamGrant {
         StreamGrant {
             item:"a".repeat(32),source:"b".repeat(32),

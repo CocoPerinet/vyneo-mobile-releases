@@ -101,6 +101,9 @@ jobs:
         run: |
           rustc --edition=2021 --test src-tauri/src/quality_policy.rs -o ./vyneo-quality-tests.exe
           ./vyneo-quality-tests.exe
+      - name: Verify signed artifact version binding
+        working-directory: desktop
+        run: cargo test --locked --manifest-path qa/signed-update-verifier/Cargo.toml
       - name: Verify native Tauri media grant and byte-range tests
         working-directory: desktop/src-tauri
         run: |

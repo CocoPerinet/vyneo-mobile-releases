@@ -30,7 +30,7 @@ test('upgrade QA installs the last signed stable first, checks one slot and pres
   assert.match(runner,/\^desktop-v\\d\+\\\.\\d\+\\\.\\d\+\$/);
   assert.match(runner,/gh release download \$baselineTag/);
   assert.match(runner,/PREVIOUS_SIGNED_INSTALLER_SIGNATURE_MISSING/);
-  assert.match(runner,/cargo run --quiet --locked --manifest-path qa\/signed-update-verifier\/Cargo\.toml -- \$stablePub \$stableSig \$oldExe/);
+  assert.match(runner,/cargo run --quiet --locked --manifest-path qa\/signed-update-verifier\/Cargo\.toml -- \$stablePub \$stableSig \$oldExe \(\$baselineVersion\.ToString\(\)\)/);
   assert.match(runner,/PUBLISHED_STABLE_INSTALLER_SIGNATURE_INVALID/);
   assert.match(runner,/VYNEO_PUBLISHED_STABLE_PINNED_KEY_PASS/);
   assert.ok(runner.indexOf('VYNEO_PUBLISHED_STABLE_PINNED_KEY_PASS') <
@@ -58,10 +58,14 @@ test('signed updater fixture uses ephemeral Minisign proof and rejects tampering
   assert.match(signer,/RUNNER_ENVIRONMENT -ne 'github-hosted'/);
   assert.match(signer,/EPHEMERAL_SIGNED_QA_ONLY_ON_HOSTED_PR_WITHOUT_RELEASE_SECRET/);
   assert.match(signer,/npm\.cmd run tauri -- signer generate --ci -w \$key/);
-  assert.match(signer,/signer sign -f \$key \$artifactPath/);
+  assert.match(signer,/signer sign -f \$key --app-version \$version \$artifactPath/);
+  assert.match(signer,/signer sign -f \$key \$versionless/);
+  assert.match(signer,/VYNEO_EPHEMERAL_WRONG_VERSION_REJECTED_PASS/);
+  assert.match(signer,/VYNEO_EPHEMERAL_MISSING_VERSION_REJECTED_PASS/);
+  assert.match(signer,/Assert-VersionOrSignatureRejected \$sig \$mutated \$version/);
   assert.match(signer,/cargo run --quiet --locked --manifest-path \$verifier -- \$pub \$sig \$artifactPath/);
-  assert.match(signer,/cargo run --quiet --locked --manifest-path \$verifier -- \$pub \$sig \$mutated/);
-  assert.match(signer,/if \(\$tamperExit -eq 0\)/);
+  assert.match(signer,/Assert-VersionOrSignatureRejected \$sig \$mutated \$version 'TAMPERED_SIGNED_NSIS_WAS_ACCEPTED'/);
+  assert.match(signer,/if \(\$rejectExit -eq 0\)/);
   assert.match(signer,/EPHEMERAL_TAMPERED_NSIS_REJECTED_PASS/);
   assert.match(signer,/\$global:LASTEXITCODE = 0/);
   assert.ok(signer.indexOf('TAMPERED_SIGNED_NSIS_WAS_ACCEPTED') <
@@ -79,4 +83,6 @@ test('signed updater fixture uses ephemeral Minisign proof and rejects tampering
   assert.match(verifier,/Signature::decode/);
   assert.match(verifier,/verify_stream/);
   assert.match(verifier,/verifier\.finalize\(\)\?/);
+  assert.match(verifier,/verify_signed_version\(signature\.trusted_comment\(\), expected\)/);
+  assert.match(verifier,/MINISIGN_SIGNED_VERSION_MISSING_OR_MISMATCH/);
 });

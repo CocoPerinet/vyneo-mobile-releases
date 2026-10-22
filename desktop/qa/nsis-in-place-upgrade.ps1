@@ -123,7 +123,7 @@ try {
     throw 'PINNED_STABLE_PUBLIC_KEY_MISSING'
   }
   [System.IO.File]::WriteAllText($stablePub,$pinnedKey)
-  cargo run --quiet --locked --manifest-path qa/signed-update-verifier/Cargo.toml -- $stablePub $stableSig $oldExe
+  cargo run --quiet --locked --manifest-path qa/signed-update-verifier/Cargo.toml -- $stablePub $stableSig $oldExe ($baselineVersion.ToString())
   if ($LASTEXITCODE -ne 0) { throw 'PUBLISHED_STABLE_INSTALLER_SIGNATURE_INVALID' }
   Write-Output 'VYNEO_PUBLISHED_STABLE_PINNED_KEY_PASS'
 

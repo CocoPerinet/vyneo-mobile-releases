@@ -1185,3 +1185,105 @@ est toujours **PENDING** : comparaison de l'interface du
 même compte Jellyfin, vraie lecture .strm, sous-titres et
 progression sauvegardée. Ne pas transformer la PR en stable,
 ne pas taguer, ne pas publier avant sa validation explicite.
+
+## 22 octobre, contrôle final : recheck à chaud et signature cryptographique NSIS
+
+### Vérification automatique après réouverture sans quitter Vynéo
+
+Commit `c2a2b15`. L'application conserve son instance unique
+dans la zone de notification après fermeture de la fenêtre.
+La vérification automatique d'une mise à jour signée est maintenant
+redéclenchée :
+- au démarrage normal ;
+- après une ouverture volontaire depuis l'icône de notification ;
+- lorsqu'un lancement supplémentaire ramène l'instance existante au premier plan.
+
+Un compteur monotone `Instant` limite ces vérifications automatiques
+à une fois toutes les **6 heures**. Le bouton manuel du Profil,
+ajouté auparavant, reste indépendant de cet intervalle. Tous les
+chemins utilisent le même verrou atomique natif, la même URL de
+mise à jour épinglée, le même certificat Minisign et la confirmation
+explicite Yes/No avant téléchargement et installation.
+
+Le 22 octobre, tests Rust exécutés sur COCO :
+`update_tests::permit_rejects_concurrent_checks_and_releases_on_drop`
+et `update_tests::auto_recheck_only_after_six_hours_of_inactive_window`
+tous deux PASS ; `cargo check --bin vyneo-desktop` PASS.
+Le test du seuil à 6h couvre le premier démarrage, le réveil
+avant limite, la limite exacte, la période de 24h et les anomalies
+d'horloge monotone.
+
+### Test cryptographique réel du paquet officiel stable
+
+Un contrôle non destructif sur COCO a téléchargé les assets publics
+`Vyneo-Desktop-0.2.4-windows-x64.exe` (3 594 181 octets)
+et `.exe.sig` (436 octets). Le vérificateur `minisign-verify`
+a décodé le format d'enveloppe Base64 utilisé par Tauri et
+**vérifié la signature du véritable installateur avec la clé
+publique déjà embarquée dans `tauri.conf.json`** : PASS.
+Une copie du même installateur dont un octet avait été modifié
+a été refusée : PASS. Les fichiers, clés publiques temporaires et
+copies modifiées ont été supprimés, aucun installeur n'a été exécuté
+sur COCO.
+
+### Tests automatiques des signatures dans le Windows CI jetable
+
+Commits `44217cf`, `104a27b`, `818b235`, `b0bb43f`,
+`714b702`, `c37a63f` et `8260a3b`.
+Le test Windows est protégé par des garde-fous : runner GitHub
+hébergé, événement PR, dépôt attendu, répertoire de travail
+attendu, et aucun secret de signature de production présent.
+
+Le pipeline télécharge la stable publique précédente,
+**vérifie sa signature avec la clé publique épinglée AVANT
+son exécution**, puis installe la baseline. La candidate NSIS
+supérieure est ensuite construite localement, signée à l'aide
+d'une **clé Minisign éphémère**, vérifiée cryptographiquement
+octet par octet avec un vérificateur Rust indépendant et mise en
+échec après modification d'une copie du paquet.
+
+La clé privée de QA ne provient PAS de l'environnement de
+publication, n'est PAS ajoutée au dépôt, n'est PAS publiée et
+est supprimée à la fin de chaque test. L'installation en place
+de la candidate est ensuite vérifiée, avec une seule entrée
+de désinstallation, le même dossier, un nouvel exécutable
+(SHA-256 différent) et un témoin AppData conservé.
+
+La différence de format entre les signatures produites par la
+CLI Tauri (enveloppe Minisign textuelle encodée intégralement
+en Base64) et celles acceptées directement par la bibliothèque
+Rust a été identifiée et corrigée. Le banc d'essai est figé
+sur des dépendances Rust versionnées et verrouillées.
+
+**Dernière CI entièrement réussie :**
+[GitHub Actions #39761223501](https://github.com/CocoPerinet/vyneo-mobile-releases/actions/runs/39761223501),
+commit code `8260a3b`, avec les marqueurs effectivement observés :
+```
+VYNEO_PUBLISHED_STABLE_PINNED_KEY_PASS
+VYNEO_EPHEMERAL_SIGNED_NSIS_VALID_PASS
+VYNEO_EPHEMERAL_TAMPERED_NSIS_REJECTED_PASS
+VYNEO_WINDOWS_NSIS_IN_PLACE_UPGRADE_PASS baseline=0.2.4 upgraded=0.2.5 entries=1 user_data=preserved
+```
+
+Le premier passage du scénario avait déjà démontré les quatre
+résultats fonctionnels mais avait laissé le code d'échec attendu
+du test de paquet modifié dans `LASTEXITCODE` PowerShell, ce qui
+faisait échouer artificiellement le job. Le correctif `c37a63f`
+remet le statut à zéro **uniquement après vérification explicite
+du rejet**, sans pouvoir transformer une vraie erreur de signature
+en réussite. La CI ci-dessus passe désormais intégralement.
+
+### Statut inchangé de la publication
+
+- Aucun nouveau tag stable, installeur publié, nouvelle entrée
+  Windows ou deuxième application sur COCO.
+- Installation réelle conservée : **Vynéo 0.2.4**, un seul
+  processus stable et zéro tâche de QA résiduelle après contrôle.
+- Ces tests prouvent la chaîne Minisign et la migration NSIS
+  en place, mais **pas encore l'installation d'une mise à jour
+  réellement publiée depuis le bouton intégré**.
+- Le bloc D de l'audit Jellyfin `same-account real-library`
+  et `side-by-side` reste **PENDING**. Un code Quick Connect
+  devra être volontairement autorisé avant la validation du
+  vrai flux .strm, du son, des sous-titres et de la progression.
+  La PR reste brouillon, le garde-fou de release reste fermé.

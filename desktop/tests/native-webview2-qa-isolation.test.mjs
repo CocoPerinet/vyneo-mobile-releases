@@ -29,6 +29,9 @@ test("synthetic WebView2 media QA is compile-time isolated from production",()=>
   assert.match(fixtureJs,/createMediaElementSource\(video\)/);
   assert.match(fixtureJs,/zeroGain.gain.value=0/);
   assert.match(fixtureJs,/zeroGain.connect\(context.destination\)/);
+  assert.match(fixtureJs,/invoke\("check_signed_update_now"\)/);
+  assert.match(fixtureJs,/UPDATE_DISABLED_IN_QA/);
+  assert.match(runner,/m.updaterQaGuarded/);
   assert.match(fixtureJs,/await report\("PASS",metrics\)/);
   assert.match(runner,/cleanupOrphanedQaTasks\(\)/);
   assert.match(runner,/New-ScheduledTaskSettingsSet -ExecutionTimeLimit/);

@@ -92,6 +92,19 @@ async fn check_signed_update_now(
     check_signed_update(app).await.map_err(str::to_owned)
 }
 
+#[cfg(test)]
+mod update_tests {
+    use super::*;
+    #[test]
+    fn permit_rejects_concurrent_checks_and_releases_on_drop() {
+        let permit=UpdatePermit::claim().expect("first check must claim lock");
+        assert!(UpdatePermit::claim().is_none());
+        drop(permit);
+        assert!(UpdatePermit::claim().is_some());
+        assert!(!UPDATE_RUNNING.load(Ordering::Acquire));
+    }
+}
+
 fn main() {
     // Encrypted Jellyfin credentials stay with the vault; these temporary
     // media capabilities are entirely in memory and vanish on process exit.

@@ -24,6 +24,15 @@ try{
   const invoke=window.__TAURI_INTERNALS__?.invoke;
   if(typeof invoke!=="function")throw Error("TAURI_INTERNALS_UNAVAILABLE");
   if(!window.Hls?.isSupported())throw Error("MSE_HLS_UNAVAILABLE");
+  // The manual updater command must exist in native Tauri but must never
+  // check a feed or install software in the isolated QA executable.
+  let updaterGuarded=false;
+  try{
+    await invoke("check_signed_update_now");
+  }catch(error){
+    updaterGuarded=String(error).includes("UPDATE_DISABLED_IN_QA");
+  }
+  if(!updaterGuarded)throw Error("NATIVE_UPDATER_QA_ISOLATION_FAILED");
   const itemId="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   const sourceId="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
   const hlsPath="/Videos/"+itemId+"/master.m3u8?MediaSourceId="+sourceId+
@@ -120,6 +129,7 @@ try{
       seekVerified:true,
       seekTargetSeconds:3.2,
       hlsWorkerConfigured:true,
+      updaterQaGuarded:updaterGuarded,
       nativeProtocol:true,
       drm:false,
       audioContextState:context.state,

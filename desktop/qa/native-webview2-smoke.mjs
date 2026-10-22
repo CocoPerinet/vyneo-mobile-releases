@@ -170,6 +170,8 @@ async function main(){
         assert.equal(m.seekVerified,true);
         assert.equal(m.seekTargetSeconds,3.2);
         assert.equal(m.hlsWorkerConfigured,true);
+        assert.equal(m.updaterQaGuarded,true,
+          "QA native updater must reject before any update network/install");
         assert.equal(m.audioContextState,"running");
         assert.equal(m.audioUnmuted,true);
         assert(m.audioAnalyserSamples>=3,

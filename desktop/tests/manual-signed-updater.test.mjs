@@ -35,6 +35,14 @@ test("native update flow cannot be reentered or given an untrusted URL",()=>{
   assert.match(main,/UPDATE_DOWNLOAD_TIMEOUT/);
   assert.match(main,/UPDATE_CHECK_TIMEOUT/);
   assert.doesNotMatch(main,/auto.?update.*unsigned/i);
+  assert.match(main,/const AUTOMATIC_UPDATE_INTERVAL: Duration = Duration::from_secs\(6\*60\*60\)/);
+  assert.match(main,/static LAST_AUTO_UPDATE_CHECK: Mutex<Option<Instant>>/);
+  assert.match(main,/fn update_recheck_due\(/);
+  assert.match(main,/fn schedule_update_if_due\(/);
+  assert.match(main,/schedule_update_if_due\(\(\*app\)\.clone\(\)\)/);
+  assert.match(main,/schedule_update_if_due\(app\.handle\(\)\.clone\(\)\)/);
+  assert.match(main,/auto_recheck_only_after_six_hours_of_inactive_window/);
+  assert.match(read("../.github/workflows/desktop.yml"),/cargo test --bin vyneo-desktop update_tests::/);
   assert.equal(config.identifier,"fr.visyren.vyneo.desktop");
   assert.equal(config.plugins.updater.requireSignedVersion,true);
   assert.equal(config.plugins.updater.allowDowngrades,false);

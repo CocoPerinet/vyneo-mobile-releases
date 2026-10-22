@@ -104,7 +104,7 @@ jobs:
       - name: Verify native Tauri media grant and byte-range tests
         working-directory: desktop/src-tauri
         run: |
-          cargo test --bin vyneo-desktop update_tests::permit_rejects_concurrent_checks_and_releases_on_drop
+          cargo test --bin vyneo-desktop update_tests::
           cargo test --bin vyneo-desktop native_stream::tests
           cargo test --bin vyneo-desktop native_hls::tests
           cargo test --bin vyneo-desktop --features native-e2e-qa native_e2e_qa::tests
@@ -164,7 +164,7 @@ jobs:
       - name: Verify native Tauri media grant and byte-range tests
         working-directory: desktop/src-tauri
         run: |
-          cargo test --bin vyneo-desktop update_tests::permit_rejects_concurrent_checks_and_releases_on_drop
+          cargo test --bin vyneo-desktop update_tests::
           cargo test --bin vyneo-desktop native_stream::tests
           cargo test --bin vyneo-desktop native_hls::tests
           cargo test --bin vyneo-desktop --features native-e2e-qa native_e2e_qa::tests

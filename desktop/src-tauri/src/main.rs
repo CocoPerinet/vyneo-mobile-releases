@@ -7,8 +7,9 @@ mod native_hls;
 #[cfg(feature="native-e2e-qa")]
 mod native_e2e_qa;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use tauri::{
     menu::MenuBuilder,
     tray::TrayIconBuilder,
@@ -20,6 +21,8 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
 const UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 const UPDATE_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(180);
+const AUTOMATIC_UPDATE_INTERVAL: Duration = Duration::from_secs(6*60*60);
+static LAST_AUTO_UPDATE_CHECK: Mutex<Option<Instant>> = Mutex::new(None);
 
 // Only one update check, download or installation may run per process.
 // The permit also releases its lock if a future gets cancelled or times out.
@@ -85,6 +88,23 @@ async fn check_signed_update(
     Ok("install-started")
 }
 
+// Only check on an intentional (re)opening of Vynéo, not on window focus
+// events, video playback, or an app that stays minimized all day.
+fn update_recheck_due(last: Option<Instant>, now: Instant) -> bool {
+    last.map_or(true,|at|now.saturating_duration_since(at)>=AUTOMATIC_UPDATE_INTERVAL)
+}
+fn schedule_update_if_due(app: tauri::AppHandle) {
+    if cfg!(feature="native-e2e-qa") { return; }
+    let Ok(mut last)=LAST_AUTO_UPDATE_CHECK.lock() else { return; };
+    let now=Instant::now();
+    if !update_recheck_due(*last,now) { return; }
+    *last=Some(now);
+    drop(last);
+    tauri::async_runtime::spawn(async move {
+        let _=check_signed_update(app).await;
+    });
+}
+
 #[tauri::command]
 async fn check_signed_update_now(
     app: tauri::AppHandle,
@@ -102,6 +122,21 @@ mod update_tests {
         drop(permit);
         assert!(UpdatePermit::claim().is_some());
         assert!(!UPDATE_RUNNING.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn auto_recheck_only_after_six_hours_of_inactive_window() {
+        let now=Instant::now();
+        assert!(update_recheck_due(None,now));
+        assert!(!update_recheck_due(Some(now),now));
+        assert!(!update_recheck_due(Some(now-Duration::from_secs(60)),now));
+        assert!(!update_recheck_due(Some(now-
+            Duration::from_secs(6*60*60-1)),now));
+        assert!(update_recheck_due(Some(now-AUTOMATIC_UPDATE_INTERVAL),now));
+        assert!(update_recheck_due(Some(now-
+            Duration::from_secs(24*60*60)),now));
+        // A future monotonic clock timestamp must not permit an early check.
+        assert!(!update_recheck_due(Some(now+Duration::from_secs(5)),now));
     }
 }
 
@@ -135,6 +170,7 @@ fn main() {
                 let _ = main.show();
                 let _ = main.set_focus();
             }
+            schedule_update_if_due((*app).clone());
         }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
@@ -190,6 +226,7 @@ fn main() {
                                 let _ = main.show();
                                 let _ = main.set_focus();
                             }
+                            schedule_update_if_due((*app).clone());
                         }
                         "quit" => app.exit(0),
                         _ => {}
@@ -197,12 +234,7 @@ fn main() {
                     .build(app)?;
             }
             }
-            if !cfg!(feature="native-e2e-qa") {
-                let handle=app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    let _=check_signed_update(handle).await;
-                });
-            }
+            schedule_update_if_due(app.handle().clone());
             Ok(())
         })
         .run(tauri::generate_context!())

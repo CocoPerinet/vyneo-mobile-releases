@@ -7,3 +7,5 @@ publish = false
 [dependencies]
 # Same Minisign format as the Tauri updater; no production key access.
 minisign-verify = "=0.2.5"
+# Tauri CLI stores the *whole Minisign envelope* base64-encoded in .sig/.pub.
+base64 = "=0.22.1"

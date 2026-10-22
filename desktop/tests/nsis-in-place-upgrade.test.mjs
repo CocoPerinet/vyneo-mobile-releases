@@ -61,8 +61,11 @@ test('signed updater fixture uses ephemeral Minisign proof and rejects tampering
   assert.doesNotMatch(signer,/gh release (upload|create)|Invoke-WebRequest|https?:\/\//);
   assert.doesNotMatch(signer,/Start-Process|Run-Silent|Uninstall/);
   assert.match(verifierCargo,/minisign-verify = "=0\.2\.5"/);
-  assert.match(verifier,/PublicKey::from_file/);
-  assert.match(verifier,/Signature::from_file/);
+  assert.match(verifierCargo,/base64 = "=0\.22\.1"/);
+  assert.match(verifier,/tauri_minisign_envelope/);
+  assert.match(verifier,/STANDARD\.decode\(encoded\.trim\(\)\)/);
+  assert.match(verifier,/PublicKey::decode/);
+  assert.match(verifier,/Signature::decode/);
   assert.match(verifier,/verify_stream/);
   assert.match(verifier,/verifier\.finalize\(\)\?/);
 });

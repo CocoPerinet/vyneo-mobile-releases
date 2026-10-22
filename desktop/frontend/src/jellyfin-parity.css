@@ -624,3 +624,15 @@
 .vy-native-player video{display:block;width:100%;height:auto;
   max-height:65vh;aspect-ratio:16/9;background:#000}
 .vy-native-player p{padding:9px 13px;margin:0}
+
+/* Native Jellyfin language controls, deliberately aligned with player width. */
+.vy-playback-track-controls{display:flex;flex-wrap:wrap;align-items:flex-start;
+  gap:10px 16px;margin:12px 0;max-width:1024px}
+.vy-playback-track-controls label{display:flex;flex-direction:column;gap:6px;
+  font-size:13px;font-weight:600;color:#e5e7eb;min-width:185px;
+  flex:1 1 220px;max-width:420px}
+.vy-playback-track-controls select{width:100%;padding:9px 11px;
+  background:#252b38;color:#f9fafb;border:1px solid #ffffff35;
+  border-radius:8px;outline-offset:2px;font:inherit}
+.vy-playback-track-controls select:disabled{opacity:.6;cursor:wait}
+.vy-playback-track-controls p{width:100%;margin:0}

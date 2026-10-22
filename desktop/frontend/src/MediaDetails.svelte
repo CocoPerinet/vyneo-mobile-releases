@@ -15,7 +15,10 @@
   import VyIcon from "./VyIcon.svelte";
   import type {ArtworkCache} from "./artwork";
   import {hasArtwork,lazyArtwork} from "./artwork";
-  import type {EpisodePage,MediaItem,PlaybackProbe,SeasonSummary} from "./types";
+  import type {EpisodePage,MediaItem,PlaybackProbe,PlaybackSource,SeasonSummary}
+    from "./types";
+  import {displayTrack,hasTrack,selectableTracks,supportsWebVttConversion}
+    from "./playback-tracks";
 
   type Props={
     item:MediaItem;
@@ -52,6 +55,14 @@
   let streamError=$state("");
   let streamStarted=$state(false);
   let streamRuntimeTicks:number|null=null;
+  let sourceInUse=$state<PlaybackSource|null>(null);
+  let selectedAudioIndex=$state<number|null>(null);
+  let selectedSubtitleIndex=$state<number|null>(null);
+  let subtitleBlobUrl=$state<string|null>(null);
+  let subtitleLoading=$state(false);
+  let subtitleError=$state("");
+  let subtitleEpoch=0;
+  let retainedSeekSeconds:number|null=null;
   let resumeApplied=false;
   let videoElement=$state<HTMLVideoElement|undefined>(undefined);
   let streamEpoch=0;
@@ -67,6 +78,14 @@
     :media?.id!==shown.id);
   let isFavorite=$derived(shown.type==="Episode"
     ?favoriteParent?.isFavorite??false:shown.isFavorite);
+  let tracksSource=$derived(sourceInUse??playback?.sources.find(source=>
+    source.id!==null)??null);
+  let audioTracks=$derived(selectableTracks(tracksSource,"Audio"));
+  let subtitleTracks=$derived(selectableTracks(tracksSource,"Subtitle"));
+  let unsupportedSubtitles=$derived(tracksSource?.tracks.some(track=>
+    track.kind==="Subtitle" && !supportsWebVttConversion(track))??false);
+  let activeSubtitle=$derived(subtitleTracks.find(track=>
+    track.index===selectedSubtitleIndex)??null);
   const duration=(ticks:number|null|undefined)=>
     typeof ticks==="number" && ticks>0
       ?Math.max(1,Math.round(ticks/600_000_000))+" min":"";
@@ -122,7 +141,7 @@
     }catch{/* Original catalog card remains available. */}
   }
   function chooseSeason(id:string){
-    streamEpoch++;stopStream();streamError="";
+    streamEpoch++;stopStream();resetTrackSelection();streamError="";
     seasonEpoch++;
     activeSeason=id;episodes=[];episodeTotal=null;nextOffset=0;
     episodeError="";episodeLoading=false;focusedEpisode=null;
@@ -153,7 +172,7 @@
     }
   }
   function focusEpisode(episode:MediaItem){
-    streamEpoch++;stopStream();streamError="";
+    streamEpoch++;stopStream();resetTrackSelection();streamError="";
     focusedEpisode=episode;playback=null;playbackError="";
     playbackBusy=false;playbackEpoch++;stateError="";
   }
@@ -223,7 +242,8 @@
     if(resumeApplied || !videoElement || videoElement.readyState<1)return;
     const total=playbackDurationSeconds(
       videoElement.duration,streamRuntimeTicks);
-    const seconds=resumeAtSeconds(shown,total);
+    const seconds=retainedSeekSeconds??
+      resumeAtSeconds(shown,total);
     if(seconds<=0)return;
     // HLS MSE may not expose its seekable range at loadedmetadata yet.
     // Recheck at durationchange/canplay rather than silently losing resume.
@@ -237,9 +257,78 @@
     try{
       videoElement.currentTime=seconds;
       resumeApplied=true;
+      retainedSeekSeconds=null;
     }catch{/* Reattempt when another seekable range becomes available. */}
   }
+  function clearSubtitleBlob(){
+    subtitleEpoch++;
+    const old=subtitleBlobUrl;
+    subtitleBlobUrl=null;
+    subtitleLoading=false;
+    // Remove any previous text track before switching source or language.
+    if(videoElement){
+      for(let i=0;i<videoElement.textTracks.length;i++)
+        videoElement.textTracks[i].mode="disabled";
+    }
+    if(old)URL.revokeObjectURL(old);
+  }
+  function resetTrackSelection(){
+    selectedAudioIndex=null;selectedSubtitleIndex=null;
+    retainedSeekSeconds=null;sourceInUse=null;subtitleError="";
+    clearSubtitleBlob();
+  }
+  async function loadSelectedSubtitle(){
+    const source=sourceInUse,index=selectedSubtitleIndex;
+    clearSubtitleBlob();subtitleError="";
+    if(index===null || !streamTicket || !source?.id)return;
+    if(!hasTrack(source,"Subtitle",index)){
+      selectedSubtitleIndex=null;
+      return;
+    }
+    const request=subtitleEpoch,version=epoch,target=shown.id;
+    subtitleLoading=true;
+    try{
+      const vtt=await api.getSubtitleVtt(target,source.id,index);
+      if(request!==subtitleEpoch || version!==epoch ||
+         shown.id!==target || !streamTicket)return;
+      subtitleBlobUrl=URL.createObjectURL(new Blob([vtt],{
+        type:"text/vtt;charset=utf-8"
+      }));
+    }catch{
+      if(request===subtitleEpoch && version===epoch)
+        subtitleError="Sous-titres momentanément indisponibles pour cette piste.";
+    }finally{
+      if(request===subtitleEpoch)subtitleLoading=false;
+    }
+  }
+  async function chooseSubtitle(value:string){
+    const index=value==="off"?null:Number(value);
+    if(index!==null && !hasTrack(tracksSource,"Subtitle",index)){
+      subtitleError="Piste de sous-titres non disponible.";
+      return;
+    }
+    selectedSubtitleIndex=index;
+    await loadSelectedSubtitle();
+  }
+  function chooseAudio(value:string){
+    const index=value==="auto"?null:Number(value);
+    if(index!==null && !hasTrack(tracksSource,"Audio",index)){
+      streamError="Piste audio non disponible.";
+      return;
+    }
+    if(streamBusy || index===selectedAudioIndex)return;
+    const previousSource=sourceInUse?.id??tracksSource?.id;
+    const seconds=videoElement?.currentTime;
+    selectedAudioIndex=index;
+    if(!streamTicket)return; // Selected before first playback.
+    retainedSeekSeconds=typeof seconds==="number" &&
+      Number.isFinite(seconds) && seconds>0?seconds:null;
+    streamEpoch++;
+    stopStream();
+    void startNativeVideo(previousSource);
+  }
   function stopStream(failed=false){
+    clearSubtitleBlob();
     const current=streamTicket;
     const finished=reporter;
     reporter=null;
@@ -256,24 +345,36 @@
       videoElement.load();
     }
     streamTicket=null;streamKind=null;streamRuntimeTicks=null;
-    resumeApplied=false;
+    sourceInUse=null;resumeApplied=false;
     streamBusy=false;streamStarted=false;
     if(current)void api.endNativePlayback(current.ticket).catch(()=>{});
   }
-  async function startNativeVideo(){
+  async function startNativeVideo(preferredSourceId?:string|null){
     if(streamBusy || !nativeAvailable)return;
+    if(!preferredSourceId)retainedSeekSeconds=null;
     const target=shown,version=epoch,request=++streamEpoch;
+    // Remember the source before stopStream discards its old capability.
+    const selectedSource=preferredSourceId??tracksSource?.id;
     stopStream();streamBusy=true;streamError="";reportWarning="";
     playbackNotificationSent=false;
     try{
-      const negotiation=await api.negotiatePlaybackInfo(target.id);
+      if(selectedAudioIndex!==null && !selectedSource)
+        throw new Error("AUDIO_TRACK_UNAVAILABLE");
+      const negotiation=await api.negotiatePlaybackInfo(target.id,
+        selectedAudioIndex!==null?{
+          audioStreamIndex:selectedAudioIndex,
+          mediaSourceId:selectedSource!
+        }:undefined);
       if(epoch!==version || request!==streamEpoch ||
         shown.id!==target.id)return;
       const probe=negotiation.probe;
       playback=probe;
-      const direct=selectDirectMp4(probe);
+      const candidates=probe.sources.filter(source=>
+        selectedAudioIndex===null || source.id===selectedSource);
+      const direct=selectedAudioIndex===null?
+        selectDirectMp4({...probe,sources:candidates}):null;
       const hls=direct?null:selectJellyfinHls({
-        ...probe,sources:probe.sources.filter(source=>
+        ...probe,sources:candidates.filter(source=>
           source.id && negotiation.hlsPaths[source.id])
       });
       const source=direct??hls;
@@ -302,7 +403,12 @@
             "de la progression avec Jellyfin a échoué.";
         });
       }
-      streamKind=mode;streamTicket=ticket;
+      streamKind=mode;streamTicket=ticket;sourceInUse=source;
+      if(selectedSubtitleIndex!==null &&
+         !hasTrack(source,"Subtitle",selectedSubtitleIndex))
+        selectedSubtitleIndex=null;
+      if(selectedSubtitleIndex!==null)
+        void loadSelectedSubtitle();
       streamRuntimeTicks=source.runtimeTicks;
       resumeApplied=false;
       await tick();
@@ -351,9 +457,12 @@
         try{await videoElement.play();}
         catch{/* Autoplay may be denied; native controls stay visible. */}
       }
-    }catch{
+    }catch(error){
       if(epoch===version && request===streamEpoch){
-        streamError="Lecture impossible. Vérifiez le format et l'accès à Jellyfin.";
+        streamError=error instanceof Error &&
+          error.message==="AUDIO_TRACK_UNAVAILABLE"
+          ?"Jellyfin ne peut pas sélectionner cette piste audio."
+          :"Lecture impossible. Vérifiez le format et l'accès à Jellyfin.";
         // A rejected dynamic HLS import or WebView2 initialization must
         // never leave a valid server-media capability in memory.
         stopStream(true);
@@ -385,7 +494,7 @@
       {#if focusedEpisode}
         <button class="vy-detail-back" type="button"
           onclick={()=>{streamEpoch++;stopStream();streamError="";
-            focusedEpisode=null;playback=null;
+            focusedEpisode=null;resetTrackSelection();playback=null;
             playbackBusy=false;playbackEpoch++;}}>
           ‹ Retour à {media?.title??item.title}
         </button>
@@ -507,7 +616,7 @@
               </button>
               {#if streamTicket}
                 <button type="button" class="vy-detail-action"
-                  onclick={()=>{streamEpoch++;stopStream();}}>
+                  onclick={()=>{streamEpoch++;retainedSeekSeconds=null;stopStream();}}>
                   Arrêter la lecture
                 </button>
               {/if}
@@ -564,13 +673,71 @@
                   if(reporter && videoElement)
                     reporter.stop(playbackClock(videoElement),true);
                   streamEpoch++;stopStream();
-                }}></video>
+                }}>
+                {#if subtitleBlobUrl && activeSubtitle}
+                  <track kind="subtitles" src={subtitleBlobUrl}
+                    srclang={activeSubtitle.language || "und"}
+                    label={displayTrack(activeSubtitle)} default
+                    onload={(event)=>{
+                      event.currentTarget.track.mode="showing";
+                    }}/>
+                {/if}
+              </video>
               {#if !streamStarted}
                 <p class="vy-detail-muted" role="status">
                   {streamKind==="hls" && streamBusy
                     ?"Jellyfin prépare le flux et les sous-titres. Le premier démarrage d’un fichier STRM peut prendre plusieurs dizaines de secondes."
                     :"En attente de la première image. Utilisez Lecture si le navigateur intégré bloque le démarrage automatique."}
                 </p>
+              {/if}
+            </div>
+          {/if}
+          {#if nativeAvailable && tracksSource}
+            <div class="vy-playback-track-controls"
+              aria-label="Langues et sous-titres">
+              {#if audioTracks.length>0}
+                <label>
+                  <span>Langue audio</span>
+                  <select value={selectedAudioIndex===null?"auto":String(selectedAudioIndex)}
+                    disabled={streamBusy || playbackBusy}
+                    onchange={(event)=>chooseAudio(event.currentTarget.value)}>
+                    <option value="auto">Automatique (Jellyfin)</option>
+                    {#each audioTracks as track (track.index)}
+                      <option value={String(track.index)}>
+                        {displayTrack(track)}
+                      </option>
+                    {/each}
+                  </select>
+                </label>
+              {/if}
+              {#if subtitleTracks.length>0 || unsupportedSubtitles}
+                <label>
+                  <span>Sous-titres</span>
+                  <select value={selectedSubtitleIndex===null?"off":String(selectedSubtitleIndex)}
+                    disabled={subtitleLoading || streamBusy || playbackBusy}
+                    onchange={(event)=>void chooseSubtitle(event.currentTarget.value)}>
+                    <option value="off">Désactivés</option>
+                    {#each subtitleTracks as track (track.index)}
+                      <option value={String(track.index)}>
+                        {displayTrack(track)}
+                      </option>
+                    {/each}
+                  </select>
+                </label>
+                {#if unsupportedSubtitles}
+                  <p class="vy-detail-muted">
+                    Sous-titres graphiques (PGS/DVD) : conversion vidéo
+                    nécessaire, non disponible dans ce lecteur pour l'instant.
+                  </p>
+                {/if}
+                {#if subtitleLoading}
+                  <p class="vy-detail-muted" role="status">
+                    Préparation des sous-titres…
+                  </p>
+                {/if}
+                {#if subtitleError}
+                  <p class="vy-detail-warning" role="status">{subtitleError}</p>
+                {/if}
               {/if}
             </div>
           {/if}

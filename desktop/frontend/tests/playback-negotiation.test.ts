@@ -74,6 +74,49 @@ describe("negotiated Jellyfin HLS is tokenless and constrained",()=>{
       sample({TranscodingUrl:"javascript:alert(1)"}),ITEM).hlsPaths))
       .toHaveLength(0);
   });
+  it("rejects invalid audio choices before network activity and confirms the chosen index",async()=>{
+    const requests:Array<{url:URL,options:RequestInit}>=[];
+    const fetcher=vi.fn(async(req:RequestInfo|URL,options:RequestInit={})=>{
+      const url=new URL(String(req));requests.push({url,options});
+      if(url.pathname==="/Users/AuthenticateByName")
+        return new Response(JSON.stringify({User:{Id:USER,Name:"QA"},
+          AccessToken:TOKEN}));
+      if(url.pathname==="/Users/Me")
+        return new Response(JSON.stringify({Id:USER,Name:"QA"}));
+      if(url.pathname==="/Items/"+ITEM+"/PlaybackInfo"){
+        const body=JSON.parse(String(options.body));
+        return new Response(JSON.stringify(sample({
+          MediaStreams:[{Type:"Video",Index:0,Codec:"hevc"},
+            {Type:"Audio",Index:1,Codec:"aac"},
+            {Type:"Audio",Index:2,Codec:"eac3"}],
+          TranscodingUrl:urlForAudio(body.AudioStreamIndex)
+        })));
+      }
+      throw new Error("UNEXPECTED_API");
+    }) as typeof fetch;
+    const urlForAudio=(index:number)=>url+
+      "&AudioStreamIndex="+index;
+    const api=new JellyfinApi({fetcher});
+    api.enableReadOnlyQa();await api.login("QA","fixture");
+    const before=requests.length;
+    await expect(api.negotiatePlaybackInfo(ITEM,{
+      audioStreamIndex:-1,mediaSourceId:SOURCE
+    })).rejects.toThrow("AUDIO_TRACK_INVALID");
+    await expect(api.negotiatePlaybackInfo(ITEM,{
+      audioStreamIndex:10001,mediaSourceId:SOURCE
+    })).rejects.toThrow("AUDIO_TRACK_INVALID");
+    expect(requests).toHaveLength(before);
+    const audio=await api.negotiatePlaybackInfo(ITEM,{
+      audioStreamIndex:2,mediaSourceId:SOURCE
+    });
+    expect(audio.hlsPaths[SOURCE]).toContain("AudioStreamIndex=2");
+    const posted=JSON.parse(String(requests.at(-1)?.options.body));
+    expect(posted.AudioStreamIndex).toBe(2);
+    expect(posted.MediaSourceId).toBe(SOURCE);
+    expect(posted.EnableDirectPlay).toBe(false);
+    expect(posted.SubtitleStreamIndex).toBe(-1);
+    expect(requests.every(r=>!r.url.href.includes(TOKEN))).toBe(true);
+  });
   it("POSTs a strict WebView2 device profile only when starting playback",async()=>{
     const requests:Array<{url:URL,options:RequestInit}>=[];
     const fetcher=vi.fn(async(req:RequestInfo|URL,

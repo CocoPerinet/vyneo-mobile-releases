@@ -7,6 +7,7 @@ import type {PlaybackReport} from "./playback-report";
 import {parseNegotiatedPlayback,WEBVIEW2_DEVICE_PROFILE,NEGOTIATED_MAX_BITRATE} from "./playback-negotiation";
 import type {NegotiatedPlayback} from "./playback-negotiation";
 import {parseSeasons,parsePlaybackInfo} from "./media-details";
+import {negotiatedAudioIndexMatches} from "./playback-tracks";
 import type {RecentSeason} from "./new-seasons";
 import type {TrendingRank} from "./trending";
 import {candidateOffsets,CANDIDATE_BATCH_SIZE} from "./candidate-pages";
@@ -526,23 +527,104 @@ export class JellyfinApi {
    * declares the codecs and HLS container supported by WebView2/hls.js.
    * The server supplies a negotiated URL; we strip tokens and pin its path
    * before the native protocol is permitted to use it. */
-  async negotiatePlaybackInfo(itemId:string):Promise<NegotiatedPlayback>{
+  async negotiatePlaybackInfo(itemId:string,selection?:{
+    audioStreamIndex:number;
+    mediaSourceId:string;
+  }):Promise<NegotiatedPlayback>{
     const uid=this.requireUser(),generation=this.authGeneration;
     if(!validId(itemId))throw new Error("PLAYBACK_ITEM_INVALID");
+    if(selection && (!validId(selection.mediaSourceId) ||
+       !Number.isSafeInteger(selection.audioStreamIndex) ||
+       selection.audioStreamIndex<0 || selection.audioStreamIndex>10000))
+      throw new Error("AUDIO_TRACK_INVALID");
     const raw=await this.json("/Items/"+itemId+"/PlaybackInfo",{
       method:"POST",maxBytes:786432,
       timeoutMs:PLAYBACK_INSPECTION_TIMEOUT_MS,
       body:{
         UserId:uid,MaxStreamingBitrate:NEGOTIATED_MAX_BITRATE,
         MaxAudioChannels:2,StartTimeTicks:0,
-        EnableDirectPlay:true,EnableDirectStream:true,
+        EnableDirectPlay:!selection,EnableDirectStream:true,
         EnableTranscoding:true,
         AllowVideoStreamCopy:true,AllowAudioStreamCopy:true,
+        // Do not auto-burn subtitles while WebView2 controls its own
+        // text tracks. Selected audio always requires a vetted HLS URL.
+        SubtitleStreamIndex:-1,
+        ...(selection?{
+          MediaSourceId:selection.mediaSourceId,
+          AudioStreamIndex:selection.audioStreamIndex
+        }:{}),
         DeviceProfile:WEBVIEW2_DEVICE_PROFILE
       }
     });
     this.assertSession(uid,generation);
-    return parseNegotiatedPlayback(raw,itemId);
+    const result=parseNegotiatedPlayback(raw,itemId);
+    if(selection){
+      const source=result.probe.sources.find(source=>
+        source.id===selection.mediaSourceId &&
+        source.tracks.some(track=>track.kind==="Audio" &&
+          track.index===selection.audioStreamIndex));
+      if(!source || !negotiatedAudioIndexMatches(
+        result.hlsPaths[selection.mediaSourceId]??"",
+        selection.audioStreamIndex))
+        throw new Error("AUDIO_TRACK_UNAVAILABLE");
+    }
+    return result;
+  }
+  /** Subtitles are fetched as bounded text from exactly the signed-in
+   * user's Jellyfin server. No token in the URL and no remote URL in <track>.
+   * The caller must construct and revoke its own ephemeral Blob URL.
+   */
+  async getSubtitleVtt(itemId:string,mediaSourceId:string,
+    streamIndex:number):Promise<string>{
+    const uid=this.requireUser(),generation=this.authGeneration;
+    if(!validId(itemId) || !validId(mediaSourceId) ||
+       !Number.isSafeInteger(streamIndex) || streamIndex<0 ||
+       streamIndex>10000)throw new Error("SUBTITLE_SCOPE_INVALID");
+    const url=new URL("/Videos/"+itemId+"/"+mediaSourceId+
+      "/Subtitles/"+streamIndex+"/Stream.vtt",this.origin);
+    const limit=768*1024;
+    let response:Response;
+    try{
+      response=await this.fetcher(url,{
+        method:"GET",headers:{
+          ...identityHeaders(this.token,this.deviceId),
+          Accept:"text/vtt,text/plain;q=0.5"
+        },mode:"cors",credentials:"omit",cache:"no-store",
+        redirect:"error",referrerPolicy:"no-referrer",
+        // Embedded subtitle extraction can be a cold 60-second ffmpeg job.
+        signal:AbortSignal.timeout(95000)
+      });
+    }catch{
+      throw new Error("SUBTITLE_NETWORK");
+    }
+    this.assertSession(uid,generation);
+    if(!response.ok || response.redirected)
+      throw new Error(response.status===401?"SESSION_EXPIRED":
+        "SUBTITLE_UNAVAILABLE");
+    const declared=Number(response.headers.get("content-length"));
+    if((Number.isFinite(declared) && declared>limit) ||
+       !response.body)throw new Error("SUBTITLE_INVALID");
+    const reader=response.body.getReader();
+    const decoder=new TextDecoder("utf-8",{fatal:false});
+    let text="",bytes=0;
+    try{
+      while(true){
+        const chunk=await reader.read();
+        this.assertSession(uid,generation);
+        if(chunk.done)break;
+        bytes+=chunk.value.byteLength;
+        if(bytes>limit)throw new Error("SUBTITLE_INVALID");
+        text+=decoder.decode(chunk.value,{stream:true});
+      }
+      text+=decoder.decode();
+    }finally{
+      await reader.cancel().catch(()=>{});
+    }
+    const clean=text.replace(/^\uFEFF/,"");
+    if(!/^WEBVTT(?:[ \t][^\r\n]*)?(?:\r?\n|$)/.test(clean) ||
+       !clean.includes("\n") || clean.length<8)
+      throw new Error("SUBTITLE_INVALID");
+    return clean;
   }
   /** Authenticated Jellyfin session events; 204 No Content is success.
    * Only a playing native video invokes this, never artwork/probe calls. */

@@ -4,6 +4,9 @@ import {readFileSync} from 'node:fs';
 const read=(path)=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const workflow=read('../.github/workflows/desktop.yml').replace(/\r\n/g,'\n');
 const runner=read('qa/nsis-in-place-upgrade.ps1');
+const signer=read('qa/verify-ephemeral-updater-signature.ps1');
+const verifier=read('qa/signed-update-verifier/src/main.rs');
+const verifierCargo=read('qa/signed-update-verifier/Cargo.toml');
 
 test('disposable PR Windows runner alone can test NSIS in-place upgrades',()=>{
   const prJob=workflow.split('  windows_preview:\n')[1]
@@ -40,4 +43,26 @@ test('upgrade QA installs the last signed stable first, checks one slot and pres
   assert.match(runner,/finally \{/);
   assert.doesNotMatch(runner,/gh release (create|upload)/);
   assert.doesNotMatch(runner,/TAURI_SIGNING_PRIVATE_KEY|signingKey/i);
+});
+
+test('signed updater fixture uses ephemeral Minisign proof and rejects tampering',()=>{
+  assert.match(runner,/verify-ephemeral-updater-signature\.ps1/);
+  assert.match(signer,/GITHUB_EVENT_NAME -ne 'pull_request'/);
+  assert.match(signer,/RUNNER_ENVIRONMENT -ne 'github-hosted'/);
+  assert.match(signer,/EPHEMERAL_SIGNED_QA_ONLY_ON_HOSTED_PR_WITHOUT_RELEASE_SECRET/);
+  assert.match(signer,/signer generate --ci -w \$key/);
+  assert.match(signer,/signer sign -f \$key \$artifactPath/);
+  assert.match(signer,/cargo run --quiet --manifest-path \$verifier -- \$pub \$sig \$artifactPath/);
+  assert.match(signer,/cargo run --quiet --manifest-path \$verifier -- \$pub \$sig \$mutated/);
+  assert.match(signer,/if \(\$LASTEXITCODE -eq 0\)/);
+  assert.match(signer,/EPHEMERAL_TAMPERED_NSIS_REJECTED_PASS/);
+  assert.match(signer,/Remove-Item -LiteralPath \$dir -Recurse -Force/);
+  assert.match(signer,/PREEXISTING_SIGNATURE_MUST_NOT_BE_OVERWRITTEN/);
+  assert.doesNotMatch(signer,/gh release (upload|create)|Invoke-WebRequest|https?:\/\//);
+  assert.doesNotMatch(signer,/Start-Process|Run-Silent|Uninstall/);
+  assert.match(verifierCargo,/minisign-verify = "=0\.2\.5"/);
+  assert.match(verifier,/PublicKey::from_file/);
+  assert.match(verifier,/Signature::from_file/);
+  assert.match(verifier,/verify_stream/);
+  assert.match(verifier,/verifier\.finalize\(\)\?/);
 });

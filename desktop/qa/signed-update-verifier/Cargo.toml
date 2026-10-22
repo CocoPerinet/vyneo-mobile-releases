@@ -1,0 +1,9 @@
+[package]
+name = "vyneo-ci-signed-artifact"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# Same Minisign format as the Tauri updater; no production key access.
+minisign-verify = "=0.2.5"

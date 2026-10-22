@@ -131,6 +131,10 @@ try {
   if ($candidates.Count -ne 1) {
     throw 'EXPECTED_EXACTLY_ONE_UPGRADE_INSTALLER'
   }
+  # Sign the exact candidate with a disposable key, verify intact bytes,
+  # reject a tampered copy. This is not the production Tauri update key.
+  & ./qa/verify-ephemeral-updater-signature.ps1 -Artifact $candidates[0].FullName
+  if (-not $?) { throw 'SIGNED_NSIS_SECURITY_SMOKE_FAILED' }
   Run-Silent $candidates[0].FullName
   $upgraded = Require-One $upgradeVersion
   if ($upgraded.PSChildName -ne $beforeKey) {

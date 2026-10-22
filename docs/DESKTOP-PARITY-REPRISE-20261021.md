@@ -1287,3 +1287,62 @@ en réussite. La CI ci-dessus passe désormais intégralement.
   devra être volontairement autorisé avant la validation du
   vrai flux .strm, du son, des sous-titres et de la progression.
   La PR reste brouillon, le garde-fou de release reste fermé.
+
+## 22 octobre : garde anti-concurrence et signature liée à la version
+
+### Correction du contrôle automatique (code `df50853`)
+
+La vérification automatique n'utilise plus le créneau de six heures
+lorsqu'une vérification manuelle occupe déjà le verrou : elle réserve
+le même permis atomique **avant** d'actualiser son horodatage. Le
+test Rust exerce les deux ordonnancements (manuel prioritaire,
+automatique après libération), le verrou et le retour avant six heures.
+
+[CI #39769901230](https://github.com/CocoPerinet/vyneo-mobile-releases/actions/runs/39769901230)
+: **SUCCESS** sur `df50853` (verify et Windows NSIS).
+
+### Correctif du banc cryptographique (code `0a34a7d`)
+
+L'ancien test NSIS prouvait une signature Minisign des octets, sans
+prouver la liaison au numéro de version déclaré par le manifeste.
+Or le runtime Tauri 2.14 utilise `requireSignedVersion=true` et
+refuse également une signature sans `version:` fiable dans le
+commentaire protégé. Il était donc incorrect de présenter le test
+cryptographique simple comme une preuve de compatibilité complète.
+
+La signature de la candidate temporaire passe maintenant
+`signer sign --app-version <version>`. Le vérificateur Rust,
+indépendant de l'application, vérifie le contenu signé **puis**
+la version issue du commentaire protégé. Il refuse une version
+différente, l'absence de version, les doublons de champs et
+les octets modifiés. Les contrôles sont limités au runner GitHub
+Windows jetable ; aucune clé privée de production n'est utilisée.
+
+**Validation réelle sur COCO**, sans installation :
+- Quatre tests utilisant la vraie CLI Tauri avec une clé jetable :
+  signature versionnée acceptée, mauvaise version rejetée,
+  signature sans version rejetée, octets modifiés rejetés.
+- Un test Rust du vérificateur PASS.
+- 164 tests Vitest PASS et tests Node PASS.
+- `npm run check`, QA Playwright de parité (390/1280/1920)
+  et première image HLS H.264/AAC dans Chromium : PASS.
+- Registre Windows : **une seule installation Vynéo 0.2.4**,
+  un seul processus stable, aucune tâche QA résiduelle.
+
+**CI GitHub Actions du code `0a34a7d` : SUCCESS**, [run #39772587081](https://github.com/CocoPerinet/vyneo-mobile-releases/actions/runs/39772587081).
+Les jobs `verify` et `Windows x64 / lecture seule / NSIS` sont
+terminés avec succès. Marqueurs réellement retrouvés dans les logs :
+```
+VYNEO_PUBLISHED_STABLE_PINNED_KEY_PASS
+VYNEO_EPHEMERAL_SIGNED_NSIS_VALID_PASS
+VYNEO_EPHEMERAL_WRONG_VERSION_REJECTED_PASS
+VYNEO_EPHEMERAL_MISSING_VERSION_REJECTED_PASS
+VYNEO_EPHEMERAL_TAMPERED_NSIS_REJECTED_PASS
+VYNEO_WINDOWS_NSIS_IN_PLACE_UPGRADE_PASS baseline=0.2.4 upgraded=0.2.5 entries=1 user_data=preserved
+```
+
+Le bloc D reste **PENDING** : ces preuves ne remplacent pas
+une mise à jour signée publiée et déclenchée par le client en
+conditions réelles, ni une lecture STRM Jellyfin authentifiée
+avec progression et sous-titres dans le compte de l'utilisateur.
+Aucun tag, aucune publication, aucune nouvelle installation.

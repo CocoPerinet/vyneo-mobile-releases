@@ -154,6 +154,10 @@ export class JellyfinApi {
   private token:string|null=null;
   private userId:string|null=null;
   private username:string|null=null;
+  // Opt-in only after the native debug QA feature is verified at startup.
+  // Once enabled, this instance can never return to write mode.
+  private readOnlyQa=false;
+  enableReadOnlyQa():void { this.readOnlyQa=true; }
   private readonly fetcher:typeof fetch;
   private readonly deviceId:string;
   private readonly origin:string;
@@ -526,7 +530,8 @@ export class JellyfinApi {
     const uid=this.requireUser(),generation=this.authGeneration;
     if(!validId(itemId))throw new Error("PLAYBACK_ITEM_INVALID");
     const raw=await this.json("/Items/"+itemId+"/PlaybackInfo",{
-      method:"POST",maxBytes:786432,timeoutMs:17000,
+      method:"POST",maxBytes:786432,
+      timeoutMs:PLAYBACK_INSPECTION_TIMEOUT_MS,
       body:{
         UserId:uid,MaxStreamingBitrate:NEGOTIATED_MAX_BITRATE,
         MaxAudioChannels:2,StartTimeTicks:0,
@@ -542,6 +547,7 @@ export class JellyfinApi {
   /** Authenticated Jellyfin session events; 204 No Content is success.
    * Only a playing native video invokes this, never artwork/probe calls. */
   async reportPlayback(event:PlaybackReport):Promise<void>{
+    if(this.readOnlyQa)throw new Error("QA_READ_ONLY");
     const user=this.requireUser(),generation=this.authGeneration;
     if(!validId(event.itemId) || !validId(event.mediaSourceId) ||
        (event.playSessionId!==null &&
@@ -869,6 +875,7 @@ export class JellyfinApi {
   }
   async updateMediaState(itemId:string,action:"favorite"|"played",
     enabled:boolean):Promise<void>{
+    if(this.readOnlyQa)throw new Error("QA_READ_ONLY");
     const uid=this.requireUser(),generation=this.authGeneration;
     if(!validId(itemId) || !["favorite","played"].includes(action) ||
       typeof enabled!=="boolean")throw new Error("MEDIA_ACTION_DENIED");

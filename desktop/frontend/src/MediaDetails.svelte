@@ -22,8 +22,10 @@
     onaction:(item:MediaItem,action:MediaAction)=>Promise<boolean>;
     onclose:()=>void;
     onplaybackchange:()=>void;
+    qaReadOnly?:boolean;
   };
-  let {item,api,cache,onaction,onclose,onplaybackchange}:Props=$props();
+  let {item,api,cache,onaction,onclose,onplaybackchange,
+    qaReadOnly=false}:Props=$props();
   let media=$state<MediaItem|null>(null);
   let seasons=$state<SeasonSummary[]>([]);
   let seasonsLoading=$state(false);
@@ -154,7 +156,8 @@
     playbackBusy=false;playbackEpoch++;stateError="";
   }
   async function mutateMedia(action:MediaAction){
-    if(stateBusy || (action==="favorite" && favoriteUnavailable))return;
+    if(qaReadOnly || stateBusy ||
+       (action==="favorite" && favoriteUnavailable))return;
     const target={...shown,isFavorite},targetId=target.id;
     const version=epoch;
     stateBusy=true;stateError="";
@@ -286,15 +289,17 @@
         await api.endNativePlayback(ticket.ticket).catch(()=>{});
         return;
       }
-      reporter=new PlaybackReporter({
-        itemId:target.id,mediaSourceId:source.id,
-        playSessionId:probe.playSessionId??null,
-        playMethod:mode==="direct"?"DirectPlay":
-          !source.transcoding && source.directStream?"DirectStream":"Transcode"
-      },(event)=>api.reportPlayback(event),()=>{
-        reportWarning="Lecture possible, mais la synchronisation "+
-          "de la progression avec Jellyfin a échoué.";
-      });
+      if(!qaReadOnly){
+        reporter=new PlaybackReporter({
+          itemId:target.id,mediaSourceId:source.id,
+          playSessionId:probe.playSessionId??null,
+          playMethod:mode==="direct"?"DirectPlay":
+            !source.transcoding && source.directStream?"DirectStream":"Transcode"
+        },(event)=>api.reportPlayback(event),()=>{
+          reportWarning="Lecture possible, mais la synchronisation "+
+            "de la progression avec Jellyfin a échoué.";
+        });
+      }
       streamKind=mode;streamTicket=ticket;
       streamRuntimeTicks=source.runtimeTicks;
       resumeApplied=false;
@@ -393,7 +398,7 @@
           aria-label={favoriteUnavailable?"Favori non vérifié":
             isFavorite?"Retirer de ma liste":"Ajouter à ma liste"}
           aria-pressed={isFavorite}
-          disabled={stateBusy||favoriteUnavailable}
+          disabled={qaReadOnly||stateBusy||favoriteUnavailable}
           onclick={()=>void mutateMedia("favorite")}>
           <VyIcon kind="heart" size={18}/>
           <span>{favoriteUnavailable?"Vérification du favori…":
@@ -401,12 +406,18 @@
         </button>
         <button type="button" class="vy-detail-control" class:active={shown.played}
           aria-label={shown.played?"Marquer non vu":"Marquer vu"}
-          aria-pressed={shown.played} disabled={stateBusy}
+          aria-pressed={shown.played} disabled={qaReadOnly||stateBusy}
           onclick={()=>void mutateMedia("played")}>
           <VyIcon kind="check" size={18}/>
           <span>{shown.played?"Déjà vu":"Marquer vu"}</span>
         </button>
       </div>
+      {#if qaReadOnly}
+        <p class="vy-detail-muted" role="status">
+          QA lecture seule : les favoris, l'état vu et la progression
+          Jellyfin ne seront pas modifiés par ce lecteur temporaire.
+        </p>
+      {/if}
       {#if stateError}<p class="vy-detail-warning" role="alert">{stateError}</p>{/if}
 
       {#if item.type==="Series" && !focusedEpisode}

@@ -97,7 +97,10 @@ describe("negotiated Jellyfin HLS is tokenless and constrained",()=>{
     await api.login("QA","fixture-only");
     const before=requests.length;
     expect(before).toBe(2);
+    const timeout=vi.spyOn(AbortSignal,"timeout");
     const negotiation=await api.negotiatePlaybackInfo(ITEM);
+    expect(timeout).toHaveBeenCalledWith(25_000);
+    timeout.mockRestore();
     expect(negotiation.probe.sources).toHaveLength(1);
     expect(negotiation.hlsPaths[SOURCE]).not.toContain("ApiKey");
     expect(requests).toHaveLength(3);

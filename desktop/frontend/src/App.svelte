@@ -473,7 +473,7 @@
   }
   async function changeMediaState(shown:MediaItem,
     action:MediaAction):Promise<boolean>{
-    if(hoverBusy || !session)return false;
+    if(temporaryQa || hoverBusy || !session)return false;
     const mutation=planMediaMutation(shown,action);
     if(!mutation)return false;
     const uid=session.userId,generation=epoch;
@@ -721,8 +721,18 @@
         try{
           // Only the compile-time isolated QA build can report true.
           temporaryQa=(await invoke("is_temporary_qa"))===true;
-          if(temporaryQa)rememberMe=false;
-        }catch{/* Older stable builds do not expose the QA marker. */}
+          if(temporaryQa){
+            api.enableReadOnlyQa();
+            rememberMe=false;
+          }
+        }catch{
+          // Native identity could not be established. Never allow a client
+          // with an unknown identity to mutate a real Jellyfin account.
+          temporaryQa=true;
+          api.enableReadOnlyQa();
+          rememberMe=false;
+          vaultNotice="Identité native non vérifiée : lecture seule activée.";
+        }
       }
       await restoreSaved();
     })();
@@ -1104,14 +1114,15 @@
                   title="Ma liste"
                   class:active={verifiedHeroFavorite?.id===hero.id &&
                     verifiedHeroFavorite.favorite}
-                  disabled={hoverBusy || verifiedHeroFavorite?.id!==hero.id}
+                  disabled={temporaryQa || hoverBusy ||
+                    verifiedHeroFavorite?.id!==hero.id}
                   onclick={()=>void toggleHeroState("favorite")}>
                   <VyIcon kind="heart" size={19}/>
                 </button>
                 <button type="button" class="vy-icon-button vy-hero-action-icon"
                   aria-label={hero.played?"Marquer non vu":"Marquer vu"}
                   title="Vu / non vu" class:active={hero.played}
-                  disabled={hoverBusy}
+                  disabled={temporaryQa || hoverBusy}
                   onclick={()=>void toggleHeroState("played")}>
                   <VyIcon kind="check" size={18}/>
                 </button>
@@ -1422,7 +1433,7 @@
     {/if}
     {#if selected}
       <MediaDetails item={selected} {api} cache={artwork}
-        onaction={changeMediaState}
+        qaReadOnly={temporaryQa} onaction={changeMediaState}
         onplaybackchange={()=>void refresh()}
         onclose={closeMediaDetails}/>
     {/if}

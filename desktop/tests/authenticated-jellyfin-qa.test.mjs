@@ -43,6 +43,14 @@ test("real-user QA cannot read, write or clear any OS credential vault",()=>{
   assert.match(vault,/service\("fr.visyren.vyneo.desktop.authqa"\)\.is_err\(\)/);
   assert.match(main,/fn is_temporary_qa\(\) -> bool \{ interactive_qa\(\) \}/);
   assert.match(client,/temporaryQa=\(await invoke\("is_temporary_qa"\)\)===true/);
+  assert.match(client,/api\.enableReadOnlyQa\(\)/);
+  assert.match(client,/qaReadOnly=\{temporaryQa\}/);
+  assert.match(read("frontend/src/MediaDetails.svelte"),
+    /if\(!qaReadOnly\)\{\s*reporter=new PlaybackReporter/);
+  assert.match(read("frontend/src/MediaDetails.svelte"),
+    /disabled=\{qaReadOnly\|\|stateBusy\}/);
+  assert.match(read("frontend/src/api.ts"),
+    /if\(this\.readOnlyQa\)throw new Error\("QA_READ_ONLY"\)/);
   assert.match(client,/if\(temporaryQa\)\{[\s\S]*?rememberMe=false;credentialStored=false/);
   assert.match(client,/nativeVault\.available && !temporaryQa/);
   assert.match(client,/Version temporaire de test : aucune session mémorisée/);

@@ -3,6 +3,8 @@
   import {isTauri} from "@tauri-apps/api/core";
   import {selectDirectMp4,selectJellyfinHls,resumeAtSeconds,
     playbackDurationSeconds} from "./native-playback";
+  import {capturePlaybackSwitch,shouldAutoplayAfterSwitch}
+    from "./playback-switch";
   import type Hls from "hls.js";
   import {initialHlsFragmentPolicy,firstFragmentReceived}
     from "./hls-load-policy";
@@ -67,6 +69,7 @@
   let retainedSeekSeconds:number|null=null;
   let retainedVolume:number|null=null;
   let retainedMuted:boolean|null=null;
+  let retainedPaused:boolean|null=null;
   let resumeApplied=false;
   let videoElement=$state<HTMLVideoElement|undefined>(undefined);
   let streamEpoch=0;
@@ -284,7 +287,8 @@
   function resetTrackSelection(){
     selectedAudioIndex=null;selectedSubtitleIndex=null;
     retainedSeekSeconds=null;retainedVolume=null;retainedMuted=null;
-    burnedSubtitleIndex=null;sourceInUse=null;subtitleError="";
+    retainedPaused=null;burnedSubtitleIndex=null;
+    sourceInUse=null;subtitleError="";
     clearSubtitleBlob();
   }
   async function loadSelectedSubtitle(){
@@ -319,11 +323,11 @@
   }
   function restartStreamPreservingState(){
     const previousSource=sourceInUse?.id??tracksSource?.id;
-    const seconds=videoElement?.currentTime;
-    retainedSeekSeconds=typeof seconds==="number" &&
-      Number.isFinite(seconds) && seconds>0?seconds:null;
-    retainedVolume=videoElement?.volume??null;
-    retainedMuted=videoElement?.muted??null;
+    const snapshot=capturePlaybackSwitch(videoElement);
+    retainedSeekSeconds=snapshot.seekSeconds;
+    retainedVolume=snapshot.volume;
+    retainedMuted=snapshot.muted;
+    retainedPaused=snapshot.paused;
     streamEpoch++;
     stopStream();
     void startNativeVideo(previousSource);
@@ -381,6 +385,7 @@
     if(streamBusy || !nativeAvailable)return;
     if(!preferredSourceId){
       retainedSeekSeconds=null;retainedVolume=null;retainedMuted=null;
+      retainedPaused=null;
     }
     const target=shown,version=epoch,request=++streamEpoch;
     // Remember the source before stopStream discards its old capability.
@@ -494,7 +499,9 @@
           if(request===streamEpoch)engine.loadSource(ticket.url);
         });
         engine.on(Hls.Events.MANIFEST_PARSED,()=>{
-          if(request===streamEpoch)
+          // Switching tracks must not unpause a movie the user paused.
+          if(request===streamEpoch &&
+             shouldAutoplayAfterSwitch(retainedPaused))
             void videoElement?.play().catch(()=>{});
         });
         engine.on(Hls.Events.ERROR,(_event,detail)=>{
@@ -504,7 +511,7 @@
           }
         });
         engine.attachMedia(videoElement);
-      }else{
+      }else if(shouldAutoplayAfterSwitch(retainedPaused)){
         try{await videoElement.play();}
         catch{/* Autoplay may be denied; native controls stay visible. */}
       }
@@ -672,7 +679,8 @@
                 <button type="button" class="vy-detail-action"
                   onclick={()=>{
                     streamEpoch++;retainedSeekSeconds=null;
-                    retainedVolume=null;retainedMuted=null;stopStream();
+                    retainedVolume=null;retainedMuted=null;
+                    retainedPaused=null;stopStream();
                   }}>
                   Arrêter la lecture
                 </button>
@@ -693,6 +701,8 @@
                 controls playsinline preload="metadata"
                 aria-label={"Lecteur vidéo : "+shown.title}
                 onplaying={()=>{
+                  // Once resumed by the user, discard the prior pause intent.
+                  retainedPaused=null;
                   streamStarted=true;streamBusy=false;
                   if(reporter && videoElement)
                     reporter.playing(playbackClock(videoElement));

@@ -1,15 +1,15 @@
 {
   "schemaVersion": 1,
-  "version": "0.4.0-rc.1",
-  "publishedAt": "2026-10-21T17:27:11Z",
+  "version": "0.4.0-rc.2",
+  "publishedAt": "2026-10-23T14:06:06Z",
   "mandatory": false,
-  "releaseNotes": "Préversion Android 0.4.0 : nouvelle interface native et nouveau logo. Validation sur téléphone réel en cours. Première connexion nécessaire au passage depuis l’ancienne interface. Mise à jour facultative.",
+  "releaseNotes": "Préversion Android RC2 : reprise des téléchargements via un relais sécurisé, corrections du bouton Retour, des catégories, des bannières et de l’avatar. Installation et mise à niveau testées sur émulateur. Téléchargement complet sur Honor encore à valider. Mise à jour facultative.",
   "platforms": {
     "android": {
-      "build": 8,
-      "url": "https://github.com/CocoPerinet/vyneo-mobile-releases/releases/download/mobile-v0.4.0-rc.1/Vyneo-Mobile-0.4.0-native-preview.apk",
-      "sha256": "97abb6875c290870da0d2114bdd8b98f1b0536db01c5f070d57f2b07b565a328",
-      "size": 83908308
+      "build": 9,
+      "url": "https://github.com/CocoPerinet/vyneo-mobile-releases/releases/download/mobile-v0.4.0-rc.2/Vyneo-Mobile-0.4.0-native-preview.apk",
+      "sha256": "078b9ae9118845a71c2f5605bd051219ae28be90c2cf2e1f6ad70420f06f3716",
+      "size": 83927248
     }
   }
 }

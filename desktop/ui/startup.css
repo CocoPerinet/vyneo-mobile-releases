@@ -1,0 +1,48 @@
+:root{color-scheme:dark;--bg:#090b0f;--panel:#121417;--accent:#fa7440;--text:#f4f4f8;--muted:#9b9ca5}
+*,*::before,*::after{box-sizing:border-box}
+html,body{padding:0;margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:Inter,Segoe UI,system-ui,sans-serif}
+body{overflow-x:hidden}
+.app{max-width:100%;overflow:hidden}
+.masthead{display:flex;align-items:center;gap:18px;padding:27px 4% 18px;background:linear-gradient(180deg,#0a0d12 0%,rgba(10,13,18,.92) 80%,transparent)}
+.brand{font-weight:820;font-size:27px;letter-spacing:.1px;color:var(--accent);text-shadow:0 2px 18px #a73b2a35}
+.edition{color:#6e7580;font-size:10px;letter-spacing:2px;font-weight:800}
+a{color:inherit;text-decoration:none}
+.discovery-link{margin-left:auto;border:1px solid #414047;border-radius:9px;padding:11px 16px;font-size:13px;font-weight:680;background:#191b21;transition:background .12s}
+.discovery-link:hover,.discovery-link:focus-visible{background:#2b2529;outline:2px solid #ff955d;outline-offset:2px}
+.sparkle{color:var(--accent);font-size:16px;padding-right:6px}
+.navigation{padding:8px 4% 24px;display:flex;gap:30px;white-space:nowrap;color:#a7a8af;font-size:13px;font-weight:650}
+.navigation .selected{color:#fff;border-bottom:2px solid var(--accent);padding-bottom:11px}
+.hero{position:relative;min-height:310px;overflow:hidden;background:linear-gradient(110deg,#14151d 0%,#17141e 54%,#1b141a 100%);display:flex;align-items:center;border-block:1px solid #ffffff0b}
+.hero-glow{position:absolute;inset:-50px -20% auto auto;width:65%;height:130%;background:radial-gradient(ellipse,#ff71411b,transparent 65%);pointer-events:none}
+.hero-copy{z-index:1;position:relative;margin:30px 0 30px 4%;max-width:min(530px,62vw)}
+.eyebrow{color:#ff9a72;letter-spacing:2px;font-size:11px;font-weight:850;margin-bottom:15px}
+h1{font-size:clamp(26px,3.1vw,47px);letter-spacing:-1.2px;line-height:1.14;margin:0 0 13px}
+p{max-width:475px;color:#b8b5ba;font-size:14px;line-height:1.7;margin:0 0 22px}
+.hero-buttons{display:flex;align-items:center;gap:8px}
+.primary{display:inline-flex;align-items:center;gap:18px;padding:12px 18px;background:linear-gradient(100deg,#e85834,#f47547);border-radius:9px;font-weight:750;font-size:13px;color:white;box-shadow:0 9px 36px #c34b2838}
+.primary:hover,.primary:focus-visible{background:#f77f4c;outline:2px solid #fdbda0;outline-offset:3px}
+.art-grid{position:absolute;right:-3%;top:-25px;width:42%;height:380px;display:flex;gap:10px;transform:perspective(650px) rotateY(-13deg) rotateZ(8deg);opacity:.72;pointer-events:none}
+.art{height:95%;width:23%;flex-shrink:0;border-radius:11px;border:1px solid #ffffff21;box-shadow:0 14px 50px #000b}
+.art-1{background:linear-gradient(160deg,#384455,#292536 55%,#6d382b)}
+.art-2{background:linear-gradient(180deg,#6e322e,#37343d 62%,#172e31)}
+.art-3{background:linear-gradient(145deg,#233c45,#433848,#8a502b)}
+.art-4{background:linear-gradient(165deg,#69513d,#2a3541,#3a2134)}
+.shelves{padding:25px 4% 40px;display:grid;gap:30px}
+.shelf h2{font-size:19px;margin:0 0 15px;font-weight:740;letter-spacing:-.3px}
+.posters{display:flex;gap:13px;overflow:hidden}
+.posters>div{flex:none;border-radius:7px;border:1px solid #ffffff0a;background:#17191f;box-shadow:0 6px 16px #0003}
+.landscape{width:clamp(170px,22vw,300px);aspect-ratio:16/9}
+.landscape-1{background:linear-gradient(135deg,#323544,#1d252b,#413037)}
+.landscape-2{background:linear-gradient(115deg,#322d3e,#202837,#353235)}
+.landscape-3{background:linear-gradient(140deg,#343e39,#20212d,#3a2534)}
+.landscape-4{background:linear-gradient(120deg,#253948,#3b2f2f,#23222c)}
+.poster{width:clamp(100px,13vw,175px);aspect-ratio:2/3}
+.poster-1{background:linear-gradient(135deg,#2c3b4d,#242633)}
+.poster-2{background:linear-gradient(135deg,#4d323e,#1d2334)}
+.poster-3{background:linear-gradient(135deg,#3c3c32,#292333)}
+.poster-4{background:linear-gradient(135deg,#3e2d33,#262c39)}
+.poster-5{background:linear-gradient(135deg,#263c3e,#3a2a39)}
+.poster-6{background:linear-gradient(135deg,#393b45,#2d2935)}
+footer{display:flex;justify-content:space-between;gap:10px;margin:0 4% 25px;color:#616873;font-size:11px}
+@media(max-width:710px){.masthead{padding-top:20px}.edition{display:none}.navigation{gap:16px;overflow:auto}.hero{min-height:265px}.hero-copy{max-width:84vw}.art-grid{opacity:.25;right:-25%;width:60%}.shelves{padding-top:20px}.shelf h2{font-size:16px}.discovery-link{font-size:11px;padding:9px 11px}footer span:last-child{display:none}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important}}

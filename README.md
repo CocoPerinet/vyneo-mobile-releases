@@ -26,3 +26,22 @@ Le lien TestFlight ou App Store sera ajouté après activation du compte Apple
 Developer et validation de l'application par Apple.
 
 Le code source et les secrets de signature ne sont pas stockés dans ce dépôt.
+
+## Windows et macOS : Vynéo Desktop (en préparation)
+
+Le projet natif Tauri se trouve dans [`desktop/`](desktop/).
+L'application démarrera avec notre **véritable interface Jellyfin
+personnalisée** et disposera d'une fenêtre de découverte G7y/LLM,
+accessible depuis le menu.
+
+Les releases `desktop-vX.Y.Z` doivent contenir les installateurs
+Windows et macOS accompagnés de **signatures vérifiées**. Le client
+vérifie automatiquement un manifeste Desktop propre à chaque OS au
+démarrage et installe une nouvelle version si elle est disponible.
+Les fichiers `desktop-*.json` sont distincts de
+[`update-manifest.json`](update-manifest.json), dont les anciennes
+applications Android continuent de dépendre.
+
+**Le lecteur MPV et la bascule réelle automatique de qualité ne sont
+pas encore livrés.** Voir [la portée réelle de Desktop](desktop/README.md)
+et [les canaux de publication](docs/RELEASE-CHANNELS.md).

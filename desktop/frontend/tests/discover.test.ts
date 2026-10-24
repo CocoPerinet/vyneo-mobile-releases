@@ -175,4 +175,46 @@ describe("Vynéo native shelves are metadata-driven and deterministic",()=>{
     expect(buildShelves(zero,"a".repeat(32))).toEqual([]);
     expect(featuredMedia([])).toBeNull();
   });
+  it("matches real Jellyfin A/B parity: one resumed episode per show, no repeat in NextUp",()=>{
+    const southPark=id(1900),gotham=id(1901),vincenzo=id(1902);
+    const resumeOne=media(1903,["Comédie"],{type:"Episode",
+      title:"South Park",seriesId:southPark,seasonNumber:5,
+      episodeNumber:1,progress:15});
+    const resumeTwo=media(1904,["Comédie"],{type:"Episode",
+      title:"South Park",seriesId:southPark,seasonNumber:5,
+      episodeNumber:2,progress:35});
+    const newSouthPark=media(1905,["Comédie"],{type:"Episode",
+      title:"South Park",seriesId:southPark,seasonNumber:28,
+      episodeNumber:2});
+    const continueGotham=media(1906,["Crime"],{type:"Episode",
+      title:"Gotham",seriesId:gotham,seasonNumber:1,
+      episodeNumber:8});
+    const continueVincenzo=media(1907,["Drame"],{type:"Episode",
+      title:"Vincenzo",seriesId:vincenzo,seasonNumber:1,
+      episodeNumber:8});
+    const movie=media(1908,["Action"],{progress:52});
+    const rows=buildShelves({...sample(),
+      resume:[movie,resumeOne,resumeTwo],
+      nextUp:[newSouthPark,continueGotham,continueVincenzo]
+    },id(43),new Date("2026-10-25"));
+    expect(rows.find(x=>x.id==="resume")?.items.map(x=>x.id))
+      .toEqual([movie.id,resumeOne.id]);
+    expect(rows.find(x=>x.id==="next-up")?.items.map(x=>x.id))
+      .toEqual([continueGotham.id,continueVincenzo.id]);
+    // An identically named item from a different series is NOT hidden.
+    const independent=media(1909,["Comédie"],{type:"Episode",
+      title:"South Park",seriesId:id(1910)});
+    const separate=buildShelves({...sample(),resume:[resumeOne],
+      nextUp:[newSouthPark,independent]},id(43),new Date("2026-10-25"));
+    expect(separate.find(x=>x.id==="next-up")?.items.map(x=>x.id))
+      .toEqual([independent.id]);
+    // A stale, almost-complete episode cannot hide the show's real NextUp.
+    const stale=media(1911,["Comédie"],{type:"Episode",
+      title:"South Park",seriesId:southPark,progress:99,played:false});
+    const completed=buildShelves({...sample(),resume:[stale],
+      nextUp:[newSouthPark]},id(43),new Date("2026-10-25"));
+    expect(completed.find(x=>x.id==="next-up")?.items.map(x=>x.id))
+      .toEqual([newSouthPark.id]);
+  });
+
 });

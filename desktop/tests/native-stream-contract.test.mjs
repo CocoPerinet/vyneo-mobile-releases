@@ -30,7 +30,11 @@ test("HLS uses local capability assets with pinned Jellyfin origin",()=>{
   assert.match(hls,/videocodec/);
   assert.match(hls,/audiocodec/);
   assert.match(hls,/negotiated_hls/);
-  assert.match(hls,/MAX_PLAYLIST: usize = 512 \* 1024/);
+  // The bounded 4 MiB playlist allows long Jellyfin movies, while TS
+  // segments and the parallelism cap remain independently constrained.
+  assert.match(hls,/MAX_PLAYLIST: usize = 4 \* 1024 \* 1024/);
+  assert.match(hls,/MAX_ASSETS: usize = 4096/);
+  assert.match(hls,/PARALLEL_REQUESTS: usize = 8/);
   assert.match(hls,/MAX_SEGMENT: usize = 16 \* 1024 \* 1024/);
   assert.match(hls,/access_token/);
   assert.match(hls,/api_key/);

@@ -30,10 +30,11 @@ export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):She
     if(series)resumedSeries.add(series);
     resume.push(item);
   }
-  // Some Jellyfin Resume records omit SeriesId while NextUp supplies it
-  // (and vice versa). Match the exact normalized parent seriesName ONLY
-  // when one side lacks a GUID, preserving unrelated same-named series
-  // whose distinct GUIDs are both known.
+  // Jellyfin's customized Home treats matching named episode parents
+  // as one show even if distinct library entries assign different GUIDs.
+  // Prefer the exact SeriesId, then use a nonempty normalized SeriesName
+  // for aliases, duplicate library entries or missing GUIDs. Episode
+  // titles alone are never evidence of a shared parent series.
   const resumedNames=new Map<string,Set<string>>();
   const seriesName=(item:MediaItem)=>item.seriesName.trim()
     .normalize("NFKC").toLocaleLowerCase("fr");
@@ -48,9 +49,10 @@ export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):She
     if(item.type!=="Episode")return true;
     const id=item.seriesId?.toLowerCase()??"";
     if(id && resumedSeries.has(id))return false;
-    const name=seriesName(item),candidates=name?resumedNames.get(name):null;
-    if(!candidates)return true;
-    return id!=="" && !candidates.has("");
+    const name=seriesName(item);
+    // Same explicit parent name means one show in Jellyfin's Home. A
+    // blank SeriesName never falls back to a generic episode title.
+    return !name || !resumedNames.has(name);
   }),600);
   const favorites=unique(data.favorites,30);
   const collections=unique(data.collections,36);

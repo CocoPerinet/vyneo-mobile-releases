@@ -42,7 +42,10 @@ test("HLS uses local capability assets with pinned Jellyfin origin",()=>{
   const page=get("frontend/src/MediaDetails.svelte");
   assert.match(page,/import\("hls.js"\)/);
   assert.match(page,/selectJellyfinHls\(\{/);
-  assert.match(page,/negotiatePlaybackInfo\(target\.id,\s*selectedAudioIndex/);
+  assert.match(page,/negotiatePlaybackInfo\(target\.id,\{/);
+  assert.match(page,/mediaSourceId:selectedSource/);
+  assert.match(page,/if\(!selectedSource\)\{/);
+  assert.match(page,/api\.getPlaybackInfo\(target\.id\)/);
   assert.match(page,/graphicSubtitleIndex/);
   assert.match(page,/restartStreamPreservingState/);
   assert.match(page,/burnedSubtitleIndex=graphicIndex/);
@@ -68,7 +71,8 @@ test("video CSP allows only Tauri custom media and no token-bearing URLs",()=>{
   assert.match(ui, /negotiation\.hlsPaths\[source\.id\]/);
   assert.match(ui, /getSubtitleVtt/);
   assert.match(ui, /URL\.revokeObjectURL\(old\)/);
-  assert.match(ui, /const pinnedSource=selectedAudioIndex!==null/);
+  assert.match(ui, /const candidates=probe\.sources\.filter\(source=>/);
+  assert.match(ui, /source\.id===selectedSource/);
   assert.match(ui, /retainedVolume=snapshot\.volume/);
   assert.match(ui, /retainedPaused=snapshot\.paused/);
   assert.match(ui, /shouldAutoplayAfterSwitch\(retainedPaused\)/);

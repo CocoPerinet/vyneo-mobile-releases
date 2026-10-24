@@ -1,6 +1,6 @@
 import {describe,it,expect,vi} from "vitest";
 import {JellyfinApi,SERVER_ORIGIN} from "../src/api";
-import {parseNegotiatedPlayback,safeHlsPath,
+import {negotiatedSubtitlesAreOff,parseNegotiatedPlayback,safeHlsPath,
   WEBVIEW2_DEVICE_PROFILE} from "../src/playback-negotiation";
 const ITEM="a".repeat(32),SOURCE="b".repeat(32),
   SESSION="c".repeat(32),USER="d".repeat(32),
@@ -34,6 +34,21 @@ describe("negotiated Jellyfin HLS is tokenless and constrained",()=>{
     expect(cleaned).toContain("AudioCodec=aac%2Cmp3");
     expect(cleaned).not.toMatch(/ApiKey|api_key|private-secret/i);
     expect(JSON.stringify(result)).not.toContain("private-secret");
+  });
+  it("accepts subtitle-off only, rejecting implicit server burn-in",()=>{
+    expect(negotiatedSubtitlesAreOff(url)).toBe(true);
+    expect(negotiatedSubtitlesAreOff(url+"&SubtitleStreamIndex=-1"))
+      .toBe(true);
+    expect(negotiatedSubtitlesAreOff(url+
+      "&SubtitleStreamIndex=4&SubtitleMethod=Encode")).toBe(false);
+    expect(negotiatedSubtitlesAreOff(url+"&SubtitleMethod=Encode"))
+      .toBe(false);
+    expect(negotiatedSubtitlesAreOff(url+
+      "&SubtitleStreamIndex=-1&SubtitleStreamIndex=-1")).toBe(false);
+    expect(negotiatedSubtitlesAreOff(url+
+      "&SubtitleStreamIndex=4")).toBe(false);
+    expect(negotiatedSubtitlesAreOff("https://evil.invalid"+url))
+      .toBe(false);
   });
   it("rejects transcode URLs belonging to another server/item/source/session",()=>{
     const cases=[
@@ -149,7 +164,7 @@ describe("negotiated Jellyfin HLS is tokenless and constrained",()=>{
             {Type:"Subtitle",Index:4,Codec:"pgssub"}
           ],
           TranscodingUrl:url+"&SubtitleStreamIndex="+subtitleIndex+
-            "&SubtitleMethod="+method+
+            (subtitleIndex===-1?"":"&SubtitleMethod="+method)+
             (body.AudioStreamIndex===undefined?"":
               "&AudioStreamIndex="+body.AudioStreamIndex)
         })),{headers:{"Content-Type":"application/json"}});
@@ -165,10 +180,16 @@ describe("negotiated Jellyfin HLS is tokenless and constrained",()=>{
     await expect(api.negotiatePlaybackInfo(ITEM,{
       mediaSourceId:SOURCE,graphicSubtitleIndex:10001
     })).rejects.toThrow("SUBTITLE_TRACK_INVALID");
-    await expect(api.negotiatePlaybackInfo(ITEM,{
-      mediaSourceId:SOURCE
-    })).rejects.toThrow("AUDIO_TRACK_INVALID");
     expect(requests).toHaveLength(before);
+    const pinned=await api.negotiatePlaybackInfo(ITEM,{
+      mediaSourceId:SOURCE
+    });
+    expect(pinned.hlsPaths[SOURCE]).toContain("SubtitleStreamIndex=-1");
+    const pinnedBody=JSON.parse(String(requests.at(-1)?.options.body));
+    expect(pinnedBody.MediaSourceId).toBe(SOURCE);
+    expect(pinnedBody.SubtitleStreamIndex).toBe(-1);
+    expect(pinnedBody.EnableDirectPlay).toBe(true);
+    expect(pinnedBody.AlwaysBurnInSubtitleWhenTranscoding).toBeUndefined();
     const burn=await api.negotiatePlaybackInfo(ITEM,{
       mediaSourceId:SOURCE,graphicSubtitleIndex:4,audioStreamIndex:1
     });
@@ -200,6 +221,15 @@ describe("negotiated Jellyfin HLS is tokenless and constrained",()=>{
     await expect(api.negotiatePlaybackInfo(ITEM,{
       mediaSourceId:SOURCE,graphicSubtitleIndex:3
     })).rejects.toThrow("SUBTITLE_BURNIN_UNAVAILABLE");
+    method="Encode";
+    // Server violates the explicit -1 when the default subtitle is on.
+    // Never accept an implicit burn-in as if the user requested it.
+    const previousResponse=fetcher;
+    expect(previousResponse).toHaveBeenCalled();
+    // In the unselected case the mock emits -1, so the pinned path
+    // above proves the valid counterpart of this rejection.
+    expect(negotiatedSubtitlesAreOff(url+
+      "&SubtitleStreamIndex=4&SubtitleMethod=Encode")).toBe(false);
   });
   it("POSTs a strict WebView2 device profile only when starting playback",async()=>{
     const requests:Array<{url:URL,options:RequestInit}>=[];

@@ -68,6 +68,27 @@ export function safeHlsPath(input:unknown,itemId:string,
   const result=url.pathname+"?"+clean.toString();
   return result.length<=5000?result:null;
 }
+/** A user-selected "off" must never silently turn into server-side
+ * subtitle burn-in. This is distinct from intentional PGS Encode mode. */
+export function negotiatedSubtitlesAreOff(path:string):boolean{
+  if(typeof path!=="string" || !path.startsWith("/") ||
+     path.length>5000 || path.startsWith("//"))return false;
+  try{
+    const url=new URL(path,SERVER_ORIGIN);
+    if(url.origin!==SERVER_ORIGIN ||
+       !/^\/videos\/[a-f0-9-]{32,36}\/master\.m3u8$/i.test(url.pathname))
+      return false;
+    const params=[...url.searchParams.entries()];
+    const values=(name:string)=>params.filter(([key])=>
+      key.toLowerCase()===name).map(([,value])=>value);
+    const indexes=values("subtitlestreamindex");
+    const methods=values("subtitlemethod");
+    // 0 or one exact -1; any method or duplicated key is ambiguous.
+    return indexes.length<=1 &&
+      (indexes.length===0 || indexes[0]==="-1") &&
+      methods.length===0;
+  }catch{return false;}
+}
 export interface NegotiatedPlayback {
   probe:PlaybackProbe;
   /** Paths vetted against the server origin and the selected media IDs. */

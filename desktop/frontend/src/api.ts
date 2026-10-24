@@ -4,7 +4,7 @@ import {validateStreamTicket} from "./native-playback";
 import type {NativeStreamTicket} from "./native-playback";
 import {reportBody,reportPath} from "./playback-report";
 import type {PlaybackReport} from "./playback-report";
-import {parseNegotiatedPlayback,WEBVIEW2_DEVICE_PROFILE,NEGOTIATED_MAX_BITRATE} from "./playback-negotiation";
+import {negotiatedSubtitlesAreOff,parseNegotiatedPlayback,WEBVIEW2_DEVICE_PROFILE,NEGOTIATED_MAX_BITRATE} from "./playback-negotiation";
 import type {NegotiatedPlayback} from "./playback-negotiation";
 import {parseSeasons,parsePlaybackInfo} from "./media-details";
 import {negotiatedAudioIndexMatches,negotiatedGraphicBurnInMatches,
@@ -538,7 +538,6 @@ export class JellyfinApi {
     const audio=selection?.audioStreamIndex;
     const graphic=selection?.graphicSubtitleIndex;
     if(selection && (!validId(selection.mediaSourceId) ||
-       (audio===undefined && graphic===undefined) ||
        (audio!==undefined && (!Number.isSafeInteger(audio) ||
          audio<0 || audio>10000)) ||
        (graphic!==undefined && (!Number.isSafeInteger(graphic) ||
@@ -552,7 +551,9 @@ export class JellyfinApi {
       body:{
         UserId:uid,MaxStreamingBitrate:NEGOTIATED_MAX_BITRATE,
         MaxAudioChannels:2,StartTimeTicks:0,
-        EnableDirectPlay:!selection,EnableDirectStream:!burnIn,
+        // Pinning a source alone must preserve direct MP4 playback.
+        EnableDirectPlay:audio===undefined && !burnIn,
+        EnableDirectStream:!burnIn,
         EnableTranscoding:true,
         AllowVideoStreamCopy:!burnIn,AllowAudioStreamCopy:true,
         // Explicit -1 disables default/forced subtitle auto-burn.
@@ -580,6 +581,11 @@ export class JellyfinApi {
       const source=result.probe.sources.find(source=>
         source.id===selection.mediaSourceId);
       const path=result.hlsPaths[selection.mediaSourceId]??"";
+      if(!source)throw new Error("MEDIA_SOURCE_UNAVAILABLE");
+      // Jellyfin may ignore -1 without MediaSourceId and burn in the
+      // user's default English subtitles. Fail closed on that fallback.
+      if(!burnIn && path && !negotiatedSubtitlesAreOff(path))
+        throw new Error("SUBTITLE_AUTO_BURN_UNAVAILABLE");
       if(audio!==undefined && (!source ||
         !source.tracks.some(track=>track.kind==="Audio" &&
           track.index===audio) || !negotiatedAudioIndexMatches(path,audio)))

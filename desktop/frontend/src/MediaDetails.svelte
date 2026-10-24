@@ -389,35 +389,39 @@
     }
     const target=shown,version=epoch,request=++streamEpoch;
     // Remember the source before stopStream discards its old capability.
-    const selectedSource=preferredSourceId??tracksSource?.id;
+    let selectedSource=preferredSourceId??tracksSource?.id??null;
     const graphicIndex=selectedSubtitleIndex!==null &&
       graphicSubtitleIndex(tracksSource,selectedSubtitleIndex)
         ?selectedSubtitleIndex:null;
     stopStream();streamBusy=true;streamError="";reportWarning="";
     playbackNotificationSent=false;
     try{
-      if((selectedAudioIndex!==null || graphicIndex!==null) &&
-         !selectedSource)
-        throw new Error("TRACK_SOURCE_UNAVAILABLE");
-      const negotiation=await api.negotiatePlaybackInfo(target.id,
-        selectedAudioIndex!==null || graphicIndex!==null?{
-          ...(selectedAudioIndex!==null?
-            {audioStreamIndex:selectedAudioIndex}:{}),
-          ...(graphicIndex!==null?
-            {graphicSubtitleIndex:graphicIndex}:{}),
-          mediaSourceId:selectedSource!
-        }:undefined);
+      // A fresh player may not yet have inspected the item's versions.
+      // Resolve the source first, then ALWAYS pin it with SubtitleStreamIndex
+      // -1. Otherwise Jellyfin can silently choose its default subtitle
+      // and spend minutes extracting it before the first HLS fragment.
+      if(!selectedSource){
+        const inspection=await api.getPlaybackInfo(target.id);
+        if(epoch!==version || request!==streamEpoch ||
+           shown.id!==target.id)return;
+        selectedSource=inspection.sources.find(source=>source.id)?.id??null;
+      }
+      if(!selectedSource)throw new Error("TRACK_SOURCE_UNAVAILABLE");
+      const negotiation=await api.negotiatePlaybackInfo(target.id,{
+        mediaSourceId:selectedSource,
+        ...(selectedAudioIndex!==null?
+          {audioStreamIndex:selectedAudioIndex}:{}),
+        ...(graphicIndex!==null?
+          {graphicSubtitleIndex:graphicIndex}:{})
+      });
       if(epoch!==version || request!==streamEpoch ||
         shown.id!==target.id)return;
       const probe=negotiation.probe;
       playback=probe;
-      // During a track change keep the same media source even when the
-      // user returns to "Audio automatique": never switch editions.
-      const pinnedSource=selectedAudioIndex!==null ||
-        graphicIndex!==null ||
-        preferredSourceId!==undefined && preferredSourceId!==null;
+      // The negotiated source is fixed even for automatic audio, so
+      // Jellyfin cannot reselect another version or default subtitles.
       const candidates=probe.sources.filter(source=>
-        !pinnedSource || source.id===selectedSource);
+        source.id===selectedSource);
       const direct=selectedAudioIndex===null && graphicIndex===null?
         selectDirectMp4({...probe,sources:candidates}):null;
       const hls=direct?null:selectJellyfinHls({
@@ -518,6 +522,10 @@
     }catch(error){
       if(epoch===version && request===streamEpoch){
         streamError=error instanceof Error &&
+          error.message==="SUBTITLE_AUTO_BURN_UNAVAILABLE"
+          ?"Jellyfin tente d'incruster un sous-titre non demandé. "+
+            "La lecture a été refusée pour éviter ce transcodage."
+          :error instanceof Error &&
           error.message==="AUDIO_TRACK_UNAVAILABLE"
           ?"Jellyfin ne peut pas sélectionner cette piste audio."
           :error instanceof Error &&

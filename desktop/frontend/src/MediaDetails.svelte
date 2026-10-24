@@ -248,6 +248,14 @@
       if(api.session)onplaybackchange();
     }).catch(()=>{});
   }
+  // A decoded first frame is visible even if an audio/PGS track switch
+  // intentionally leaves playback paused. Do not claim the video has not
+  // started merely because the 'playing' event has not fired.
+  function markDecodedFrame(){
+    if(!streamTicket || !videoElement || videoElement.readyState<2)return;
+    streamStarted=true;
+    streamBusy=false;
+  }
   function applySavedResume(){
     if(resumeApplied || !videoElement || videoElement.readyState<1)return;
     const total=playbackDurationSeconds(
@@ -694,7 +702,7 @@
                 disabled={streamBusy || playbackBusy}
                 onclick={()=>void startNativeVideo()}>
                 <VyIcon kind="play" size={17}/>
-                {streamBusy?"Ouverture…":"Lire dans Vynéo"}
+                {streamBusy?"Ouverture…":streamTicket?"Relancer le flux":"Lire dans Vynéo"}
               </button>
               {#if streamTicket}
                 <button type="button" class="vy-detail-action"
@@ -748,8 +756,10 @@
                 }}
                 onloadedmetadata={applySavedResume}
                 ondurationchange={applySavedResume}
+                onloadeddata={markDecodedFrame}
                 oncanplay={()=>{
                   applySavedResume();
+                  markDecodedFrame();
                   if(streamKind==="hls")streamBusy=false;
                 }}
                 onerror={()=>{

@@ -41,8 +41,20 @@ describe("negotiated Jellyfin HLS is tokenless and constrained",()=>{
       .toBe(true);
     expect(negotiatedSubtitlesAreOff(url+
       "&SubtitleStreamIndex=4&SubtitleMethod=Encode")).toBe(false);
+    // Actual Jellyfin response: Method=Encode without any subtitle
+    // stream selected and MediaSource.DefaultSubtitleStreamIndex=-1.
+    expect(negotiatedSubtitlesAreOff(url+"&SubtitleMethod=Encode",-1))
+      .toBe(true);
     expect(negotiatedSubtitlesAreOff(url+"&SubtitleMethod=Encode"))
       .toBe(false);
+    expect(negotiatedSubtitlesAreOff(url+"&SubtitleMethod=Encode",3))
+      .toBe(false);
+    expect(negotiatedSubtitlesAreOff(url+
+      "&SubtitleStreamIndex=-1&SubtitleMethod=Encode",-1)).toBe(true);
+    expect(negotiatedSubtitlesAreOff(url+
+      "&SubtitleStreamIndex=3&SubtitleMethod=Encode",-1)).toBe(false);
+    expect(negotiatedSubtitlesAreOff(url+
+      "&SubtitleMethod=Encode&SubtitleMethod=Encode",-1)).toBe(false);
     expect(negotiatedSubtitlesAreOff(url+
       "&SubtitleStreamIndex=-1&SubtitleStreamIndex=-1")).toBe(false);
     expect(negotiatedSubtitlesAreOff(url+
@@ -140,7 +152,7 @@ describe("negotiated Jellyfin HLS is tokenless and constrained",()=>{
   });
   it("negotiates graphical PGS burn-in only by explicit selection",async()=>{
     const requests:Array<{url:URL,options:RequestInit}>=[];
-    let method="Encode",advertise=true;
+    let method="Encode",advertise=true,defaultIndex=-1;
     const fetcher=vi.fn(async(req:RequestInfo|URL,options:RequestInit={})=>{
       const address=new URL(String(req));
       requests.push({url:address,options});
@@ -158,13 +170,15 @@ describe("negotiated Jellyfin HLS is tokenless and constrained",()=>{
         const subtitleIndex=body.SubtitleStreamIndex;
         return new Response(JSON.stringify(sample({
           SupportsTranscoding:advertise,
+          DefaultSubtitleStreamIndex:defaultIndex,
           MediaStreams:[
             {Type:"Video",Index:0,Codec:"h264"},
             {Type:"Audio",Index:1,Codec:"aac"},
             {Type:"Subtitle",Index:4,Codec:"pgssub"}
           ],
-          TranscodingUrl:url+"&SubtitleStreamIndex="+subtitleIndex+
-            (subtitleIndex===-1?"":"&SubtitleMethod="+method)+
+          TranscodingUrl:url+
+            (subtitleIndex===-1?"":"&SubtitleStreamIndex="+subtitleIndex)+
+            "&SubtitleMethod="+method+
             (body.AudioStreamIndex===undefined?"":
               "&AudioStreamIndex="+body.AudioStreamIndex)
         })),{headers:{"Content-Type":"application/json"}});
@@ -184,7 +198,8 @@ describe("negotiated Jellyfin HLS is tokenless and constrained",()=>{
     const pinned=await api.negotiatePlaybackInfo(ITEM,{
       mediaSourceId:SOURCE
     });
-    expect(pinned.hlsPaths[SOURCE]).toContain("SubtitleStreamIndex=-1");
+    expect(pinned.hlsPaths[SOURCE]).not.toContain("SubtitleStreamIndex=");
+    expect(pinned.hlsPaths[SOURCE]).toContain("SubtitleMethod=Encode");
     const pinnedBody=JSON.parse(String(requests.at(-1)?.options.body));
     expect(pinnedBody.MediaSourceId).toBe(SOURCE);
     expect(pinnedBody.SubtitleStreamIndex).toBe(-1);
@@ -209,6 +224,11 @@ describe("negotiated Jellyfin HLS is tokenless and constrained",()=>{
     });
     expect(requests.every(r=>r.url.origin===SERVER_ORIGIN &&
       !r.url.href.includes(TOKEN))).toBe(true);
+    defaultIndex=3;
+    await expect(api.negotiatePlaybackInfo(ITEM,{
+      mediaSourceId:SOURCE
+    })).rejects.toThrow("SUBTITLE_AUTO_BURN_UNAVAILABLE");
+    defaultIndex=-1;
     method="External";
     await expect(api.negotiatePlaybackInfo(ITEM,{
       mediaSourceId:SOURCE,graphicSubtitleIndex:4

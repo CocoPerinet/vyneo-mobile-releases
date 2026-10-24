@@ -70,7 +70,9 @@ export function safeHlsPath(input:unknown,itemId:string,
 }
 /** A user-selected "off" must never silently turn into server-side
  * subtitle burn-in. This is distinct from intentional PGS Encode mode. */
-export function negotiatedSubtitlesAreOff(path:string):boolean{
+export function negotiatedSubtitlesAreOff(
+  path:string,defaultSubtitleStreamIndex:number|null=null
+):boolean{
   if(typeof path!=="string" || !path.startsWith("/") ||
      path.length>5000 || path.startsWith("//"))return false;
   try{
@@ -83,10 +85,15 @@ export function negotiatedSubtitlesAreOff(path:string):boolean{
       key.toLowerCase()===name).map(([,value])=>value);
     const indexes=values("subtitlestreamindex");
     const methods=values("subtitlemethod");
-    // 0 or one exact -1; any method or duplicated key is ambiguous.
-    return indexes.length<=1 &&
-      (indexes.length===0 || indexes[0]==="-1") &&
-      methods.length===0;
+    // Jellyfin emits SubtitleMethod=Encode on a source-pinned
+    // transcode even when no actual subtitle track is selected.
+    // It is only safe when the server explicitly reports that the
+    // default subtitle index is -1; an actual index is never accepted.
+    if(indexes.length>1 || methods.length>1 ||
+       indexes.length===1 && indexes[0]!=="-1")return false;
+    if(!methods.length)return true;
+    return methods[0].toLowerCase()==="encode" &&
+      defaultSubtitleStreamIndex===-1;
   }catch{return false;}
 }
 export interface NegotiatedPlayback {

@@ -584,7 +584,26 @@ export class JellyfinApi {
       if(!source)throw new Error("MEDIA_SOURCE_UNAVAILABLE");
       // Jellyfin may ignore -1 without MediaSourceId and burn in the
       // user's default English subtitles. Fail closed on that fallback.
-      if(!burnIn && path && !negotiatedSubtitlesAreOff(path))
+      // Interpret method together with the media source's default
+      // subtitle index. Jellyfin retains Method=Encode even when
+      // no subtitle stream is selected.
+      const sourceRows=raw && typeof raw==="object" &&
+        !Array.isArray(raw) &&
+        Array.isArray((raw as Record<string,unknown>).MediaSources)
+          ?(raw as {MediaSources:unknown[]}).MediaSources:[];
+      const mediaRow=sourceRows.find(row=>row &&
+        typeof row==="object" && !Array.isArray(row) &&
+        typeof (row as Record<string,unknown>).Id==="string" &&
+        (row as {Id:string}).Id.toLowerCase()===
+          selection.mediaSourceId.toLowerCase());
+      const rawDefault=mediaRow && typeof mediaRow==="object" &&
+        "DefaultSubtitleStreamIndex" in mediaRow
+        ?(mediaRow as {DefaultSubtitleStreamIndex?:unknown})
+          .DefaultSubtitleStreamIndex:null;
+      const defaultIndex=typeof rawDefault==="number" &&
+        Number.isSafeInteger(rawDefault)?rawDefault:null;
+      if(!burnIn && path &&
+         !negotiatedSubtitlesAreOff(path,defaultIndex))
         throw new Error("SUBTITLE_AUTO_BURN_UNAVAILABLE");
       if(audio!==undefined && (!source ||
         !source.tracks.some(track=>track.kind==="Audio" &&

@@ -201,6 +201,29 @@ describe("Vynéo native shelves are metadata-driven and deterministic",()=>{
       .toEqual([movie.id,resumeOne.id]);
     expect(rows.find(x=>x.id==="next-up")?.items.map(x=>x.id))
       .toEqual([continueGotham.id,continueVincenzo.id]);
+    // Legacy resume endpoints can omit SeriesId while NextUp has it.
+    const missingResumeId=media(1915,["Comédie"],{type:"Episode",
+      title:"S05E01",seriesId:null,seriesName:"South Park",progress:30});
+    const namedNextUp=media(1916,["Comédie"],{type:"Episode",
+      title:"S28E02",seriesId:southPark,seriesName:" South Park "});
+    const filtered=buildShelves({...sample(),resume:[missingResumeId],
+      nextUp:[namedNextUp,continueGotham]},id(43),new Date("2026-10-25"));
+    expect(filtered.find(x=>x.id==="next-up")?.items.map(x=>x.id))
+      .toEqual([continueGotham.id]);
+    const missingNextUpId=media(1917,["Comédie"],{type:"Episode",
+      title:"S28E02",seriesId:null,seriesName:"South Park"});
+    const otherDirection=buildShelves({...sample(),resume:[resumeOne],
+      nextUp:[missingNextUpId,continueVincenzo]},id(43),new Date("2026-10-25"));
+    expect(otherDirection.find(x=>x.id==="next-up")?.items.map(x=>x.id))
+      .toEqual([continueVincenzo.id]);
+    // Distinct known GUIDs remain independent despite the same display name.
+    const bothIds=buildShelves({...sample(),resume:[{
+      ...resumeOne,seriesName:"South Park"
+    }],nextUp:[{
+      ...namedNextUp,seriesId:id(1918),seriesName:"South Park"
+    }]},id(43),new Date("2026-10-25"));
+    expect(bothIds.find(x=>x.id==="next-up")?.items.map(x=>x.id))
+      .toEqual([namedNextUp.id]);
     // An identically named item from a different series is NOT hidden.
     const independent=media(1909,["Comédie"],{type:"Episode",
       title:"South Park",seriesId:id(1910)});

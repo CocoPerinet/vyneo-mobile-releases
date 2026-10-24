@@ -504,8 +504,13 @@
         engine.on(Hls.Events.FRAG_LOADED,(_event,data)=>{
           if(request===streamEpoch &&
              fragmentReachesResumePosition(
-               resumeFragmentTarget,data.frag.start,data.frag.duration))
-            firstFragmentReceived(engine.config.fragLoadPolicy);
+               resumeFragmentTarget,data.frag.start,data.frag.duration)){
+            const loading=data.frag.stats.loading;
+            const firstByteMs=loading && Number.isFinite(loading.first) &&
+              Number.isFinite(loading.start)
+              ?loading.first-loading.start:0;
+            firstFragmentReceived(engine.config.fragLoadPolicy,firstByteMs);
+          }
         });
         engine.on(Hls.Events.MEDIA_ATTACHED,()=>{
           if(request===streamEpoch)engine.loadSource(ticket.url);

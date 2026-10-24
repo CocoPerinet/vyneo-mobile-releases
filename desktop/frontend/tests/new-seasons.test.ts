@@ -1,5 +1,6 @@
 import {describe,it,expect} from "vitest";
 import {newBadge,classifyNewReleases,includeNewReleaseShelf} from "../src/new-seasons";
+import {buildShelves} from "../src/discover";
 import type {MediaItem,LibrarySnapshot,Shelf} from "../src/types";
 
 const id=(n:number)=>n.toString(16).padStart(32,"0");
@@ -184,5 +185,53 @@ describe("Jellyfin parity: seasons, sequels and novelty badges",()=>{
     expect(includeNewReleaseShelf([row],library([]),
       [season],[series],now)[0].items).toHaveLength(0);
   });
+  it("does not resurrect resumed episodes after the new-season pass",()=>{
+    const resumed=item(550,"Episode",{title:"Y'en a dans le ventilo",
+      seriesId:id(55),seriesName:"South Park",progress:29,
+      seasonNumber:5,episodeNumber:1});
+    const rawNext=item(551,"Episode",{title:"La Dame au chapeau",
+      seriesId:id(55),seriesName:"South Park",
+      seasonNumber:28,episodeNumber:2});
+    const gotham=item(552,"Episode",{title:"L'homme au masque",
+      seriesId:id(56),seriesName:"Gotham",
+      seasonNumber:1,episodeNumber:8});
+    const data={...library([rawNext,ep,gotham]),resume:[resumed]};
+    const base=buildShelves(data,id(77),now);
+    expect(base.find(r=>r.id==="resume")?.items.map(x=>x.id))
+      .toEqual([resumed.id]);
+    expect(base.find(r=>r.id==="next-up")?.items.map(x=>x.id))
+      .toEqual([ep.id,gotham.id]);
+    const out=includeNewReleaseShelf(base,data,[season],[series],now);
+    expect(out.find(r=>r.id==="next-up")?.items.map(x=>x.id))
+      .toEqual([gotham.id]);
+    expect(out.find(r=>r.id==="new-seasons")?.items.map(x=>x.id))
+      .toEqual([series.id]);
+    // The exclusion also survives when no new season is identified.
+    const withoutSeasons=includeNewReleaseShelf(base,data,[],[],now);
+    expect(withoutSeasons.find(r=>r.id==="next-up")?.items.map(x=>x.id))
+      .toEqual([ep.id,gotham.id]);
+    expect(out.find(r=>r.id==="resume")?.items.map(x=>x.id))
+      .toEqual([resumed.id]);
+  });
+  it("preserves old E1 reordering without restoring filtered NextUp IDs",()=>{
+    const resumed=item(559,"Episode",{seriesId:id(59),
+      seriesName:"South Park",progress:12});
+    const duplicate=item(560,"Episode",{seriesId:id(59),
+      seriesName:"South Park",episodeNumber:2});
+    const oldE1=item(561,"Episode",{seriesId:id(14),seasonId:id(140),
+      seasonNumber:4,episodeNumber:1,premiereDate:"2025-05-15"});
+    const ongoing=item(562,"Episode",{seriesId:id(15),seasonId:id(150),
+      seasonNumber:4,episodeNumber:5,premiereDate:"2026-10-01"});
+    const agedSeries=item(14,"Series",{
+      playedPercentage:70,premiereDate:"2015-01-01"});
+    const data={...library([oldE1,duplicate,ongoing]),resume:[resumed]};
+    const base=buildShelves(data,id(77),now);
+    const result=includeNewReleaseShelf(base,data,[],
+      [agedSeries],now);
+    expect(result.find(r=>r.id==="next-up")?.items.map(x=>x.id))
+      .toEqual([ongoing.id,oldE1.id]);
+    expect(result.find(r=>r.id==="new-seasons")).toBeUndefined();
+  });
+
 });
 

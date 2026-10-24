@@ -14,11 +14,26 @@ export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):She
   const recent=unique(data.recent,96);
   // Match the Jellyfin skin: playback state can be stale for .strm files.
   // A title at >=95% is finished even if Jellyfin did not mark Played yet.
-  const resume=unique(data.resume.filter(item=>
-    !item.played && (item.progress===null || item.progress<95)),16);
-  // Do not arbitrarily discard NextUp after 22 titles. The rail can
-  // scroll through every authorized continuation returned by Jellyfin.
-  const nextUp=unique(data.nextUp,600);
+  // Jellyfin's authenticated Home shows only the first pending resume
+  // episode per series. The API may return multiple episodes for one show,
+  // which otherwise creates visually identical cards (e.g. South Park).
+  const resume:MediaItem[]=[],resumeIds=new Set<string>();
+  const resumedSeries=new Set<string>();
+  for(const item of data.resume){
+    if(resume.length>=16)break;
+    if(item.played || (item.progress!==null && item.progress>=95))continue;
+    const key=item.id.toLowerCase();
+    if(resumeIds.has(key))continue;
+    resumeIds.add(key);
+    const series=item.type==="Episode"?item.seriesId?.toLowerCase():null;
+    if(series && resumedSeries.has(series))continue;
+    if(series)resumedSeries.add(series);
+    resume.push(item);
+  }
+  // Jellyfin avoids repeating a resumed show in NextUp. Keep all the
+  // other authorized continuations: there is no arbitrary 22-show cap.
+  const nextUp=unique(data.nextUp.filter(item=>item.type!=="Episode" ||
+    !item.seriesId || !resumedSeries.has(item.seriesId.toLowerCase())),600);
   const favorites=unique(data.favorites,30);
   const collections=unique(data.collections,36);
   const recommendations=recommendNative(data,now,18);

@@ -30,11 +30,10 @@ export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):She
     if(series)resumedSeries.add(series);
     resume.push(item);
   }
-  // Jellyfin's customized Home treats matching named episode parents
-  // as one show even if distinct library entries assign different GUIDs.
-  // Prefer the exact SeriesId, then use a nonempty normalized SeriesName
-  // for aliases, duplicate library entries or missing GUIDs. Episode
-  // titles alone are never evidence of a shared parent series.
+  // The authenticated Jellyfin A/B confirmed that South Park Resume
+  // and NextUp share a SeriesId. Prefer this ID as the authoritative parent
+  // identity. Fall back to SeriesName only when one side lacks a GUID:
+  // identically named remakes with distinct IDs must remain independent.
   const resumedNames=new Map<string,Set<string>>();
   const seriesName=(item:MediaItem)=>item.seriesName.trim()
     .normalize("NFKC").toLocaleLowerCase("fr");
@@ -49,10 +48,11 @@ export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):She
     if(item.type!=="Episode")return true;
     const id=item.seriesId?.toLowerCase()??"";
     if(id && resumedSeries.has(id))return false;
-    const name=seriesName(item);
-    // Same explicit parent name means one show in Jellyfin's Home. A
-    // blank SeriesName never falls back to a generic episode title.
-    return !name || !resumedNames.has(name);
+    const name=seriesName(item),candidates=name?resumedNames.get(name):null;
+    // An exact name is only fallback identity evidence when Jellyfin
+    // omitted SeriesId on one of the two records.
+    if(!candidates)return true;
+    return id!=="" && !candidates.has("");
   }),600);
   const favorites=unique(data.favorites,30);
   const collections=unique(data.collections,36);

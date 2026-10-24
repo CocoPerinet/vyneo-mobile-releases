@@ -30,10 +30,28 @@ export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):She
     if(series)resumedSeries.add(series);
     resume.push(item);
   }
-  // Jellyfin avoids repeating a resumed show in NextUp. Keep all the
-  // other authorized continuations: there is no arbitrary 22-show cap.
-  const nextUp=unique(data.nextUp.filter(item=>item.type!=="Episode" ||
-    !item.seriesId || !resumedSeries.has(item.seriesId.toLowerCase())),600);
+  // Some Jellyfin Resume records omit SeriesId while NextUp supplies it
+  // (and vice versa). Match the exact normalized parent seriesName ONLY
+  // when one side lacks a GUID, preserving unrelated same-named series
+  // whose distinct GUIDs are both known.
+  const resumedNames=new Map<string,Set<string>>();
+  const seriesName=(item:MediaItem)=>item.seriesName.trim()
+    .normalize("NFKC").toLocaleLowerCase("fr");
+  for(const item of resume){
+    if(item.type!=="Episode")continue;
+    const name=seriesName(item);
+    if(!name)continue;
+    if(!resumedNames.has(name))resumedNames.set(name,new Set());
+    resumedNames.get(name)!.add(item.seriesId?.toLowerCase()??"");
+  }
+  const nextUp=unique(data.nextUp.filter(item=>{
+    if(item.type!=="Episode")return true;
+    const id=item.seriesId?.toLowerCase()??"";
+    if(id && resumedSeries.has(id))return false;
+    const name=seriesName(item),candidates=name?resumedNames.get(name):null;
+    if(!candidates)return true;
+    return id!=="" && !candidates.has("");
+  }),600);
   const favorites=unique(data.favorites,30);
   const collections=unique(data.collections,36);
   const recommendations=recommendNative(data,now,18);

@@ -136,6 +136,33 @@ jobs:
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
+      # Distinct QA identity. This feature disables Jellyfin state writes,
+      # all credential-vault access, and automatic/manual updates. This is
+      # NOT the ordinary Preview executable or a distributable release.
+      - name: Verify guest-only Jellyfin QA identity before packaging
+        if: github.event_name == 'pull_request'
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          $qa = Get-Content src-tauri/tauri.authenticated-qa.conf.json -Raw | ConvertFrom-Json
+          if ($qa.identifier -cne 'fr.visyren.vyneo.desktop.authqa' -or
+              $qa.bundle.createUpdaterArtifacts -ne $false -or
+              $qa.build.frontendDist -cne '../frontend/dist') {
+            throw 'ISOLATED_READONLY_QA_IDENTITY_MISMATCH'
+          }
+      - name: Build guest-only read-only Jellyfin QA installer
+        if: github.event_name == 'pull_request'
+        working-directory: desktop
+        run: npm run tauri -- build --bundles nsis --features interactive-jellyfin-qa --config src-tauri/tauri.authenticated-qa.conf.json
+      - name: Keep disposable read-only Jellyfin QA for guest VM
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vyneo-jellyfin-readonly-qa-pr-${{ github.event.pull_request.number }}-${{ github.sha }}
+          path: desktop/src-tauri/target/release/bundle/nsis/*0.2.4-qa.2*setup.exe
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
       - name: Verify stable NSIS upgrades in place without installing on COCO
         if: github.event_name == 'pull_request'
         working-directory: desktop

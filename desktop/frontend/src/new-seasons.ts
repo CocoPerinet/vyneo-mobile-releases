@@ -240,8 +240,13 @@ export function includeNewReleaseShelf(shelves:readonly Shelf[],
   data:LibrarySnapshot,seasons:readonly RecentSeason[],
   evidence:readonly MediaItem[],now=new Date()):Shelf[]{
   const split=classifyNewReleases(data,seasons,evidence,now);
+  // buildShelves already removes resumed shows and bounds authorized NextUp.
+  // Reordering the raw Jellyfin payload must never reintroduce those cards.
+  const allowedNextUp=new Set((shelves.find(row=>row.id==="next-up")?.items??[])
+    .map(item=>item.id.toLowerCase()));
   const next=shelves.map(row=>row.id==="next-up"?
-    {...row,items:split.nextUp}:row);
+    {...row,items:split.nextUp.filter(item=>
+      allowedNextUp.has(item.id.toLowerCase()))}:row);
   if(split.newReleases.length){
     const entry:Shelf={id:"new-seasons",title:"Nouvelles saisons et suites",
       items:split.newReleases,kind:"standard"};

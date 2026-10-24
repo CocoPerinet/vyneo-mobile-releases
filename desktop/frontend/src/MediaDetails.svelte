@@ -6,8 +6,8 @@
   import {capturePlaybackSwitch,shouldAutoplayAfterSwitch}
     from "./playback-switch";
   import type Hls from "hls.js";
-  import {initialHlsFragmentPolicy,firstFragmentReceived}
-    from "./hls-load-policy";
+  import {initialHlsFragmentPolicy,firstFragmentReceived,
+    fragmentReachesResumePosition} from "./hls-load-policy";
   import type {NativeStreamTicket} from "./native-playback";
   import {PlaybackReporter,playbackClock} from "./playback-report";
   import {unavailablePlaybackMessage,nativeHlsFailureMessage,
@@ -495,8 +495,16 @@
           fragLoadPolicy:initialHlsFragmentPolicy(),
         });
         hlsPlayer=engine;
-        engine.on(Hls.Events.FRAG_LOADED,()=>{
-          if(request===streamEpoch)
+        // A resumed audio/subtitle switch can first load 0.ts and then
+        // seek to 4m25s. The distant fragment can take more than the
+        // warm 12s budget even if Jellyfin returns 200 eventually.
+        // Do not shorten the fragment deadline until THAT fragment
+        // has arrived, otherwise a valid remote STRM falsely times out.
+        const resumeFragmentTarget=retainedSeekSeconds;
+        engine.on(Hls.Events.FRAG_LOADED,(_event,data)=>{
+          if(request===streamEpoch &&
+             fragmentReachesResumePosition(
+               resumeFragmentTarget,data.frag.start,data.frag.duration))
             firstFragmentReceived(engine.config.fragLoadPolicy);
         });
         engine.on(Hls.Events.MEDIA_ATTACHED,()=>{

@@ -75,7 +75,8 @@
   place-items:center;
 }
 /* Geometry transcribed from skin.css lines 824-967, 2026-10-21.
- * Hero's bottom 150px overlaps the first rail; controls float above it. */
+ * The desktop viewport geometry was rechecked against authenticated Jellyfin
+ * on 2026-10-25; the previous 150px rail overlap was too aggressive. */
 .vy-hero{
   min-height:min(78vh,820px);
   margin-top:-74px;
@@ -110,9 +111,8 @@
 .vy-hero:hover .vy-hero-arrow,.vy-hero-arrow:focus-visible{opacity:1}
 .vy-hero-arrow:hover{background:rgba(20,22,30,.7);
   transform:translateY(-50%) scale(1.08)}
-/* Home rails overlap the bottom 150px of the Hero. Dot controls must
- * remain ABOVE that overlay; otherwise z-index:5 on the rails captures
- * the click even though the dots themselves are visible. */
+/* Keep the hero dots above shelves, not over the title or playback
+ * controls; the mobile breakpoints retain their independent geometry. */
 .vy-hero-dots{position:absolute;left:0;right:0;bottom:170px;
   justify-content:center;gap:8px;pointer-events:auto}
 .vy-hero-dots button{width:12px;height:12px;padding:0;display:grid;
@@ -636,3 +636,16 @@
   border-radius:8px;outline-offset:2px;font:inherit}
 .vy-playback-track-controls select:disabled{opacity:.6;cursor:wait}
 .vy-playback-track-controls p{width:100%;margin:0}
+
+/* Real A/B QA at 1366x768 (Edge Jellyfin vs. desktop app): desktop's first
+ * rail was ~240px too high, and indicators crossed the hero action area.
+ * Preserve the mobile geometry below 781px; reserve a full-height hero on
+ * desktop while keeping the pinned header layered over its artwork. */
+@media (min-width:781px){
+  .vy-hero{
+    min-height:min(96vh,980px);
+    padding:clamp(140px,34vh,260px) 3.3% clamp(50px,8vh,70px);
+  }
+  .vy-hero-dots{bottom:70px}
+  .vy-shelves{margin-top:-32px}
+}

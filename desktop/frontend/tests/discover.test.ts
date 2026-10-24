@@ -218,15 +218,15 @@ describe("Vynéo native shelves are metadata-driven and deterministic",()=>{
       id(43),new Date("2026-10-25"));
     expect(otherDirection.find(x=>x.id==="next-up")?.items.map(x=>x.id))
       .toEqual([continueVincenzo.id]);
-    // Jellyfin can assign different GUIDs to two representations of
-    // one named show; the real authenticated Home keeps just one rail.
-    const aliased=buildShelves({...sample(),resume:[{
+    // Different authoritative GUIDs must stay separate even if their
+    // display names match (e.g. an anime and its live-action remake).
+    const distinct=buildShelves({...sample(),resume:[{
       ...resumeOne,seriesName:"South Park"
     }],nextUp:[{
       ...namedNextUp,seriesId:id(1918),seriesName:"South Park"
     },continueGotham]},id(43),new Date("2026-10-25"));
-    expect(aliased.find(x=>x.id==="next-up")?.items.map(x=>x.id))
-      .toEqual([continueGotham.id]);
+    expect(distinct.find(x=>x.id==="next-up")?.items.map(x=>x.id))
+      .toEqual([namedNextUp.id,continueGotham.id]);
     // Different explicit parent names must never collide, even if the
     // episode display titles happen to be identical.
     const separateNames=buildShelves({...sample(),resume:[{

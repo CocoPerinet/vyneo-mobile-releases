@@ -300,6 +300,18 @@ pub(crate) fn rewrite_playlist(
     Ok(output)
 }
 
+// Classify oversized private HLS assets without exposing item IDs, URLs,
+// tokens or exact media file sizes. Only interactive QA emits reason headers.
+// The actual payload cap remains unchanged pending a measured, safe fix.
+fn oversize_reason(length:u64,playlist:bool)->&'static str {
+    if playlist { return "HLS_UPSTREAM_OVERSIZE_PLAYLIST"; }
+    let mib=1024_u64*1024;
+    if length<=32*mib { "HLS_UPSTREAM_OVERSIZE_16_TO_32_MIB" }
+    else if length<=64*mib { "HLS_UPSTREAM_OVERSIZE_32_TO_64_MIB" }
+    else if length<=512*mib { "HLS_UPSTREAM_OVERSIZE_64_TO_512_MIB" }
+    else { "HLS_UPSTREAM_OVERSIZE_OVER_512_MIB" }
+}
+
 fn media_type(url: &reqwest::Url, ct: &str) -> Result<bool, ()> {
     let mime = ct.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
     let playlist = url.path().to_ascii_lowercase().ends_with(".m3u8")
@@ -415,8 +427,10 @@ pub fn handle_request(
         Err(_)=>return fail(StatusCode::BAD_GATEWAY,"HLS_UPSTREAM_MEDIA_TYPE"),
     };
     let cap=if is_playlist { MAX_PLAYLIST } else { MAX_SEGMENT };
-    if upstream.content_length().is_some_and(|size|size>cap as u64) {
-        return fail(StatusCode::BAD_GATEWAY,"HLS_UPSTREAM_OVERSIZE");
+    if let Some(size)=upstream.content_length() {
+        if size>cap as u64 {
+            return fail(StatusCode::BAD_GATEWAY,oversize_reason(size,is_playlist));
+        }
     }
     let mut data=Vec::new();
     if upstream.take(cap as u64+1).read_to_end(&mut data).is_err()
@@ -648,6 +662,20 @@ mod tests {
             assert!(rewrite_playlist(input,&base,&grant,&"d".repeat(32)).is_err());
             assert!(grant.assets.lock().unwrap().is_empty());
         }
+    }
+    #[test]
+    fn oversized_qa_reason_is_bounded_and_never_contains_media_details() {
+        let mib=1024_u64*1024;
+        assert_eq!(oversize_reason(20*mib,false),
+            "HLS_UPSTREAM_OVERSIZE_16_TO_32_MIB");
+        assert_eq!(oversize_reason(48*mib,false),
+            "HLS_UPSTREAM_OVERSIZE_32_TO_64_MIB");
+        assert_eq!(oversize_reason(110*mib,false),
+            "HLS_UPSTREAM_OVERSIZE_64_TO_512_MIB");
+        assert_eq!(oversize_reason(2*1024*mib,false),
+            "HLS_UPSTREAM_OVERSIZE_OVER_512_MIB");
+        assert_eq!(oversize_reason(2*mib,true),
+            "HLS_UPSTREAM_OVERSIZE_PLAYLIST");
     }
     #[test]
     fn mime_rejects_html_and_json_transcoded_errors() {

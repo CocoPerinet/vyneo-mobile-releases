@@ -2,6 +2,7 @@ import {describe,it,expect,vi} from "vitest";
 import {PlaybackReporter,playbackTicks,reportBody,reportPath} from "../src/playback-report";
 import type {PlaybackClock,PlaybackReport} from "../src/playback-report";
 import {JellyfinApi,SERVER_ORIGIN} from "../src/api";
+import {buildShelves} from "../src/discover";
 
 const ITEM="a".repeat(32),SOURCE="b".repeat(32);
 const USER="c".repeat(32),TOKEN="d".repeat(64);
@@ -179,4 +180,103 @@ describe("accurate, non-invasive Jellyfin playback lifecycle",()=>{
     api.logout();
     await expect(api.reportPlayback(data)).rejects.toThrow("AUTH_REQUIRED");
   });
+  it("reconciles partial resume and the following episode using an isolated in-memory Jellyfin",async()=>{
+    // Contract integration, NOT a live Jellyfin write. The mock returns the
+    // same endpoints and 204 acknowledgements as Jellyfin and maintains a
+    // disposable user's progress entirely inside this Vitest process.
+    const SERIES="1".repeat(32),NEXT="2".repeat(32);
+    const runtime=1_800*10_000_000;
+    const completedRuntime=1_200*10_000_000;
+    const writes:Array<{path:string,body:Record<string,unknown>}>=[];
+    let moviePosition=0,episodePosition=0,episodeCompleted=false;
+    const fetcher=vi.fn(async(input:RequestInfo|URL,opts:RequestInit={})=>{
+      const url=new URL(String(input)),path=url.pathname;
+      if(url.origin!==SERVER_ORIGIN)throw new Error("UNEXPECTED_ORIGIN");
+      if(path==="/Users/AuthenticateByName")
+        return authResponse({User:{Id:USER,Name:"QA fixture"},
+          AccessToken:TOKEN});
+      if(path==="/Users/Me")
+        return authResponse({Id:USER,Name:"QA fixture",Policy:{IsDisabled:false}});
+      if(path.startsWith("/Sessions/Playing")){
+        const body=JSON.parse(String(opts.body)) as Record<string,unknown>;
+        const item=body.ItemId,position=body.PositionTicks;
+        if(!Number.isSafeInteger(position) || (position as number)<0)
+          throw new Error("BAD_POSITION");
+        writes.push({path,body});
+        if(path==="/Sessions/Playing/Stopped"){
+          if(item===ITEM)moviePosition=position as number;
+          if(item===SOURCE){
+            episodePosition=position as number;
+            episodeCompleted=episodePosition>=completedRuntime;
+          }
+        }
+        return new Response(null,{status:204});
+      }
+      if(path==="/UserItems/Resume"){
+        if(url.searchParams.get("userId")!==USER)
+          throw new Error("WRONG_SCOPED_USER");
+        return authResponse({Items:moviePosition>0?[{
+          Id:ITEM,Type:"Movie",Name:"Film interrompu",
+          RunTimeTicks:runtime,
+          ImageTags:{Primary:"present"},
+          UserData:{Played:false,PlaybackPositionTicks:moviePosition}
+        }]:[]});
+      }
+      if(path==="/Shows/NextUp"){
+        if(url.searchParams.get("userId")!==USER)
+          throw new Error("WRONG_SCOPED_USER");
+        return authResponse({Items:[{
+          Id:episodeCompleted?NEXT:SOURCE,
+          SeriesId:SERIES,Type:"Episode",
+          Name:episodeCompleted?"Épisode suivant":"Épisode en cours",
+          ParentIndexNumber:1,IndexNumber:episodeCompleted?2:1,
+          RunTimeTicks:completedRuntime,ImageTags:{Primary:"present"},
+          UserData:{Played:false,PlaybackPositionTicks:0}
+        }],TotalRecordCount:1});
+      }
+      throw new Error("UNEXPECTED_REQUEST");
+    }) as typeof fetch;
+    const api=new JellyfinApi({fetcher,deviceId:"vyneo-progress-fixture"});
+    await api.login("QA fixture","not-a-live-password");
+
+    const movie=new PlaybackReporter(context,report=>api.reportPlayback(report));
+    movie.playing(snapshot(10));
+    movie.pause(snapshot(73,{paused:true}));
+    movie.stop(snapshot(73,{paused:true}));
+    await movie.drain();
+    const resume=await api.getResume();
+    expect(resume).toHaveLength(1);
+    expect(resume[0].resumeTicks).toBe(730_000_000);
+    expect(resume[0].progress).toBe(4);
+    expect((await api.getNextUp())[0].id).toBe(SOURCE);
+
+    const episodeContext={...context,itemId:SOURCE,
+      mediaSourceId:"3".repeat(32)};
+    const episode=new PlaybackReporter(episodeContext,
+      report=>api.reportPlayback(report));
+    episode.playing(snapshot(40,{durationSeconds:1200}));
+    episode.ended(snapshot(1198,{durationSeconds:1200}));
+    await episode.drain();
+    const nextUp=await api.getNextUp();
+    expect(nextUp.map(x=>x.id)).toEqual([NEXT]);
+    expect(nextUp[0].episodeNumber).toBe(2);
+    const shelves=buildShelves({
+      recent:[],resume,nextUp,favorites:[],watched:[],collections:[]
+    },USER,new Date("2026-10-25"));
+    expect(shelves.find(x=>x.id==="resume")?.items[0].resumeTicks)
+      .toBe(730_000_000);
+    expect(shelves.find(x=>x.id==="next-up")?.items[0].id).toBe(NEXT);
+    expect(writes.map(x=>x.path)).toEqual([
+      "/Sessions/Playing","/Sessions/Playing/Progress",
+      "/Sessions/Playing/Stopped",
+      "/Sessions/Playing","/Sessions/Playing/Stopped"
+    ]);
+    expect(writes.at(-1)?.body).toMatchObject({
+      ItemId:SOURCE,PositionTicks:completedRuntime,Failed:false
+    });
+    expect(writes.every(x=>!JSON.stringify(x.body).includes(TOKEN)))
+      .toBe(true);
+    api.logout();
+  });
+
 });

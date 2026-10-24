@@ -15,6 +15,9 @@ const visualReference=JSON.parse(readFileSync(join(root,"desktop",
   "parity","reference-geometry.json"),"utf8"));
 const liveHomeReference=JSON.parse(readFileSync(join(root,"desktop",
   "parity","live-home-reference.json"),"utf8"));
+// Current desktop geometry is validated against 1366x768 authenticated Jellyfin QA.
+// Preserve the historical skin reference snapshot for unchanged components.
+const desktopHeroQA={minHeightVh:96,maxHeightPx:980,shelfOverlapPx:32};
 const http=createServer((req,res)=>{
  const name=decodeURIComponent(new URL(req.url??"/","http://127.0.0.1").pathname);
  const full=resolve(dist,"."+name.replace(/^\/$/,"/index.html"));
@@ -430,6 +433,13 @@ try{
    searchFont:parseFloat(css(".vy-search-label input").fontSize),
    heroMinHeight:parseFloat(css(".vy-hero").minHeight),
    shelfMargin:parseFloat(css(".vy-shelves").marginTop),
+   actionsBottom:document.querySelector(".vy-hero-actions")
+     .getBoundingClientRect().bottom,
+   dotsTop:document.querySelector(".vy-hero-dots")
+     .getBoundingClientRect().top,
+   dotsBottom:document.querySelector(".vy-hero-dots")
+     .getBoundingClientRect().bottom,
+   shelfTop:document.querySelector(".vy-shelf").getBoundingClientRect().top,
    cardWidth:document.querySelector(".vy-shelf .vy-card").getBoundingClientRect().width,
    railGap:parseFloat(css(".vy-shelf .vy-rail").gap),
    sectionHeadingFont:parseFloat(css(".vy-shelf-heading h2").fontSize)
@@ -444,9 +454,15 @@ try{
  assert(approximate(metrics.searchWidth,visualReference.header.searchWidthPx,1));
  assert(approximate(metrics.searchFont,visualReference.header.searchInputFontPx,.25));
  assert(approximate(metrics.heroMinHeight,Math.min(
-  visualReference.hero.minHeightVh/100*visualReference.viewport.height,
-  visualReference.hero.maxHeightPx),2));
- assert(approximate(metrics.shelfMargin,-visualReference.hero.shelfOverlapPx,1));
+  desktopHeroQA.minHeightVh/100*visualReference.viewport.height,
+  desktopHeroQA.maxHeightPx),2),
+  "Desktop hero differs from the measured Jellyfin QA correction");
+ assert(approximate(metrics.shelfMargin,-desktopHeroQA.shelfOverlapPx,1),
+  "First rail still overlaps too far into hero");
+ assert(metrics.dotsTop>=metrics.actionsBottom+8,
+  "Banner indicators intersect hero actions: "+JSON.stringify(metrics));
+ assert(metrics.shelfTop>=metrics.dotsBottom+25,
+  "Resume shelf intersects banner pagination: "+JSON.stringify(metrics));
  assert(approximate(metrics.cardWidth,visualReference.rails.cardWidthPx,1));
  assert(approximate(metrics.railGap,visualReference.rails.gapPx,1));
  assert(approximate(metrics.sectionHeadingFont,
@@ -455,7 +471,7 @@ try{
  assert(railGeometry.scrollLeft<=4,"Initial rail must not auto-scroll");
  await page.screenshot({path:join(out,"home-1650.png"),fullPage:false});
  for(const viewport of [{width:390,height:844},{width:1280,height:800},
-  {width:1920,height:1080}]){
+  {width:1366,height:768},{width:1920,height:1080}]){
   await page.setViewportSize(viewport);
   await page.evaluate(()=>window.scrollTo({top:0,behavior:"instant"}));
   await page.waitForTimeout(160);
@@ -491,7 +507,8 @@ try{
    assert(Math.abs(responsive.header-visualReference.header.minHeightPx)<=2);
    assert(Math.abs(responsive.search-Math.min(320,viewport.width*.2))<=1);
    assert(Math.abs(responsive.heroMin-Math.min(
-    viewport.height*.78,visualReference.hero.maxHeightPx))<=2);
+    viewport.height*desktopHeroQA.minHeightVh/100,
+    desktopHeroQA.maxHeightPx))<=2);
    assert(Math.abs(responsive.card-visualReference.rails.cardWidthPx)<=1);
    console.log("JELLYFIN_PARITY_SOURCE_RESPONSIVE_"+viewport.width+"_PASS "+
     JSON.stringify(responsive));
@@ -499,7 +516,7 @@ try{
   await page.screenshot({path:join(out,"home-"+viewport.width+".png"),fullPage:false});
  }
  await page.setViewportSize({width:1650,height:930});
- console.log("JELLYFIN_PARITY_HOME_390_1280_1920_PASS nextup="+total);
+ console.log("JELLYFIN_PARITY_HOME_390_1280_1366_1920_PASS nextup="+total);
  const ranked=page.locator(".vy-card-ranking:has(.vy-novelty)").first();
  await ranked.waitFor({timeout:4000});
  const badgeGeometry=await ranked.evaluate(el=>{

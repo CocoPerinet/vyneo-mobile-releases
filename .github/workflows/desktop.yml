@@ -125,6 +125,17 @@ jobs:
         if: github.ref_type != 'tag'
         working-directory: desktop
         run: npm run tauri -- build --bundles nsis --config src-tauri/tauri.preview.conf.json
+      # QA-only binary. It has a distinct Tauri identifier, no updater
+      # artifacts, no credentials and no access to the user's Windows host.
+      - name: Keep disposable isolated Preview installer for VM QA
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vyneo-preview-pr-${{ github.event.pull_request.number }}-${{ github.sha }}
+          path: desktop/src-tauri/target/release/bundle/nsis/*0.2.0-beta.1*setup.exe
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
       - name: Verify stable NSIS upgrades in place without installing on COCO
         if: github.event_name == 'pull_request'
         working-directory: desktop

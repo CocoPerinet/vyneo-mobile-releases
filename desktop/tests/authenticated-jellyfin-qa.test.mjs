@@ -69,7 +69,27 @@ test("QA preparation is build only on COCO, not a second app installation",()=>{
   assert.match(runner,/AUTH_QA_PORTABLE_BINARY_MISSING/);
   assert.match(runner,/VYNEO_AUTHENTICATED_QA_COMPILED_NO_INSTALL_NO_LAUNCH/);
   assert.doesNotMatch(runner,/Start-Process|Register-ScheduledTask|Install-Package|winget install|gh release (create|upload)|TAURI_SIGNING_PRIVATE_KEY|save_saved_session/);
-  assert.doesNotMatch(read("../.github/workflows/desktop.yml"),/interactive-jellyfin-qa|authenticated-qa/);
+  const workflow=read("../.github/workflows/desktop.yml");
+  const release=workflow.split("\n  windows_release:\n")[1];
+  assert.ok(release,"signed release job missing");
+  assert.doesNotMatch(release,/interactive-jellyfin-qa|authenticated-qa/);
+  // An ephemeral PR-only unbundled DEBUG QA is allowed on hosted runners.
+  // The stable and signed release jobs must never compile this feature.
+  const qa=workflow.match(
+    /      - name: Build guest-only unbundled debug Jellyfin QA\n([\s\S]*?)(?=\n      - name: Keep disposable debug-only Jellyfin QA)/
+  );
+  assert.ok(qa,"debug-only QA build missing");
+  assert.match(qa[1],/if: github\.event_name == 'pull_request'/);
+  assert.match(qa[1],
+    /--debug --no-bundle --features interactive-jellyfin-qa --config src-tauri\/tauri\.authenticated-qa\.conf\.json/);
+  assert.doesNotMatch(qa[1],/--bundles|--release|TAURI_SIGNING_PRIVATE_KEY/);
+  const upload=workflow.match(
+    /      - name: Keep disposable debug-only Jellyfin QA for guest VM\n([\s\S]*?)(?=\n      - name: Verify stable NSIS upgrades)/
+  );
+  assert.ok(upload,"short-lived portable QA artifact missing");
+  assert.match(upload[1],/if: github\.event_name == 'pull_request'/);
+  assert.match(upload[1],/desktop\/src-tauri\/target\/debug\/vyneo-desktop\.exe/);
+  assert.match(upload[1],/retention-days: 3/);
 });
 
 test("HLS QA reports only fixed reason codes and hides them in stable releases",()=>{

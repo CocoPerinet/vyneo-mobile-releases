@@ -136,9 +136,8 @@ jobs:
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
-      # Distinct QA identity. This feature disables Jellyfin state writes,
-      # all credential-vault access, and automatic/manual updates. This is
-      # NOT the ordinary Preview executable or a distributable release.
+      # Debug-only separate QA identity: Jellyfin read-only, no OS vault,
+      # no updater, no NSIS installer, no stable/release build. Only pull_request.
       - name: Verify guest-only Jellyfin QA identity before packaging
         if: github.event_name == 'pull_request'
         working-directory: desktop
@@ -150,16 +149,16 @@ jobs:
               $qa.build.frontendDist -cne '../frontend/dist') {
             throw 'ISOLATED_READONLY_QA_IDENTITY_MISMATCH'
           }
-      - name: Build guest-only read-only Jellyfin QA installer
+      - name: Build guest-only unbundled debug Jellyfin QA
         if: github.event_name == 'pull_request'
         working-directory: desktop
-        run: npm run tauri -- build --bundles nsis --features interactive-jellyfin-qa --config src-tauri/tauri.authenticated-qa.conf.json
-      - name: Keep disposable read-only Jellyfin QA for guest VM
+        run: npm run tauri -- build --debug --no-bundle --features interactive-jellyfin-qa --config src-tauri/tauri.authenticated-qa.conf.json
+      - name: Keep disposable debug-only Jellyfin QA for guest VM
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: vyneo-jellyfin-readonly-qa-pr-${{ github.event.pull_request.number }}-${{ github.sha }}
-          path: desktop/src-tauri/target/release/bundle/nsis/*0.2.4-qa.2*setup.exe
+          path: desktop/src-tauri/target/debug/vyneo-desktop.exe
           if-no-files-found: error
           retention-days: 3
           compression-level: 0

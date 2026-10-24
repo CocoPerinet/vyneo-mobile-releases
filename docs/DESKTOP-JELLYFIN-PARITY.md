@@ -61,3 +61,15 @@
 - Le tag correspond exactement au commit de build `c6b9d398b7130f458a6469a4b5ee78f804f352b6`. La release a été créée en brouillon, fichiers vérifiés, puis rendue publique.
 - La release reste une préversion : programme d'installation **non signé Authenticode**, validation réelle avec le compte Jellyfin restant à faire, pas de mise à jour de la stable ou du canal Preview.
 - Publication contrôlée : la release mobile `mobile-v0.3.4` reste la « Latest », et aucun workflow `desktop-v*` ou `desktop-preview-v*` n'est ciblé par le tag QA.
+
+## Audit du 20 octobre repris comme référence obligatoire (21 octobre 2026)
+La source complète a été conservée dans `docs/AUDIT-PARITE-JELLYFIN-20261020.md`.
+L'inventaire des douze critères, les preuves, les statuts synthétiques/réels
+et les hashes des références sont contrôlés par
+`desktop/parity/audit-traceability.json` et `desktop/scripts/parity-gate.mjs`.
+Les mesures CSS et les correctifs du nouveau bloc figurent dans
+`docs/DESKTOP-PARITY-REPRISE-20261021.md`.
+
+**Important :** un build stable futur est bloqué par CI tant que la comparaison
+Jellyfin réel vs Vynéo et les comportements sur bibliothèque authentifiée
+ne sont pas validés. La branche de reprise n'a pas publié de nouvelle stable.

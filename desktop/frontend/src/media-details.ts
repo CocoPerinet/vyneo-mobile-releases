@@ -58,16 +58,21 @@ export function parsePlaybackInfo(payload:unknown):PlaybackProbe{
       });
     }
     sources.push({
+      id:typeof row.Id==="string" && ID.test(row.Id)?row.Id:null,
       title:text(row.Name,120)||"Source vidéo",
       container:text(row.Container,40).toUpperCase(),
       bitrate:whole(row.Bitrate,1,1_000_000_000),
+      runtimeTicks:whole(row.RunTimeTicks,1,864_000_000_000),
       directPlay:row.SupportsDirectPlay===true,
       directStream:row.SupportsDirectStream===true,
       transcoding:row.SupportsTranscoding===true,
+      isRemote:row.IsRemote===true,
       tracks
     });
   }
   const allowed=new Set(["NotAllowed","NoCompatibleStream","RateLimitExceeded"]);
   const error=text(root.ErrorCode,40);
-  return {sources,errorCode:allowed.has(error)?error:null};
+  return {sources,errorCode:allowed.has(error)?error:null,
+    playSessionId:typeof root.PlaySessionId==="string" &&
+      ID.test(root.PlaySessionId)?root.PlaySessionId:null};
 }

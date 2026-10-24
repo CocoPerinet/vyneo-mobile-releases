@@ -6,6 +6,12 @@ edition = "2021"
 rust-version = "1.77.2"
 publish = false
 
+[features]
+# QA build only; these synthetic media fixtures are never built into stable.
+native-e2e-qa = []
+# Portable, user-authorized real Jellyfin QA, never a release build.
+interactive-jellyfin-qa = []
+
 [build-dependencies]
 tauri-build = "=2.7.3"
 
@@ -17,4 +23,8 @@ tauri-plugin-dialog = "=2.6.0"
 # Native Windows Credential Manager and macOS Keychain, never plain localStorage.
 keyring = { version = "=3.6.3", default-features = false, features = ["apple-native", "windows-native"] }
 serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+# Restricted same-origin streaming; redirects are explicitly forbidden.
+reqwest = { version = "=0.12.24", default-features = false, features = ["blocking", "rustls-tls"] }
+uuid = { version = "1", features = ["v4"] }
 tokio = { version = "1", features = ["time", "sync"] }

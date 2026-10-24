@@ -1,13 +1,26 @@
-import type {MediaItem,MediaType,SessionPublic,CatalogKind,CatalogPage,CatalogLibraryIds,SeasonSummary,EpisodePage,PlaybackProbe} from "./types";
+import type {MediaItem,MediaType,SessionPublic,CatalogKind,CatalogPage,CatalogLibraryIds,LibraryGroupKind,SeasonSummary,EpisodePage,PlaybackProbe} from "./types";
+import {invoke,isTauri} from "@tauri-apps/api/core";
+import {validateStreamTicket} from "./native-playback";
+import type {NativeStreamTicket} from "./native-playback";
+import {reportBody,reportPath} from "./playback-report";
+import type {PlaybackReport} from "./playback-report";
+import {parseNegotiatedPlayback,WEBVIEW2_DEVICE_PROFILE,NEGOTIATED_MAX_BITRATE} from "./playback-negotiation";
+import type {NegotiatedPlayback} from "./playback-negotiation";
 import {parseSeasons,parsePlaybackInfo} from "./media-details";
+import {negotiatedAudioIndexMatches,negotiatedGraphicBurnInMatches,
+  supportsGraphicBurnIn} from "./playback-tracks";
 import type {RecentSeason} from "./new-seasons";
+import type {TrendingRank} from "./trending";
 import {candidateOffsets,CANDIDATE_BATCH_SIZE} from "./candidate-pages";
 
 export const SERVER_ORIGIN="https://cocojellyfin.duckdns.org:38443";
+// Remote STRM media inspection can require a cold Jellyfin/ffprobe fetch.
+// Nginx confirmed our previous 12s abort produced HTTP 499 for real items.
+export const PLAYBACK_INSPECTION_TIMEOUT_MS=25_000;
 const ID=/^[a-f0-9]{32}$/i;
 const TOKEN=/^[a-z0-9._\-]{12,2048}$/i;
-const TYPES=new Set<MediaType>(["Movie","Series","Episode","BoxSet"]);
-const FIELDS="Overview,Genres,Tags,Studios,CommunityRating,DateCreated,PremiereDate,UserData,ImageTags,BackdropImageTags,ProviderIds";
+const TYPES=new Set<MediaType>(["Movie","Series","Episode","BoxSet","Playlist"]);
+const FIELDS="Overview,Genres,Tags,Studios,CommunityRating,DateCreated,PremiereDate,UserData,ImageTags,BackdropImageTags,ProviderIds,ChildCount,RunTimeTicks";
 const obj=(v:unknown):Record<string,unknown>=>
   v && typeof v==="object" && !Array.isArray(v)
     ?v as Record<string,unknown>:{};
@@ -15,6 +28,10 @@ const string=(v:unknown,max=500):string=>
   typeof v==="string"?v.slice(0,max):"";
 const validId=(v:unknown):v is string=>
   typeof v==="string" && ID.test(v);
+const collectionIds=(value:unknown):string[]=>
+  typeof value==="string"
+    ?[...new Set(value.split(/[;\s]+/).filter(id=>/^\d{1,16}$/.test(id)))].slice(0,12)
+    :[];
 
 export function normalizeItem(v:unknown):MediaItem|null {
   const row=obj(v),id=row.Id,type=row.Type;
@@ -44,6 +61,8 @@ export function normalizeItem(v:unknown):MediaItem|null {
     played:ud.Played===true,
     progress:duration>0 && position>0
       ?Math.max(0,Math.min(100,Math.round(position/duration*100))):null,
+    resumeTicks:Number.isSafeInteger(position) && position>0 &&
+      position<864_000_000_000?position:null,
     // DateCreated is an import date, never evidence of a new release.
     premiereDate:string(row.PremiereDate,32),
     hasPrimary:typeof imageTags.Primary==="string",
@@ -60,9 +79,12 @@ export function normalizeItem(v:unknown):MediaItem|null {
       Number.isFinite(ud.PlayedPercentage) &&
       ud.PlayedPercentage>=0 && ud.PlayedPercentage<=100
       ?ud.PlayedPercentage:null,
-    franchiseId:typeof providers.TmdbCollection==="string" &&
-      /^\d{1,16}$/.test(providers.TmdbCollection)
-      ?providers.TmdbCollection:null,
+    franchiseId:collectionIds(providers.TmdbCollection)[0]??null,
+    tmdbId:collectionIds(providers.Tmdb)[0]??null,
+    // TVDb often stores multiple collection IDs joined by ';'. These
+    // group spin-offs (including TV series), but also editorial lists:
+    // classification must verify a shared dominant tag before using them.
+    tvdbCollectionIds:collectionIds(providers.TvdbCollection),
     seasonNumber:typeof row.ParentIndexNumber==="number" &&
       Number.isSafeInteger(row.ParentIndexNumber) &&
       row.ParentIndexNumber>=0 && row.ParentIndexNumber<=1000
@@ -74,6 +96,9 @@ export function normalizeItem(v:unknown):MediaItem|null {
     runtimeTicks:typeof row.RunTimeTicks==="number" &&
       Number.isSafeInteger(row.RunTimeTicks) &&
       row.RunTimeTicks>0?row.RunTimeTicks:null,
+    seasonCount:typeof row.ChildCount==="number" &&
+      Number.isSafeInteger(row.ChildCount) &&
+      row.ChildCount>=0 && row.ChildCount<=1000?row.ChildCount:null,
     seriesName:string(row.SeriesName,120)
   };
 }
@@ -125,10 +150,16 @@ export interface ApiOptions{
 }
 export class JellyfinApi {
   private authGeneration=0;
+  /** Ephemeral Quick Connect proof, never persisted or returned to the DOM. */
+  private quickSecret:string|null=null;
   private libraryRoots:Promise<CatalogLibraryIds>|null=null;
   private token:string|null=null;
   private userId:string|null=null;
   private username:string|null=null;
+  // Opt-in only after the native debug QA feature is verified at startup.
+  // Once enabled, this instance can never return to write mode.
+  private readOnlyQa=false;
+  enableReadOnlyQa():void { this.readOnlyQa=true; }
   private readonly fetcher:typeof fetch;
   private readonly deviceId:string;
   private readonly origin:string;
@@ -148,7 +179,11 @@ export class JellyfinApi {
       ?{userId:this.userId,username:this.username}:null;
   }
   logout(){
+    // Immediate native revocation when switching Jellyfin accounts. The
+    // Tauri command is idempotent and cannot affect the server's sessions.
+    if(isTauri())void invoke("stop_all_native_streams").catch(()=>{});
     this.authGeneration++;
+    this.quickSecret=null;
     this.libraryRoots=null;
     this.token=null;this.userId=null;this.username=null;
   }
@@ -178,7 +213,14 @@ export class JellyfinApi {
         signal:AbortSignal.timeout(options.timeoutMs??12000),
         ...(options.method==="POST"?{body:JSON.stringify(options.body)}:{})
       });
-    }catch{throw new Error("NETWORK_UNAVAILABLE");}
+    }catch(error){
+      // AbortSignal.timeout() aborts a slow upstream request. Preserve this
+      // useful classification without exposing the URL, token or exception.
+      if(error instanceof Error &&
+         (error.name==="TimeoutError" || error.name==="AbortError"))
+        throw new Error("REQUEST_TIMEOUT");
+      throw new Error("NETWORK_UNAVAILABLE");
+    }
     if(!response.ok || response.redirected ||
        !(response.headers.get("Content-Type")??"")
          .toLowerCase().startsWith("application/json"))
@@ -193,6 +235,63 @@ export class JellyfinApi {
   private requireUser():string{
     if(!this.token || !this.userId)throw new Error("AUTH_REQUIRED");
     return this.userId;
+  }
+  /**
+   * Public Jellyfin Quick Connect pairing: only the one-time human code
+   * leaves this method. The secret stays in memory and is exchanged via POST,
+   * not query strings, browser storage, logs or the native credential vault.
+   */
+  async beginQuickConnect():Promise<string>{
+    this.logout();
+    const generation=this.authGeneration;
+    const result=obj(await this.json("/QuickConnect/Initiate",{
+      method:"POST",body:{},token:null,maxBytes:16384,timeoutMs:12000
+    }));
+    if(generation!==this.authGeneration)
+      throw new Error("QUICK_CONNECT_CANCELLED");
+    const code=result.Code,secret=result.Secret;
+    if(typeof code!=="string" || !/^[A-Z0-9-]{4,12}$/i.test(code) ||
+       typeof secret!=="string" ||
+       !/^[a-zA-Z0-9._-]{16,512}$/.test(secret))
+      throw new Error("QUICK_CONNECT_INVALID");
+    this.quickSecret=secret;
+    return code;
+  }
+  cancelQuickConnect():void{
+    this.quickSecret=null;
+    this.authGeneration++;
+  }
+  async completeQuickConnect():Promise<SessionPublic>{
+    const secret=this.quickSecret,generation=this.authGeneration;
+    if(!secret)throw new Error("QUICK_CONNECT_NOT_STARTED");
+    let result:Record<string,unknown>;
+    try{
+      result=obj(await this.json("/Users/AuthenticateWithQuickConnect",{
+        method:"POST",body:{Secret:secret},token:null,
+        maxBytes:98304,timeoutMs:12000
+      }));
+    }catch{
+      if(generation!==this.authGeneration)
+        throw new Error("QUICK_CONNECT_CANCELLED");
+      throw new Error("QUICK_CONNECT_NOT_AUTHORIZED");
+    }
+    if(generation!==this.authGeneration)
+      throw new Error("QUICK_CONNECT_CANCELLED");
+    const user=obj(result.User);
+    const token=result.AccessToken;
+    if(!validId(user.Id) || typeof token!=="string" || !TOKEN.test(token))
+      throw new Error("QUICK_CONNECT_INVALID");
+    const me=obj(await this.json("/Users/Me",{
+      token,maxBytes:98304
+    }));
+    if(generation!==this.authGeneration)
+      throw new Error("QUICK_CONNECT_CANCELLED");
+    if(me.Id!==user.Id || obj(me.Policy).IsDisabled===true ||
+       typeof me.Name!=="string" || !me.Name.trim())
+      throw new Error("QUICK_CONNECT_INVALID");
+    this.userId=user.Id;this.username=string(me.Name,96);
+    this.token=token;this.quickSecret=null;
+    return this.session!;
   }
   async login(username:string,password:string):Promise<SessionPublic>{
     this.logout();
@@ -308,6 +407,66 @@ export class JellyfinApi {
       ?consumed===limit:startIndex+consumed<total);
     return {items,total,nextOffset:more?startIndex+consumed:null,libraryAvailable:true};
   }
+  /** Page through collections or playlists *visible to this account*.
+   * A navigation entry is not evidence of cross-library permission. */
+  async getLibraryGroupPage(kind:LibraryGroupKind,
+    startIndex=0,limit=48):Promise<CatalogPage>{
+    if(!["BoxSet","Playlist"].includes(kind) ||
+      !Number.isSafeInteger(startIndex) || startIndex<0 ||
+      startIndex>100000 || !Number.isSafeInteger(limit) ||
+      limit<1 || limit>60)throw new Error("PAGE_INVALID");
+    const uid=this.requireUser(),generation=this.authGeneration;
+    const path=this.userItems({IncludeItemTypes:kind,SortBy:"SortName",
+      SortOrder:"Ascending",StartIndex:startIndex,Limit:limit,
+      EnableTotalRecordCount:"true"});
+    const raw=obj(await this.json(path,{maxBytes:1048576}));
+    this.assertSession(uid,generation);
+    if(!Array.isArray(raw.Items) || raw.Items.length>limit)
+      throw new Error("GROUPS_INVALID");
+    const consumed=raw.Items.length;
+    const items=parseItems(raw,limit).filter(item=>item.type===kind);
+    const total=typeof raw.TotalRecordCount==="number" &&
+      Number.isSafeInteger(raw.TotalRecordCount) &&
+      raw.TotalRecordCount>=0?raw.TotalRecordCount:null;
+    const more=consumed>0 && (total===null
+      ?consumed===limit:startIndex+consumed<total);
+    return {items,total,nextOffset:more?startIndex+consumed:null,
+      libraryAvailable:true};
+  }
+  /** Never infer collection membership from franchise tags or another user.
+   * BoxSet children come from /Users/{id}/Items (ParentId scoped);
+   * Playlist entries come from Jellyfin's documented Playlist API. */
+  async getLibraryGroupContents(kind:LibraryGroupKind,id:string,
+    startIndex=0,limit=48):Promise<CatalogPage>{
+    if(!["BoxSet","Playlist"].includes(kind) || !validId(id) ||
+      !Number.isSafeInteger(startIndex) || startIndex<0 ||
+      startIndex>100000 || !Number.isSafeInteger(limit) ||
+      limit<1 || limit>60)throw new Error("PAGE_INVALID");
+    const uid=this.requireUser(),generation=this.authGeneration;
+    const path=kind==="BoxSet"
+      ?this.userItems({ParentId:id,Recursive:"false",
+        IncludeItemTypes:"Movie,Series,Episode",
+        SortBy:"SortName",SortOrder:"Ascending",
+        StartIndex:startIndex,Limit:limit,EnableTotalRecordCount:"true"})
+      :"/Playlists/"+id+"/Items?"+new URLSearchParams({
+        userId:uid,StartIndex:String(startIndex),Limit:String(limit),
+        Fields:FIELDS,EnableUserData:"true"
+      });
+    const raw=obj(await this.json(path,{maxBytes:1048576}));
+    this.assertSession(uid,generation);
+    if(!Array.isArray(raw.Items) || raw.Items.length>limit)
+      throw new Error("GROUP_CONTENT_INVALID");
+    const consumed=raw.Items.length;
+    const items=parseItems(raw,limit).filter(item=>
+      item.type==="Movie" || item.type==="Series" || item.type==="Episode");
+    const total=typeof raw.TotalRecordCount==="number" &&
+      Number.isSafeInteger(raw.TotalRecordCount) &&
+      raw.TotalRecordCount>=0?raw.TotalRecordCount:null;
+    const more=consumed>0 && (total===null
+      ?consumed===limit:startIndex+consumed<total);
+    return {items,total,nextOffset:more?startIndex+consumed:null,
+      libraryAvailable:true};
+  }
   private assertSession(uid:string,generation:number){
     if(generation!==this.authGeneration || this.userId!==uid)
       throw new Error("SESSION_CHANGED");
@@ -365,6 +524,166 @@ export class JellyfinApi {
       ?consumed===limit:startIndex+consumed<total);
     return {items,total,nextOffset:hasNext?startIndex+consumed:null};
   }
+  /** Actual playback negotiation. Unlike the diagnostic GET, this POST
+   * declares the codecs and HLS container supported by WebView2/hls.js.
+   * The server supplies a negotiated URL; we strip tokens and pin its path
+   * before the native protocol is permitted to use it. */
+  async negotiatePlaybackInfo(itemId:string,selection?:{
+    audioStreamIndex?:number;
+    graphicSubtitleIndex?:number;
+    mediaSourceId:string;
+  }):Promise<NegotiatedPlayback>{
+    const uid=this.requireUser(),generation=this.authGeneration;
+    if(!validId(itemId))throw new Error("PLAYBACK_ITEM_INVALID");
+    const audio=selection?.audioStreamIndex;
+    const graphic=selection?.graphicSubtitleIndex;
+    if(selection && (!validId(selection.mediaSourceId) ||
+       (audio===undefined && graphic===undefined) ||
+       (audio!==undefined && (!Number.isSafeInteger(audio) ||
+         audio<0 || audio>10000)) ||
+       (graphic!==undefined && (!Number.isSafeInteger(graphic) ||
+         graphic<0 || graphic>10000))))
+      throw new Error(graphic!==undefined?
+        "SUBTITLE_TRACK_INVALID":"AUDIO_TRACK_INVALID");
+    const burnIn=graphic!==undefined;
+    const raw=await this.json("/Items/"+itemId+"/PlaybackInfo",{
+      method:"POST",maxBytes:786432,
+      timeoutMs:PLAYBACK_INSPECTION_TIMEOUT_MS,
+      body:{
+        UserId:uid,MaxStreamingBitrate:NEGOTIATED_MAX_BITRATE,
+        MaxAudioChannels:2,StartTimeTicks:0,
+        EnableDirectPlay:!selection,EnableDirectStream:!burnIn,
+        EnableTranscoding:true,
+        AllowVideoStreamCopy:!burnIn,AllowAudioStreamCopy:true,
+        // Explicit -1 disables default/forced subtitle auto-burn.
+        // Graphical tracks are burned ONLY on user selection, with server
+        // transcoding required, never by downloading an image subtitle.
+        SubtitleStreamIndex:burnIn?graphic:-1,
+        ...(burnIn?{AlwaysBurnInSubtitleWhenTranscoding:true}:{}),
+        ...(selection?{MediaSourceId:selection.mediaSourceId}:{}),
+        ...(audio!==undefined?{AudioStreamIndex:audio}:{}),
+        DeviceProfile:burnIn?{
+          ...WEBVIEW2_DEVICE_PROFILE,
+          SubtitleProfiles:[
+            {Format:"pgs",Method:"Encode"},
+            {Format:"pgssub",Method:"Encode"},
+            {Format:"dvdsub",Method:"Encode"},
+            {Format:"dvbsub",Method:"Encode"},
+            {Format:"idx",Method:"Encode"}
+          ]
+        }:WEBVIEW2_DEVICE_PROFILE
+      }
+    });
+    this.assertSession(uid,generation);
+    const result=parseNegotiatedPlayback(raw,itemId);
+    if(selection){
+      const source=result.probe.sources.find(source=>
+        source.id===selection.mediaSourceId);
+      const path=result.hlsPaths[selection.mediaSourceId]??"";
+      if(audio!==undefined && (!source ||
+        !source.tracks.some(track=>track.kind==="Audio" &&
+          track.index===audio) || !negotiatedAudioIndexMatches(path,audio)))
+        throw new Error("AUDIO_TRACK_UNAVAILABLE");
+      if(burnIn && (!source || !source.transcoding ||
+        !source.tracks.some(track=>track.index===graphic &&
+          supportsGraphicBurnIn(track)) ||
+        !negotiatedGraphicBurnInMatches(path,graphic!)))
+        throw new Error("SUBTITLE_BURNIN_UNAVAILABLE");
+    }
+    return result;
+  }
+  /** Subtitles are fetched as bounded text from exactly the signed-in
+   * user's Jellyfin server. No token in the URL and no remote URL in <track>.
+   * The caller must construct and revoke its own ephemeral Blob URL.
+   */
+  async getSubtitleVtt(itemId:string,mediaSourceId:string,
+    streamIndex:number,abort?:AbortSignal):Promise<string>{
+    const uid=this.requireUser(),generation=this.authGeneration;
+    if(!validId(itemId) || !validId(mediaSourceId) ||
+       !Number.isSafeInteger(streamIndex) || streamIndex<0 ||
+       streamIndex>10000)throw new Error("SUBTITLE_SCOPE_INVALID");
+    const url=new URL("/Videos/"+itemId+"/"+mediaSourceId+
+      "/Subtitles/"+streamIndex+"/Stream.vtt",this.origin);
+    const limit=768*1024;
+    let response:Response;
+    try{
+      response=await this.fetcher(url,{
+        method:"GET",headers:{
+          ...identityHeaders(this.token,this.deviceId),
+          Accept:"text/vtt,text/plain;q=0.5"
+        },mode:"cors",credentials:"omit",cache:"no-store",
+        redirect:"error",referrerPolicy:"no-referrer",
+        // A cold STRM subtitle extraction may take a minute. The UI can
+        // still cancel it promptly on track change or player teardown.
+        signal:abort?AbortSignal.any([abort,AbortSignal.timeout(95000)]):
+          AbortSignal.timeout(95000)
+      });
+    }catch{
+      throw new Error("SUBTITLE_NETWORK");
+    }
+    this.assertSession(uid,generation);
+    if(!response.ok || response.redirected)
+      throw new Error(response.status===401?"SESSION_EXPIRED":
+        "SUBTITLE_UNAVAILABLE");
+    const declared=Number(response.headers.get("content-length"));
+    if((Number.isFinite(declared) && declared>limit) ||
+       !response.body)throw new Error("SUBTITLE_INVALID");
+    const reader=response.body.getReader();
+    const decoder=new TextDecoder("utf-8",{fatal:false});
+    let text="",bytes=0;
+    try{
+      while(true){
+        const chunk=await reader.read();
+        this.assertSession(uid,generation);
+        if(chunk.done)break;
+        bytes+=chunk.value.byteLength;
+        if(bytes>limit)throw new Error("SUBTITLE_INVALID");
+        text+=decoder.decode(chunk.value,{stream:true});
+      }
+      text+=decoder.decode();
+    }finally{
+      // A Response cloned by a cache/test may tee its body. Awaiting
+      // cancellation can then hang until the unused second branch closes.
+      // Cancellation is best-effort; the bounded reader exits immediately.
+      void reader.cancel().catch(()=>{});
+    }
+    const clean=text.replace(/^\uFEFF/,"");
+    if(!/^WEBVTT(?:[ \t][^\r\n]*)?(?:\r?\n|$)/.test(clean) ||
+       !clean.includes("\n") || clean.length<8)
+      throw new Error("SUBTITLE_INVALID");
+    return clean;
+  }
+  /** Authenticated Jellyfin session events; 204 No Content is success.
+   * Only a playing native video invokes this, never artwork/probe calls. */
+  async reportPlayback(event:PlaybackReport):Promise<void>{
+    if(this.readOnlyQa)throw new Error("QA_READ_ONLY");
+    const user=this.requireUser(),generation=this.authGeneration;
+    if(!validId(event.itemId) || !validId(event.mediaSourceId) ||
+       (event.playSessionId!==null &&
+        !validId(event.playSessionId)) ||
+       !["start","progress","stopped"].includes(event.kind) ||
+       !["DirectPlay","DirectStream","Transcode"].includes(event.playMethod) ||
+       !Number.isSafeInteger(event.positionTicks) ||
+       event.positionTicks<0 || event.positionTicks>864_000_000_000 ||
+       !Number.isFinite(event.volumeLevel) ||
+       event.volumeLevel<0 || event.volumeLevel>100)
+      throw new Error("PLAYBACK_REPORT_INVALID");
+    const url=new URL(reportPath(event.kind),this.origin);
+    const headers={...identityHeaders(this.token,this.deviceId),
+      "Content-Type":"application/json"};
+    let response:Response;
+    try{
+      response=await this.fetcher(url,{
+        method:"POST",headers,body:JSON.stringify(reportBody(event)),
+        mode:"cors",credentials:"omit",cache:"no-store",redirect:"error",
+        referrerPolicy:"no-referrer",signal:AbortSignal.timeout(9000)
+      });
+    }catch{throw new Error("PLAYBACK_REPORT_NETWORK");}
+    this.assertSession(user,generation);
+    if(!response.ok || response.redirected)
+      throw new Error(response.status===401?"SESSION_EXPIRED":
+        "PLAYBACK_REPORT_DENIED");
+  }
   async getPlaybackInfo(itemId:string):Promise<PlaybackProbe>{
     const uid=this.requireUser(),generation=this.authGeneration;
     if(!validId(itemId))throw new Error("PLAYBACK_ITEM_INVALID");
@@ -372,17 +691,55 @@ export class JellyfinApi {
     // or expose Jellyfin paths, stream URLs, secrets or transcode arguments.
     const qs=new URLSearchParams({userId:uid});
     const raw=await this.json("/Items/"+itemId+"/PlaybackInfo?"+qs,{
-      maxBytes:786432
+      maxBytes:786432,timeoutMs:PLAYBACK_INSPECTION_TIMEOUT_MS
     });
     this.assertSession(uid,generation);
     return parsePlaybackInfo(raw);
   }
+  /** Only the built-in Tauri WebView can read the local custom protocol.
+   * Never put the Jellyfin bearer token in a media URL or localStorage. */
+  async beginNativeDirectPlayback(itemId:string,mediaSourceId:string):
+    Promise<NativeStreamTicket>{
+    return this.beginNativeMediaPlayback(itemId,mediaSourceId,"direct");
+  }
+  async beginNativeHlsPlayback(itemId:string,mediaSourceId:string,
+    hlsPath:string):Promise<NativeStreamTicket>{
+    return this.beginNativeMediaPlayback(itemId,mediaSourceId,"hls",hlsPath);
+  }
+  private async beginNativeMediaPlayback(itemId:string,mediaSourceId:string,
+    kind:"direct"|"hls",hlsPath?:string):Promise<NativeStreamTicket>{
+    const uid=this.requireUser(),epoch=this.authGeneration;
+    if(!validId(itemId) || !validId(mediaSourceId))
+      throw new Error("STREAM_SCOPE_INVALID");
+    if(!isTauri())throw new Error("NATIVE_PLAYER_REQUIRED");
+    const raw=await invoke<unknown>("create_native_stream_ticket",{
+      itemId,mediaSourceId,userId:uid,
+      accessToken:this.token,deviceId:this.deviceId,kind,
+      hlsPath:kind==="hls"?hlsPath:null
+    });
+    const ticket=validateStreamTicket(raw);
+    if(epoch!==this.authGeneration || this.userId!==uid){
+      await this.endNativePlayback(ticket.ticket);
+      throw new Error("SESSION_CHANGED");
+    }
+    return ticket;
+  }
+  async endNativePlayback(ticket:string):Promise<void>{
+    if(!isTauri() || !validId(ticket))return;
+    await invoke("stop_native_stream_ticket",{ticket});
+  }
+  async endAllNativePlayback():Promise<void>{
+    if(!isTauri())return;
+    await invoke("stop_all_native_streams");
+  }
   async getUniverseCatalog():Promise<MediaItem[]>{
     const uid=this.requireUser(),generation=this.authGeneration;
     const result:MediaItem[]=[],seen=new Set<string>();
-    // 2400 silently omitted part of larger Jellyfin libraries (films,
-    // anime and series). Scan up to 6000 scoped records, on demand only.
-    for(let offset=0;offset<6000;offset+=200){
+    // The entire authorized Movie/Series library may span thousands
+    // of items. Keep the old 6000 safety bound, but fetch the remaining
+    // pages in groups of at most three after learning the first page's
+    // authoritative TotalRecordCount (much faster on a large catalogue).
+    const readPage=async(offset:number)=>{
       const path=this.userItems({
         IncludeItemTypes:"Movie,Series",SortBy:"PremiereDate",
         SortOrder:"Descending",Limit:200,StartIndex:offset,
@@ -394,17 +751,38 @@ export class JellyfinApi {
       this.assertSession(uid,generation);
       if(!Array.isArray(reply.Items) || reply.Items.length>200)
         throw new Error("UNIVERSE_SCOPE_INVALID");
-      const permitted=parseItems(reply,200);
-      for(const item of permitted){
-        if((item.type==="Movie" || item.type==="Series") &&
-          !seen.has(item.id.toLowerCase())){
-          seen.add(item.id.toLowerCase());result.push(item);
+      return {items:parseItems(reply,200),rawLength:reply.Items.length,
+        count:typeof reply.TotalRecordCount==="number" &&
+          Number.isSafeInteger(reply.TotalRecordCount) &&
+          reply.TotalRecordCount>=0?reply.TotalRecordCount:null};
+    };
+    const append=(items:MediaItem[])=>{
+      for(const item of items){
+        const key=item.id.toLowerCase();
+        if((item.type==="Movie" || item.type==="Series") && !seen.has(key)){
+          seen.add(key);result.push(item);
         }
       }
-      const count=reply.TotalRecordCount;
-      if(reply.Items.length<200 ||
-         (typeof count==="number" && Number.isSafeInteger(count) &&
-          offset+reply.Items.length>=count))break;
+    };
+    const first=await readPage(0);
+    append(first.items);
+    if(first.rawLength<200 || (first.count!==null &&
+      first.count<=first.rawLength))return result;
+    const limit=first.count!==null?
+      Math.min(6000,first.count):6000;
+    for(let start=200;start<limit;start+=600){
+      const offsets=[start,start+200,start+400].filter(x=>x<limit);
+      const pages=await Promise.all(offsets.map(readPage));
+      this.assertSession(uid,generation);
+      let finished=false;
+      for(let i=0;i<pages.length;i++){
+        if(finished)break;
+        const page=pages[i];
+        append(page.items);
+        if(page.rawLength<200 || (page.count!==null &&
+          offsets[i]+page.rawLength>=page.count))finished=true;
+      }
+      if(finished)break;
     }
     this.assertSession(uid,generation);
     return result;
@@ -431,6 +809,65 @@ export class JellyfinApi {
     if(content.size>524288 || content.size===0)return null;
     return content;
   }
+  /** Public TMDb popularity *through the pinned Jellyfin-hosted proxy*.
+   * Do not reuse this.json: that method attaches the private Jellyfin token.
+   * Never pass credentials to the TMDb endpoint or trust its results as
+   * evidence that a user has access to the corresponding Jellyfin title. */
+  async getTrendingRanks():Promise<TrendingRank[]>{
+    const uid=this.requireUser(),generation=this.authGeneration;
+    const read=async(kind:"movie"|"tv",page:number):Promise<TrendingRank[]>=>{
+      const url=new URL("/tmdb/discover/"+kind,this.origin);
+      url.search=new URLSearchParams({
+        sort_by:"popularity.desc",language:"fr-FR",
+        page:String(page),include_adult:"false"
+      }).toString();
+      if(url.origin!==this.origin)throw new Error("TRENDING_ORIGIN_INVALID");
+      let response:Response;
+      try{
+        response=await this.fetcher(url,{
+          method:"GET",headers:{Accept:"application/json"},
+          mode:"cors",credentials:"omit",cache:"no-store",redirect:"error",
+          referrerPolicy:"no-referrer",signal:AbortSignal.timeout(6000)
+        });
+      }catch{return [];}
+      this.assertSession(uid,generation);
+      if(!response.ok || response.redirected ||
+        !(response.headers.get("Content-Type")??"").toLowerCase()
+          .startsWith("application/json"))return [];
+      const length=response.headers.get("Content-Length");
+      if(length && Number(length)>524288)return [];
+      let parsed:Record<string,unknown>;
+      try{
+        const text=await response.text();
+        if(text.length>524288)return [];
+        parsed=obj(JSON.parse(text));
+      }catch{return [];}
+      this.assertSession(uid,generation);
+      if(!Array.isArray(parsed.results) ||
+        parsed.results.length>20)return [];
+      const type=kind==="movie"?"Movie":"Series";
+      return parsed.results.flatMap((row,index)=>{
+        const meta=obj(row),id=meta.id;
+        if(meta.adult===true || !Number.isSafeInteger(id) ||
+          (id as number)<1 || (id as number)>999_999_999_999)
+          return [];
+        return [{
+          type,tmdbId:String(id),
+          rank:(page-1)*20+index+1
+        }];
+      });
+    };
+    const ranked:TrendingRank[]=[];
+    for(let page=1;page<=3;page++){
+      this.assertSession(uid,generation);
+      const results=await Promise.all([
+        read("movie",page),read("tv",page)
+      ]);
+      this.assertSession(uid,generation);
+      ranked.push(...results[0],...results[1]);
+    }
+    return ranked;
+  }
   async getRecent():Promise<MediaItem[]>{
     return this.items(this.userItems({
       IncludeItemTypes:"Movie,Series",SortBy:"DateCreated",
@@ -440,9 +877,9 @@ export class JellyfinApi {
   async getResume():Promise<MediaItem[]>{
     const uid=this.requireUser();
     return this.items("/UserItems/Resume?"+new URLSearchParams({
-      userId:uid,StartIndex:"0",Limit:"24",
+      userId:uid,StartIndex:"0",Limit:"100",
       IncludeItemTypes:"Movie,Episode",EnableUserData:"true"
-    }),24);
+    }),100);
   }
   async getNextUp():Promise<MediaItem[]>{
     const uid=this.requireUser(),generation=this.authGeneration;
@@ -516,29 +953,38 @@ export class JellyfinApi {
     const uid=this.requireUser(),generation=this.authGeneration;
     this.assertSession(uid,generation);
     const seen=new Set<string>();
+    // The NextUp fetch may return 600 different series. Previous versions
+    // silently dropped metadata for every series beyond the first 300,
+    // preventing their genuine new seasons from being detected.
     const ids=next.map(ep=>ep.seriesId).filter((id):id is string=>
       !!id && validId(id) && !seen.has(id.toLowerCase()) &&
-      !!seen.add(id.toLowerCase())).slice(0,300);
+      !!seen.add(id.toLowerCase())).slice(0,600);
+    const groups:Array<string[]>=[];
+    for(let i=0;i<ids.length;i+=60)groups.push(ids.slice(i,i+60));
     const rows:MediaItem[]=[];
-    for(let i=0;i<ids.length;i+=60){
-      const selection=ids.slice(i,i+60);
-      const path=this.userItems({
-        Ids:selection.join(","),IncludeItemTypes:"Series",Limit:60
-      });
-      const response=obj(await this.json(path,{maxBytes:786432}));
+    // Bound fan-out to three requests so enrichment remains responsive
+    // without flooding Jellyfin. Keep the server's own authorization scope.
+    for(let start=0;start<groups.length;start+=3){
+      const pages=await Promise.all(groups.slice(start,start+3).map(async selection=>{
+        const path=this.userItems({
+          Ids:selection.join(","),IncludeItemTypes:"Series",Limit:60
+        });
+        const response=obj(await this.json(path,{maxBytes:786432}));
+        this.assertSession(uid,generation);
+        if(!Array.isArray(response.Items) || response.Items.length>60)
+          throw new Error("SERIES_SCOPE_INVALID");
+        const authorized=new Set(selection.map(x=>x.toLowerCase()));
+        return parseItems(response,60).filter(media=>
+          media.type==="Series" && authorized.has(media.id.toLowerCase()));
+      }));
       this.assertSession(uid,generation);
-      if(!Array.isArray(response.Items) || response.Items.length>60)
-        throw new Error("SERIES_SCOPE_INVALID");
-      const authorized=new Set(selection.map(x=>x.toLowerCase()));
-      for(const media of parseItems(response,60)){
-        if(media.type==="Series" && authorized.has(media.id.toLowerCase()))
-          rows.push(media);
-      }
+      for(const page of pages)rows.push(...page);
     }
     return rows;
   }
   async updateMediaState(itemId:string,action:"favorite"|"played",
     enabled:boolean):Promise<void>{
+    if(this.readOnlyQa)throw new Error("QA_READ_ONLY");
     const uid=this.requireUser(),generation=this.authGeneration;
     if(!validId(itemId) || !["favorite","played"].includes(action) ||
       typeof enabled!=="boolean")throw new Error("MEDIA_ACTION_DENIED");

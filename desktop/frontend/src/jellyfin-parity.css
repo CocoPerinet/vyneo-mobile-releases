@@ -1,36 +1,33 @@
 /* Vynéo Desktop parity layer based on the user's customized Jellyfin theme.
  * Not a copy of Jellyfin's runtime or its global selectors.
  * Native CSS tokens remain owned by Desktop and are safe from web upgrades. */
-:root{
-  --vy-bg:#090c12;
-  --vy-accent-2:#ff9c36;
-  --vy-text:#f2f4f8;
-  --vy-dim:#9ca4b5;
-}
+/* Color tokens are inherited from styles.css. They match the Jellyfin
+ * skin.css palette (#0a0c11 / #ffb347); do not override them here. */
 .vy-header{
-  min-height:83px;
-  padding:11px 3.3%;
-  gap:26px;
-  background:rgba(9,12,18,.96);
+  min-height:74px;
+  padding:14px clamp(16px,2.1vw,40px) 8px;
+  gap:18px;
+  background:rgba(10,12,17,.97);
   border-bottom:1px solid #ffffff10;
 }
 .vy-header.vy-header-over-hero{
-  background:linear-gradient(to bottom,rgba(7,10,15,.9),rgba(7,10,15,.08));
+  background:linear-gradient(to bottom,rgba(10,12,17,.9),
+    rgba(10,12,17,.5) 70%,transparent);
   border-bottom-color:transparent;
   backdrop-filter:none;
 }
 .vy-logo{color:var(--vy-accent-2);font-size:27px}
 .vy-logo-button{color:var(--vy-accent-2)}
-.vy-nav{gap:6px}
+.vy-nav{gap:8px}
 .vy-nav button{
-  padding:8px 13px;
-  border-radius:7px;
-  font-size:15px;
+  padding:10px 20px;
+  border-radius:999px;
+  font-size:16.5px;
   font-weight:650;
 }
 .vy-nav button.active,.vy-nav button:hover{
-  background:transparent;
-  color:#f0f2f5;
+  background:rgba(255,255,255,.12);
+  color:#fff;
 }
 .vy-toolbar{gap:16px}
 .vy-search-label{
@@ -38,12 +35,18 @@
   grid-template-columns:20px minmax(0,1fr);
   align-items:center;
   column-gap:10px;
-  width:clamp(215px,20vw,308px);
-  height:43px;
-  padding:0 16px;
+  width:clamp(210px,20vw,320px);
+  height:46px;
+  padding:0 10px 0 18px;
   border-radius:999px;
-  background:rgba(40,43,49,.68);
-  border:1px solid #ffffff15;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.10);
+}
+.vy-search-label:hover{background:rgba(255,255,255,.12)}
+.vy-search-label:focus-within{
+  background:rgba(255,255,255,.14);
+  border-color:rgba(255,179,71,.55);
+  box-shadow:0 8px 30px rgba(0,0,0,.4);
 }
 .vy-search-icon{
   display:grid;
@@ -60,7 +63,7 @@
   min-width:0;
   line-height:1.35;
   color:#f0f3fa;
-  font-size:13px;
+  font-size:15px;
   padding:0;
 }
 .vy-account{
@@ -71,43 +74,61 @@
   display:grid;
   place-items:center;
 }
+/* Geometry transcribed from skin.css lines 824-967, 2026-10-21.
+ * Hero's bottom 150px overlaps the first rail; controls float above it. */
 .vy-hero{
-  min-height:min(91vh,875px);
-  margin-top:-83px;
-  padding:132px 3.3% 205px;
-  background:#0b0c12;
+  min-height:min(78vh,820px);
+  margin-top:-74px;
+  padding:120px 3.3% 150px;
+  background:var(--vy-bg-soft);
 }
-.vy-hero-art{object-position:center 28%}
+.vy-hero-art{object-position:center 16%}
 .vy-hero-shade{
-  background:
-   linear-gradient(to top,#090c12 0%,rgba(9,12,18,.86) 12%,transparent 46%),
-   linear-gradient(to right,rgba(8,10,15,.92) 0%,rgba(8,10,15,.54) 32%,transparent 69%),
-   linear-gradient(to bottom,rgba(8,10,15,.25),transparent 32%);
+  background:linear-gradient(to top,var(--vy-bg) 2%,
+    rgba(10,12,17,.6) 20%,rgba(10,12,17,.4) 45%,
+    rgba(10,12,17,.15) 100%),
+    linear-gradient(to right,rgba(10,12,17,.75),transparent 55%);
 }
-.vy-hero-inner{max-width:625px}
-.vy-hero h1{font-size:clamp(39px,3.9vw,59px);line-height:1.08}
-.vy-hero-overview{font-size:14px;max-width:540px;color:#e0e3eb}
+.vy-hero-inner{max-width:760px}
+.vy-hero h1{font-size:clamp(28px,4.6vw,50px);line-height:1.08}
+.vy-hero-overview{font-size:15.5px;max-width:600px;color:#c6cddd;line-height:1.55}
 .vy-hero-controls{
-  bottom:155px;right:3.3%;gap:9px;
-  background:#10131b77;border:1px solid #ffffff20;
+  position:absolute;inset:0;z-index:3;
+  padding:0;border:0;border-radius:0;background:transparent;
+  backdrop-filter:none;pointer-events:none;
 }
 .vy-hero-arrow{
-  display:grid;
-  place-items:center;
-  padding:0;
-  width:32px;height:32px;
-  line-height:normal;
+  position:absolute;top:50%;width:48px;height:48px;
+  display:grid;place-items:center;padding:0;
+  border:0;border-radius:50%;font-size:26px;line-height:1;
+  background:rgba(20,22,30,.45);backdrop-filter:blur(8px);
+  transform:translateY(-50%);opacity:0;pointer-events:auto;
+  transition:opacity .18s,background-color .15s,transform .15s;
 }
-.vy-watch-button,.vy-more-button{border-radius:8px;padding:11px 23px}
-.vy-shelves{margin-top:-119px}
-.vy-shelf{margin:28px 0 22px;contain-intrinsic-size:auto 285px}
-.vy-shelf-heading{margin-bottom:9px}
-.vy-shelf-heading h2{font-size:19px;font-weight:900;color:#f0f1f6}
+.vy-hero-arrow:first-child{left:18px}
+.vy-hero-arrow:last-child{right:18px}
+.vy-hero:hover .vy-hero-arrow,.vy-hero-arrow:focus-visible{opacity:1}
+.vy-hero-arrow:hover{background:rgba(20,22,30,.7);
+  transform:translateY(-50%) scale(1.08)}
+/* Home rails overlap the bottom 150px of the Hero. Dot controls must
+ * remain ABOVE that overlay; otherwise z-index:5 on the rails captures
+ * the click even though the dots themselves are visible. */
+.vy-hero-dots{position:absolute;left:0;right:0;bottom:170px;
+  justify-content:center;gap:8px;pointer-events:auto}
+.vy-hero-dots button{width:12px;height:12px;padding:0;display:grid;
+  place-items:center}
+.vy-hero-dots button span{width:8px;height:8px;border-radius:50%}
+.vy-hero-dots button.active span{width:8px;transform:scale(1.25)}
+.vy-watch-button,.vy-more-button{border-radius:10px;padding:12px 26px}
+.vy-shelves{margin-top:-150px}
+.vy-shelf{margin:30px 0;contain-intrinsic-size:auto 285px}
+.vy-shelf-heading{margin-bottom:12px}
+.vy-shelf-heading h2{font-size:21px;font-weight:800;color:#dfe4f0}
 .vy-rail-frame{position:relative;overflow:visible}
 .vy-rail{
   display:flex;
-  gap:12px;
-  padding:4px 3.3% 18px;
+  gap:13px;
+  padding:6px 3.3% 18px;
   scrollbar-width:none;
   overscroll-behavior-x:contain;
   scroll-snap-type:x proximity;
@@ -115,7 +136,7 @@
 }
 .vy-card{
   display:block;
-  flex:0 0 clamp(238px,22vw,310px);
+  flex:0 0 340px;
   width:auto;
   min-width:0;
   border:0;
@@ -234,13 +255,13 @@
 .vy-hover-popup{
   position:fixed;
   z-index:80;
-  width:min(330px,calc(100vw - 28px));
+  width:min(320px,calc(100vw - 28px));
   overflow:hidden;
   border:1px solid #ffffff20;
   border-radius:12px;
-  background:#1b1f2a;
+  background:#14171f;
   color:#f2f4f8;
-  box-shadow:0 17px 48px #000e;
+  box-shadow:0 20px 50px #000a;
   animation:vy-preview-in .14s ease-out;
 }
 @keyframes vy-preview-in{
@@ -260,7 +281,7 @@
 }
 .vy-hover-image>img{width:100%;height:100%;display:block;object-fit:cover}
 .vy-hover-image .vy-novelty{bottom:10px}
-.vy-hover-content{padding:12px 14px 13px}
+.vy-hover-content{padding:14px 16px 16px}
 .vy-hover-actions{
   display:flex;align-items:center;gap:8px;
   margin-bottom:10px;
@@ -268,8 +289,8 @@
 .vy-icon-button{
   display:grid;
   place-items:center;
-  width:33px;height:33px;
-  flex:0 0 33px;
+  width:34px;height:34px;
+  flex:0 0 34px;
   padding:0;
   margin:0;
   border-radius:50%;
@@ -286,11 +307,11 @@
   background:#fff;color:#10131b;border-color:#fff;
 }
 .vy-icon-primary:hover:not(:disabled){color:#10131b;background:#e7edf5}
-.vy-hover-title{font-size:13px;line-height:1.4;display:block;margin:2px 0 5px}
+.vy-hover-title{font-size:15px;line-height:1.45;display:block;margin:2px 0 6px}
 .vy-hover-title span{font-size:12px;color:#aab2c3;font-weight:500}
 .vy-hover-meta{
   display:flex;align-items:center;flex-wrap:wrap;
-  gap:8px;font-size:11px;color:#aab4c5;
+  gap:8px;font-size:12.5px;color:#aab4c5;
 }
 .vy-hover-score{color:#ffb64e;font-weight:700}
 .vy-hover-genres{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0}
@@ -302,7 +323,7 @@
 }
 .vy-hover-summary{
   color:#d4d9e4;
-  font-size:11px;line-height:1.45;
+  font-size:12.5px;line-height:1.45;
   margin:8px 0 0;
   display:-webkit-box;
   -webkit-line-clamp:3;
@@ -322,7 +343,8 @@
  .vy-toolbar{gap:10px}
  .vy-search-label{width:clamp(140px,34vw,230px)}
  .vy-hero{min-height:550px;margin-top:-104px;padding:145px 4% 128px}
- .vy-hero-controls{bottom:90px;right:4%}
+ .vy-hero-controls{inset:0}
+ .vy-hero-dots{bottom:103px;gap:5px}
  .vy-shelves{margin-top:-83px}
  .vy-rail{padding-inline:4%}
  .vy-card{flex-basis:260px}
@@ -330,6 +352,8 @@
  .vy-rail-arrow{width:32px;height:40px}
 }
 @media(max-width:460px){
+ .vy-hero-dots{bottom:100px;gap:4px}
+ .vy-hero-dots button{width:12px;height:14px}
  .vy-hero{min-height:490px}
  .vy-card{flex-basis:74vw}
  .vy-nav button{padding:8px 10px}
@@ -364,3 +388,251 @@
  .vy-rail{scroll-padding-inline:4%}
  .vy-universes-page .vy-universe-rail{scroll-padding-inline:0}
 }
+
+/* Audit C : universe tabs, in-saga ordering and detailed rows ported from
+ * /opt/zurg/jellyfin-vyneo/web/skin.css:4650-4875 (read-only original).
+ * This is not Jellyfin's modal DOM; it remains an independent Svelte view. */
+.vy-universe-heading{
+  display:flex;justify-content:flex-start;align-items:center;
+  gap:24px;flex-wrap:wrap;
+}
+.vy-universe-page-logo{
+  display:block;width:auto;max-width:min(240px,55vw);
+  max-height:62px;object-fit:contain;
+  filter:brightness(0) invert(1);
+}
+.vy-universe-page-logo[data-vy-universe="dcu"]{filter:none}
+/* The Jellyfin universe panel uses its logo alone as the visual title.
+ * Keep a real h1 for document structure and screen readers. */
+.vy-universe-heading h1{
+  position:absolute;width:1px;height:1px;overflow:hidden;
+  white-space:nowrap;clip-path:inset(50%);
+}
+.vy-universe-tabs{
+  display:flex;flex-wrap:wrap;gap:8px;
+  margin:12px 0 22px;align-items:center;
+}
+.vy-universe-tabs button{
+  flex:0 0 auto;margin:0;padding:8px 15px;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:999px;background:rgba(255,255,255,.06);
+  color:#c3cad6;font:700 13.5px/1.4 var(--vy-font);
+  transition:background-color .14s,color .14s,border-color .14s;
+}
+.vy-universe-tabs button:hover{
+  color:white;background:rgba(255,255,255,.12);
+}
+.vy-universe-tabs button.active{
+  color:#1b0e07;border-color:transparent;
+  background:linear-gradient(135deg,var(--vy-accent-2),var(--vy-accent));
+}
+.vy-universe-tabs button:focus-visible{
+  outline:2px solid var(--vy-accent-2);outline-offset:3px;
+}
+.vy-universe-list{display:flex;flex-direction:column;gap:2px}
+.vy-universe-entry{
+  display:flex;align-items:flex-start;gap:14px;
+  min-width:0;padding:12px;border-radius:12px;
+  transition:background-color .14s ease;
+}
+.vy-universe-entry:hover,.vy-universe-entry:focus-within{
+  background:rgba(255,255,255,.05);
+}
+.vy-universe-main{
+  display:flex;align-items:flex-start;flex:1;min-width:0;
+  gap:16px;border:0;padding:0;background:none;color:var(--vy-text);
+  text-align:left;
+}
+.vy-universe-thumb{
+  position:relative;flex:0 0 232px;width:232px;height:131px;
+  display:block;overflow:hidden;border-radius:9px;
+  background:rgba(255,255,255,.04);
+}
+.vy-universe-thumb img{
+  display:block;width:100%;height:100%;object-fit:cover;
+}
+.vy-universe-thumb img:not([data-vy-art-ready="true"]){
+  visibility:hidden;
+}
+.vy-universe-play{
+  position:absolute;inset:0;display:grid;place-items:center;
+  color:#fff;background:rgba(0,0,0,.25);
+  opacity:0;transition:opacity .15s;
+}
+.vy-universe-main:hover .vy-universe-play,
+.vy-universe-main:focus-visible .vy-universe-play{opacity:1}
+.vy-universe-info{
+  display:block;min-width:0;flex:1;
+}
+.vy-universe-title{
+  display:block;font-size:15px;font-weight:750;line-height:1.3;
+  overflow-wrap:anywhere;
+}
+.vy-universe-meta{
+  display:flex;flex-wrap:wrap;gap:4px 14px;
+  margin-top:5px;color:var(--vy-dim);
+  font-size:12.5px;font-weight:650;
+}
+.vy-universe-rating{color:var(--vy-accent-2)}
+.vy-universe-summary{
+  display:-webkit-box;overflow:hidden;margin-top:8px;
+  color:#aeb7c6;font-size:13.5px;line-height:1.5;
+  -webkit-line-clamp:3;-webkit-box-orient:vertical;
+}
+.vy-universe-actions{
+  display:flex;align-items:center;gap:10px;
+  flex:0 0 auto;margin-left:auto;
+}
+.vy-universe-action{
+  display:grid;place-items:center;width:40px;height:40px;
+  padding:0;border-radius:50%;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.06);color:#aab2c2;
+}
+.vy-universe-action:hover:not(:disabled){
+  color:white;background:rgba(255,255,255,.14);
+  border-color:rgba(255,255,255,.24);
+}
+.vy-universe-action.vy-favorite{
+  color:#ff5470;background:rgba(255,84,112,.16);
+  border-color:rgba(255,84,112,.42);
+}
+.vy-universe-action.vy-played{
+  color:#4ade80;background:rgba(74,222,128,.14);
+  border-color:rgba(74,222,128,.4);
+}
+.vy-universe-action:disabled{opacity:.4;cursor:not-allowed}
+.vy-universe-favmark,.vy-universe-watched{
+  position:absolute;top:7px;display:grid;place-items:center;
+  min-width:26px;height:26px;border-radius:50%;
+  color:#fff;box-shadow:0 2px 8px #0008;
+}
+.vy-universe-favmark{left:7px;background:rgba(220,40,80,.92)}
+.vy-universe-watched{
+  right:7px;width:auto;padding:0 7px;border-radius:999px;
+  background:rgba(20,22,30,.9);font:800 11px var(--vy-font);
+  color:#6ee08a;border:1px solid rgba(89,217,122,.55);
+}
+@media(max-width:780px){
+  .vy-universe-thumb{flex-basis:116px;width:116px;height:66px}
+  .vy-universe-main{gap:12px}
+  .vy-universe-summary{-webkit-line-clamp:2}
+}
+@media(max-width:460px){
+  .vy-universe-entry{padding:8px;gap:8px}
+  .vy-universe-actions{gap:6px}
+  .vy-universe-action{width:32px;height:32px}
+  .vy-universe-meta{font-size:11px}
+  .vy-universe-summary{font-size:12px}
+  .vy-universe-heading{gap:10px}
+  .vy-universe-tabs{gap:6px}
+  .vy-universe-tabs button{font-size:12px;padding:7px 11px}
+}
+
+/* Original Jellyfin skin.css:4668-4710. The universe picker is a centered
+ * dark modal over the preserved Home, not another SPA tab or full-page route.
+ * MediaDetails stays above it (z-index 90), with focus returned afterward. */
+.vy-universe-modal{
+  position:fixed;inset:0;z-index:85;
+  display:flex;align-items:center;justify-content:center;
+  padding:28px;
+  background:rgba(6,4,3,.88);
+  overscroll-behavior:contain;
+}
+.vy-universe-under-detail{visibility:hidden}
+.vy-universe-backdrop{
+  position:absolute;inset:0;display:block;width:100%;height:100%;
+  padding:0;border:0;background:transparent;border-radius:0;
+  cursor:default;
+}
+.vy-universe-panel{
+  position:relative;z-index:1;
+  box-sizing:border-box;width:100%;max-width:1080px;
+  max-height:86vh;overflow-y:auto;overscroll-behavior:contain;
+  padding:30px 32px 34px;
+  color:var(--vy-text);background:rgba(15,11,10,.99);
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:20px;box-shadow:0 30px 90px rgba(0,0,0,.72);
+}
+.vy-universe-close{
+  position:absolute;top:16px;right:18px;
+  padding:6px 10px;border:0;border-radius:8px;
+  background:transparent;color:#9aa3b4;
+  font:400 18px/1 var(--vy-font);
+}
+.vy-universe-close:hover{color:var(--vy-text)}
+.vy-universe-close:focus-visible{
+  outline:2px solid var(--vy-accent-2);outline-offset:2px;
+}
+.vy-universe-panel .vy-universe-page-logo{
+  display:block;max-width:240px;max-height:62px;
+  width:auto;object-fit:contain;margin:0 0 22px;
+}
+.vy-universe-panel .vy-universe-tabs{margin:0 0 20px}
+@media(max-width:700px){
+  .vy-universe-modal{padding:8px}
+  .vy-universe-panel{
+    max-height:94dvh;padding:22px 12px 20px;border-radius:14px;
+  }
+  .vy-universe-close{top:8px;right:8px}
+  .vy-universe-panel .vy-universe-page-logo{
+    max-width:min(200px,70%);max-height:54px;margin-bottom:16px;
+  }
+}
+
+/* Native Jellyfin collections and playlists: index -> member cards, without
+ * importing Jellyfin Web or exposing cross-user playlists. */
+.vy-group-open-heading{display:flex;flex-wrap:wrap;gap:10px 28px;
+  align-items:center;padding:4px 3.3% 18px}
+.vy-group-back{display:flex;align-items:center;gap:5px;
+  border:1px solid #ffffff2a;border-radius:999px;
+  padding:9px 13px;color:#e7ebf5;background:#ffffff13}
+.vy-group-back:hover{background:#ffffff24}
+.vy-group-open-heading h2{font-size:20px;font-weight:750;margin:0;
+  overflow-wrap:anywhere}
+.vy-group-index,.vy-group-contents{content-visibility:auto;
+  contain-intrinsic-size:auto 500px}
+.vy-group-back:focus-visible{outline:2px solid var(--vy-accent-2);
+  outline-offset:3px}
+
+/* Collections and playlists often have no Jellyfin Primary artwork.
+ * Use a neutral fallback inside their tiles, without broken-image glyphs.
+ * A decoded real cover always overlays it automatically. */
+.vy-group-index .vy-card-picture{
+  background:radial-gradient(ellipse at 50% 34%,#242e42,#141a26 85%);
+}
+.vy-group-placeholder{
+  position:absolute;inset:0;z-index:0;
+  display:flex;flex-direction:column;justify-content:center;
+  align-items:center;gap:9px;
+  color:#929dad;pointer-events:none;
+}
+.vy-group-placeholder span{
+  font-size:10px;font-weight:800;letter-spacing:.13em;
+}
+.vy-group-index .vy-card-picture img{
+  position:relative;z-index:1;
+}
+
+/* Experimental first-party player: no external Jellyfin SPA or embedded
+ * remote iframe. Only the short-lived Tauri custom-protocol ticket is in src. */
+.vy-direct-play-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.vy-direct-play-actions .vy-detail-action{display:inline-flex;
+  align-items:center;justify-content:center;gap:8px}
+.vy-native-player{width:100%;max-width:1024px;margin:18px 0;
+  border-radius:12px;overflow:hidden;background:#000}
+.vy-native-player video{display:block;width:100%;height:auto;
+  max-height:65vh;aspect-ratio:16/9;background:#000}
+.vy-native-player p{padding:9px 13px;margin:0}
+
+/* Native Jellyfin language controls, deliberately aligned with player width. */
+.vy-playback-track-controls{display:flex;flex-wrap:wrap;align-items:flex-start;
+  gap:10px 16px;margin:12px 0;max-width:1024px}
+.vy-playback-track-controls label{display:flex;flex-direction:column;gap:6px;
+  font-size:13px;font-weight:600;color:#e5e7eb;min-width:185px;
+  flex:1 1 220px;max-width:420px}
+.vy-playback-track-controls select{width:100%;padding:9px 11px;
+  background:#252b38;color:#f9fafb;border:1px solid #ffffff35;
+  border-radius:8px;outline-offset:2px;font:inherit}
+.vy-playback-track-controls select:disabled{opacity:.6;cursor:wait}
+.vy-playback-track-controls p{width:100%;margin:0}

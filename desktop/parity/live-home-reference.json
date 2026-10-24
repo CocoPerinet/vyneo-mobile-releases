@@ -1,0 +1,25 @@
+{
+  "description": "Jellyfin customized Home, authenticated Brave tab, read-only DOM snapshot",
+  "capturedDate": "2026-10-21",
+  "source": "https://cocojellyfin.duckdns.org:38443/web/#/home",
+  "provenance": "read-only authenticated browser DOM; no cookies or credentials exported",
+  "sameUserAsCandidateVerified": false,
+  "screenshotsCompared": false,
+  "jellyfinItemIdsCompared": false,
+  "homeSequence": [
+    {"id": "resume", "label": "Reprendre la lecture"},
+    {"id": "next-up", "label": "À suivre"},
+    {"id": "new-seasons", "label": "Nouvelles saisons et suites"},
+    {"id": "universe-rail", "label": "Univers"},
+    {"id": "trending", "label": "Tendances"},
+    {"id": "for-you", "label": "Pour vous"}
+  ],
+  "visibleDomNodeCounts": {
+    "heroIndicators": 15,
+    "resumeBackdropNodes": 2,
+    "nextUpBackdropNodes": 41,
+    "newSeasonsBackdropNodes": 1,
+    "universeButtons": 7
+  },
+  "interpretation": "Visible DOM nodes and headings, not API totals, item IDs or rights. Block D remains pending."
+}

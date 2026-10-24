@@ -2,6 +2,7 @@
   import type {MediaItem} from "./types";
   import type {ArtworkCache} from "./artwork";
   import {hasArtwork,lazyArtwork} from "./artwork";
+  import VyIcon from "./VyIcon.svelte";
   type Props={
     item:MediaItem;
     cache:ArtworkCache;
@@ -10,11 +11,12 @@
     variant?:"standard"|"top10"|"universe";
     reason?:string;
     novelty?:string|null;
-    onhover?:(element:HTMLElement)=>void;
+    actionLabel?:string;
+    onhover?:(element:HTMLElement,trigger?:"pointer"|"keyboard")=>void;
     onleave?:()=>void;
   };
   let {item,cache,onclick,rank=0,variant="standard",
-    reason="",novelty=null,onhover,onleave}:Props=$props();
+    reason="",novelty=null,actionLabel="",onhover,onleave}:Props=$props();
   const genreLabel=(item:MediaItem)=>item.genres.slice(0,2).join(" · ");
   const episodeLabel=(item:MediaItem)=>{
     if(item.type!=="Episode")return "";
@@ -36,10 +38,24 @@
   data-vy-card={item.id}>
   <button type="button" class="vy-card-main"
     onclick={()=>onclick(item)}
-    aria-label={"Détails : "+item.title}>
+    aria-label={actionLabel||"Détails : "+item.title}
+    aria-haspopup={onhover?"dialog":undefined}
+    aria-keyshortcuts={onhover?"ArrowDown":undefined}
+    onkeydown={(event)=>{
+      if(event.key!=="ArrowDown" || event.repeat || !onhover)return;
+      event.preventDefault();
+      const card=event.currentTarget.closest(".vy-card");
+      if(card instanceof HTMLElement)onhover(card,"keyboard");
+    }}>
     <span class="vy-card-picture">
       {#if rank>0}
         <span class="vy-rank" aria-hidden="true">{rank}</span>
+      {/if}
+      {#if item.type==="BoxSet" || item.type==="Playlist"}
+        <span class="vy-group-placeholder" aria-hidden="true">
+          <VyIcon kind={item.type==="BoxSet"?"folder":"list"} size={44}/>
+          <span>{item.type==="BoxSet"?"COLLECTION":"PLAYLIST"}</span>
+        </span>
       {/if}
       {#if hasArtwork(item)}
         <img alt="" decoding="async" loading="lazy"

@@ -4,3 +4,6 @@
 **/target/
 *.log
 desktop/node_modules
+
+# Generated temporary, credential-free hidden WebView2 QA assets
+desktop/qa-native-dist/

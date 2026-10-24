@@ -1,5 +1,6 @@
 import {describe,it,expect,vi} from "vitest";
-import {JellyfinApi,normalizeItem,SERVER_ORIGIN} from "../src/api";
+import {JellyfinApi,normalizeItem,SERVER_ORIGIN,
+  PLAYBACK_INSPECTION_TIMEOUT_MS} from "../src/api";
 import {parsePlaybackInfo,parseSeasons} from "../src/media-details";
 
 const USER="a".repeat(32),SHOW="b".repeat(32),SEASON="c".repeat(32);
@@ -20,7 +21,8 @@ const mediaSources=()=>({
     Path:"/mnt/secret/movies/film.mkv",
     TranscodingUrl:"https://example.invalid/?api_key=SECRET",
     SupportsDirectPlay:true,SupportsDirectStream:true,
-    SupportsTranscoding:true,MediaStreams:[
+    SupportsTranscoding:true,IsRemote:true,
+    RunTimeTicks:13741910000,MediaStreams:[
       {Type:"Video",Index:0,Codec:"hevc",Width:3840,Height:2160,
         DisplayTitle:"4K HEVC"},
       {Type:"Audio",Index:1,Codec:"aac",Channels:6,
@@ -70,6 +72,10 @@ describe("read-only native media details",()=>{
     expect([ep.seasonNumber,ep.episodeNumber,ep.runtimeTicks])
       .toEqual([1,3,1_200_000_000]);
     expect(ep.seriesId).toBe(SHOW);
+    expect(normalizeItem({Id:FILM,Name:"Film",Type:"Movie",
+      RunTimeTicks:1800*10_000_000,
+      UserData:{PlaybackPositionTicks:650_000_000}})?.resumeTicks)
+      .toBe(650_000_000);
   });
   it("parses bounded season lists without duplicate ids",()=>{
     expect(parseSeasons({Items:[
@@ -89,7 +95,14 @@ describe("read-only native media details",()=>{
   it("returns only safe technical fields, never paths or sessions",()=>{
     const parsed=parsePlaybackInfo(mediaSources());
     expect(parsed.sources).toHaveLength(1);
+    expect(parsed.sources[0].id).toBeNull();
+    expect(parsed.playSessionId).toBeNull();
+    expect(parsePlaybackInfo({
+      PlaySessionId:"e".repeat(32),MediaSources:[]
+    }).playSessionId).toBe("e".repeat(32));
     expect(parsed.sources[0].container).toBe("MKV");
+    expect(parsed.sources[0].isRemote).toBe(true);
+    expect(parsed.sources[0].runtimeTicks).toBe(13741910000);
     expect(parsed.sources[0].tracks.map(t=>t.kind))
       .toEqual(["Video","Audio","Subtitle"]);
     expect(parsed.sources[0].tracks[0].height).toBe(2160);
@@ -111,7 +124,13 @@ describe("read-only native media details",()=>{
     expect(calls.every(x=>!x.url.href.includes(TOKEN))).toBe(true);
     expect(calls.every(x=>x.opts.credentials==="omit")).toBe(true);
     expect(calls.some(x=>x.url.pathname.endsWith("/PlaybackInfo"))).toBe(false);
-    const probe=await api.getPlaybackInfo(FILM);
+    const timeout=vi.spyOn(AbortSignal,"timeout");
+    let probe;
+    try{
+      probe=await api.getPlaybackInfo(FILM);
+      expect(timeout).toHaveBeenCalledWith(PLAYBACK_INSPECTION_TIMEOUT_MS);
+      expect(PLAYBACK_INSPECTION_TIMEOUT_MS).toBe(25_000);
+    }finally{timeout.mockRestore();}
     expect(probe.sources[0].tracks).toHaveLength(3);
     expect(calls.at(-1)?.url.searchParams.get("userId")).toBe(USER);
     expect(calls.at(-1)?.opts.headers).toMatchObject({
@@ -129,6 +148,21 @@ describe("read-only native media details",()=>{
     release();
     await expect(pending).rejects.toThrow("SESSION_CHANGED");
     await expect(api.getSeriesSeasons(SHOW)).rejects.toThrow("AUTH_REQUIRED");
+  });
+  it("classifies a fetch timeout without forwarding a sensitive error",async()=>{
+    const fetcher=vi.fn(async()=>{
+      throw new DOMException(
+        "Sensitive upstream URL: https://private.invalid/?api_key=SECRET",
+        "TimeoutError");
+    }) as typeof fetch;
+    const api=new JellyfinApi({fetcher});
+    await expect(api.login("Alice","password"))
+      .rejects.toThrow("REQUEST_TIMEOUT");
+    const failingNetwork=vi.fn(async()=>{
+      throw new TypeError("Sensitive path https://private.invalid/");
+    }) as typeof fetch;
+    await expect(new JellyfinApi({fetcher:failingNetwork})
+      .login("Alice","password")).rejects.toThrow("NETWORK_UNAVAILABLE");
   });
   it("rejects invalid ids and episodes parameters before sending requests",async()=>{
     const {api,calls}=fixture();

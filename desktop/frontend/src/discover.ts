@@ -12,7 +12,10 @@ const unique=(items:MediaItem[],limit=30):MediaItem[]=>{
 };
 export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):Shelf[]{
   const recent=unique(data.recent,96);
-  const resume=unique(data.resume,16);
+  // Match the Jellyfin skin: playback state can be stale for .strm files.
+  // A title at >=95% is finished even if Jellyfin did not mark Played yet.
+  const resume=unique(data.resume.filter(item=>
+    !item.played && (item.progress===null || item.progress<95)),16);
   // Do not arbitrarily discard NextUp after 22 titles. The rail can
   // scroll through every authorized continuation returned by Jellyfin.
   const nextUp=unique(data.nextUp,600);
@@ -47,7 +50,9 @@ export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):She
   };
   put("resume","Reprendre la lecture",resume);
   put("next-up","À suivre",nextUp);
-  put("for-you",recommendations.personalized?"Pour vous · Des histoires qui vous ressemblent":
+  // The active Jellyfin skin titles its recommendation rail exactly
+  // "Pour vous". Keep the non-personalized fallback honest and explicit.
+  put("for-you",recommendations.personalized?"Pour vous":
     "À explorer dans votre bibliothèque",
     recommendations.items.map(r=>r.item));
   const forYou=rows.find(row=>row.id==="for-you");
@@ -60,28 +65,79 @@ export function buildShelves(data:LibrarySnapshot,uid:string,now=new Date()):She
   put("universes","Sagas et collections",collections,"universe");
   return rows;
 }
-export function featuredSlides(rows:Shelf[],limit=5):MediaItem[]{
-  const max=Math.max(1,Math.min(7,Math.floor(limit)));
+/** Stable order from the authenticated Jellyfin custom Home (2026-10-21):
+ * Reprendre -> À suivre -> Nouvelles saisons -> Univers (separate logo rail)
+ * -> Tendances -> Pour vous. Optional editorial shelves follow afterward.
+ *
+ * This keeps fallback shelves rather than hiding them and is insensitive to
+ * the order in which asynchronous recommendations or popularity arrive.
+ */
+export function orderHomeShelves(rows:readonly Shelf[]):Shelf[]{
+  const first=new Map([
+    ["resume",0],["next-up",1],["new-seasons",2],
+    ["trending",3],["for-you",4],["top-ten",5],["favorites",6]
+  ]);
+  return rows.map((shelf,index)=>({shelf,index})).sort((a,b)=>
+    (first.get(a.shelf.id)??100)-(first.get(b.shelf.id)??100) ||
+    a.index-b.index
+  ).map(({shelf})=>shelf);
+}
+// The Jellyfin skin's curated hero targets sixteen titles and preserves
+// *all* confirmed new seasons/suite releases (inject.js:15240-15320).
+// The prior five-slide Desktop shortcut hid most of the real banner pool.
+export function featuredSlides(rows:Shelf[],limit=16):MediaItem[]{
+  const target=Math.max(1,Math.min(32,Math.floor(limit)));
   const selected:MediaItem[]=[],used=new Set<string>();
+  const candidate=(item:MediaItem)=>
+    !item.played && hasArtwork(item) && (
+      item.type==="Movie" || item.type==="Series" || item.type==="Episode");
   const add=(item:MediaItem|undefined)=>{
-    if(!item || !hasArtwork(item) || used.has(item.id))return;
-    used.add(item.id);selected.push(item);
+    if(!item || !candidate(item))return;
+    // A show represented by several episodes must never occupy multiple
+    // hero slides. Series/episode artworks are frequently identical.
+    const key=(item.seriesId??item.id).toLowerCase();
+    if(used.has(key))return;
+    used.add(key);selected.push(item);
   };
-  // Each source contributes one distinct, evidenced candidate first, so the
-  // banner never shows five near-identical releases from the same shelf.
-  for(const key of ["for-you","top-ten","favorites","resume","next-up"]){
-    if(selected.length>=max)break;
-    const shelf=rows.find(row=>row.id===key);
-    add(shelf?.items.find(item=>item.hasBackdrop) ??
-      shelf?.items.find(hasArtwork));
-  }
-  if(selected.length<max){
-    for(const row of rows){
-      for(const item of row.items){
-        if(selected.length>=max)break;
+  const news=rows.find(row=>row.id==="new-seasons")?.items??[];
+  const trend=rows.find(row=>row.id==="trending")?.items??
+    rows.find(row=>row.id==="top-ten")?.items??[];
+  const personal=rows.find(row=>row.id==="for-you")?.items??[];
+  const editorial=rows.filter(row=>row.id.startsWith("editorial-"))
+    .flatMap(row=>row.items);
+  const groups=[news,trend,personal,editorial];
+  // Reserve room for all unseen confirmed new releases before balancing
+  // editorial sources. Otherwise 16 ordinary recommendations could evict
+  // a later S2E1 despite the real Jellyfin policy forbidding that.
+  const guaranteed=new Set(news.filter(candidate)
+    .map(item=>(item.seriesId??item.id).toLowerCase()));
+  let pendingNews=guaranteed.size;
+  const maxLen=Math.max(0,...groups.map(group=>group.length));
+  for(let i=0;i<maxLen;i++){
+    for(const group of groups){
+      const item=group[i];
+      if(!item)continue;
+      if(group===news){
+        const before=selected.length;
+        add(item);
+        if(selected.length>before)pendingNews--;
+      }else if(selected.length+pendingNews<target &&
+        !guaranteed.has((item.seriesId??item.id).toLowerCase())){
+        // If an upcoming novel title also appears in a generic shelf,
+        // keep its novelty provenance and reserved position.
         add(item);
       }
-      if(selected.length>=max)break;
+    }
+  }
+  if(selected.length<target){
+    // A sparse recommendation pool can still show genuine, unfinished
+    // episodes. This is an explicit fallback, not the primary hero source.
+    for(const key of ["favorites","resume","next-up"]){
+      for(const item of rows.find(row=>row.id===key)?.items??[]){
+        if(selected.length>=target)break;
+        add(item);
+      }
+      if(selected.length>=target)break;
     }
   }
   return selected;

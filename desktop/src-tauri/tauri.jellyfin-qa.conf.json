@@ -12,5 +12,8 @@
         "https://127.0.0.1:9/qa-updates-disabled.json"
       ]
     }
+  },
+  "build": {
+    "frontendDist": "../qa-native-dist"
   }
 }

@@ -1,0 +1,52 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+const read=path=>readFileSync(new URL("../"+path,import.meta.url),"utf8");
+const main=read("src-tauri/src/main.rs");
+const app=read("frontend/src/App.svelte");
+const adapter=read("frontend/src/native-updater.ts");
+const config=JSON.parse(read("src-tauri/tauri.conf.json"));
+const qaConfig=JSON.parse(read("src-tauri/tauri.jellyfin-qa.conf.json"));
+
+test("existing signed updater available from account menu even when window is warm",()=>{
+  assert.match(main,/\#\[tauri::command\]\s*async fn check_signed_update_now/);
+  assert.match(main,/check_signed_update_now,\s*(?:is_temporary_qa,\s*)?credentials::save_saved_session/);
+  assert.match(main,/tauri::async_runtime::spawn\(async move \{/);
+  assert.match(app,/Vérifier les mises à jour/);
+  assert.match(app,/nativeUpdater\.check\(\)/);
+  assert.match(app,/role="status">\{updaterNotice\}/);
+  assert.match(adapter,/this\.call\("check_signed_update_now"\)/);
+  assert.doesNotMatch(adapter,/(?:localStorage|fetch|https?:\/\/)/);
+});
+
+test("native update flow cannot be reentered or given an untrusted URL",()=>{
+  assert.match(main,/static UPDATE_RUNNING: AtomicBool/);
+  assert.match(main,/compare_exchange\(false,true/);
+  assert.match(main,/impl Drop for UpdatePermit/);
+  assert.match(main,/let permit=UpdatePermit::claim\(\)/);
+  assert.match(main,/check_signed_update_with_permit\(app,permit\)/);
+  assert.match(main,/let Some\(permit\)=reserve_automatic_update_check/);
+  assert.match(main,/UPDATE_BUSY/);
+  assert.match(main,/if cfg!\(feature="native-e2e-qa"\)/);
+  assert.match(main,/UPDATE_DISABLED_IN_QA/);
+  assert.match(main,/let updater=app\.updater\(\)\?/);
+  assert.match(main,/MessageDialogButtons::YesNo/);
+  assert.match(main,/if !matches!\(receive\.await, Ok\(true\)\)/);
+  assert.match(main,/update\.download\(/);
+  assert.match(main,/update\.install\(&bytes\)/);
+  assert.match(main,/UPDATE_DOWNLOAD_TIMEOUT/);
+  assert.match(main,/UPDATE_CHECK_TIMEOUT/);
+  assert.doesNotMatch(main,/auto.?update.*unsigned/i);
+  assert.match(main,/const AUTOMATIC_UPDATE_INTERVAL: Duration = Duration::from_secs\(6\*60\*60\)/);
+  assert.match(main,/static LAST_AUTO_UPDATE_CHECK: Mutex<Option<Instant>>/);
+  assert.match(main,/fn update_recheck_due\(/);
+  assert.match(main,/fn schedule_update_if_due\(/);
+  assert.match(main,/schedule_update_if_due\(\(\*app\)\.clone\(\)\)/);
+  assert.match(main,/schedule_update_if_due\(app\.handle\(\)\.clone\(\)\)/);
+  assert.match(main,/auto_recheck_only_after_six_hours_of_inactive_window/);
+  assert.match(read("../.github/workflows/desktop.yml"),/cargo test --bin vyneo-desktop update_tests::/);
+  assert.equal(config.identifier,"fr.visyren.vyneo.desktop");
+  assert.equal(config.plugins.updater.requireSignedVersion,true);
+  assert.equal(config.plugins.updater.allowDowngrades,false);
+  assert.notEqual(config.identifier,qaConfig.identifier);
+});

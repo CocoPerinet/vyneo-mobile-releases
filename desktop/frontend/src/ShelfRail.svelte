@@ -7,7 +7,8 @@
   type Props={
     shelf:Shelf;cache:ArtworkCache;
     onclick:(item:MediaItem)=>void;
-    onhover?:(item:MediaItem,element:HTMLElement,source:string)=>void;
+    onhover?:(item:MediaItem,element:HTMLElement,source:string,
+      trigger?:"pointer"|"keyboard")=>void;
     onleave?:()=>void;
     badge?:(item:MediaItem)=>string|null;
     showCount?:boolean;
@@ -33,6 +34,26 @@
       frame=requestAnimationFrame(measure);
     };
     const observer=new ResizeObserver(schedule);
+    const onKeyDown=(event:KeyboardEvent)=>{
+      // Jellyfin's rails are navigable by keyboard. Move real DOM focus,
+      // not only scroll position, so the target's title is announced.
+      if((event.key!=="ArrowLeft" && event.key!=="ArrowRight") ||
+        event.altKey || event.ctrlKey || event.metaKey ||
+        !(event.target instanceof Element))return;
+      const origin=event.target.closest(".vy-card");
+      if(!origin || !rail.contains(origin))return;
+      const buttons=[...rail.querySelectorAll<HTMLButtonElement>(
+        ".vy-card .vy-card-main")];
+      const current=buttons.findIndex(button=>origin.contains(button));
+      const next=current+(event.key==="ArrowRight"?1:-1);
+      if(current<0 || next<0 || next>=buttons.length)return;
+      event.preventDefault();
+      buttons[next].focus({preventScroll:true});
+      buttons[next].scrollIntoView({
+        behavior:"smooth",block:"nearest",inline:"nearest"
+      });
+    };
+    rail.addEventListener("keydown",onKeyDown);
     const watchEdges=()=>{
       observer.disconnect();
       observer.observe(rail);
@@ -48,6 +69,7 @@
     return()=>{
       clearTimeout(t);cancelAnimationFrame(frame);
       mutations.disconnect();observer.disconnect();
+      rail.removeEventListener("keydown",onKeyDown);
     };
   });
 </script>
@@ -71,7 +93,7 @@
           variant={shelf.kind??"standard"}
           reason={shelf.reasons?.[item.id]??""}
           novelty={badge?.(item)??null}
-          onhover={(element)=>onhover?.(item,element,shelf.id)}
+          onhover={(element,trigger)=>onhover?.(item,element,shelf.id,trigger)}
           onleave={onleave??(()=>{})} />
       {/each}
     </div>

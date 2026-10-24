@@ -1,5 +1,6 @@
 import {describe,it,expect} from "vitest";
-import {buildShelves,featuredMedia,featuredSlides} from "../src/discover";
+import {buildShelves,featuredMedia,featuredSlides,
+  orderHomeShelves} from "../src/discover";
 import type {MediaItem,LibrarySnapshot} from "../src/types";
 
 const id=(n:number)=>n.toString(16).padStart(32,"0");
@@ -38,6 +39,29 @@ describe("Vynéo native shelves are metadata-driven and deterministic",()=>{
     expect(featuredMedia(rows)?.id).toMatch(/^[a-f0-9]{32}$/);
     expect(names.join("|")).not.toMatch(/IA locale|LLM|ChatGPT/);
   });
+  it("keeps the verified Jellyfin home order despite out-of-order async shelves",()=>{
+    const mk=(id:string)=>({id,title:id,items:[media(900,[])]});
+    const shuffled=[
+      mk("top-ten"),mk("editorial-b"),mk("for-you"),
+      mk("new-seasons"),mk("trending"),mk("next-up"),
+      mk("favorites"),mk("resume"),mk("editorial-a")
+    ];
+    const sorted=orderHomeShelves(shuffled);
+    expect(sorted.map(x=>x.id)).toEqual([
+      "resume","next-up","new-seasons","trending","for-you",
+      "top-ten","favorites","editorial-b","editorial-a"
+    ]);
+    expect(shuffled[0].id).toBe("top-ten");
+    expect(orderHomeShelves(sorted).map(x=>x.id))
+      .toEqual(sorted.map(x=>x.id));
+  });
+  it("never creates missing core shelves or reorders editorial shelves",()=>{
+    const mk=(id:string)=>({id,title:id,items:[media(900,[])]});
+    const rows=[mk("editorial-z"),mk("for-you"),
+      mk("editorial-a"),mk("favorites")];
+    expect(orderHomeShelves(rows).map(x=>x.id))
+      .toEqual(["for-you","favorites","editorial-z","editorial-a"]);
+  });
   it("is stable within a day and never incorporates unrelated items",()=>{
     const data=sample(),user="b".repeat(32);
     const first=buildShelves(data,user,new Date("2026-10-20T08:00:00Z"));
@@ -56,9 +80,63 @@ describe("Vynéo native shelves are metadata-driven and deterministic",()=>{
     expect(slides.every(item=>item.hasBackdrop || item.hasPrimary)).toBe(true);
     expect(featuredSlides(rows,5).map(item=>item.id))
       .toEqual(slides.map(item=>item.id));
-    expect(featuredSlides(rows,100)).toHaveLength(7);
+    expect(featuredSlides(rows,100).length).toBeGreaterThan(7);
+    expect(featuredSlides(rows,100).length).toBeLessThanOrEqual(32);
     const hidden=media(800,[],{hasBackdrop:false,hasPrimary:false});
     expect(featuredSlides([{id:"x",title:"x",items:[hidden]}])).toEqual([]);
+  });
+  it("matches the Jellyfin sixteen-slide target with round-robin curation",()=>{
+    const news=Array.from({length:3},(_,i)=>media(1000+i,["Action"]));
+    const trends=Array.from({length:25},(_,i)=>media(1100+i,["Action"]));
+    const suggestions=Array.from({length:25},(_,i)=>media(1200+i,["Drame"]));
+    const editorial=Array.from({length:25},(_,i)=>media(1300+i,["Histoire"]));
+    const rows=[
+      {id:"new-seasons",title:"Nouvelles saisons et suites",items:news},
+      {id:"top-ten",title:"Tendances",items:trends},
+      {id:"for-you",title:"Pour vous",items:suggestions},
+      {id:"editorial-a",title:"Éditorial",items:editorial}
+    ];
+    const result=featuredSlides(rows);
+    expect(result).toHaveLength(16);
+    expect(result.slice(0,4).map(x=>x.id)).toEqual([
+      news[0].id,trends[0].id,suggestions[0].id,editorial[0].id
+    ]);
+    expect(result).toEqual(expect.arrayContaining(news));
+    expect(featuredSlides(rows).map(x=>x.id))
+      .toEqual(featuredSlides(rows).map(x=>x.id));
+  });
+  it("reserves the novelty source when its film also appears in top ten",()=>{
+    const news=[media(1380,[]),media(1381,[])];
+    const trends=[media(1390,[]),news[1],media(1392,[])];
+    const slides=featuredSlides([
+      {id:"new-seasons",title:"Nouvelles saisons et suites",items:news},
+      {id:"top-ten",title:"Tendance",items:trends}
+    ],4);
+    expect(slides.map(x=>x.id)).toEqual([
+      news[0].id,trends[0].id,news[1].id,trends[2].id
+    ]);
+  });
+  it("never cuts genuine new seasons to make room for generic recommendations",()=>{
+    const news=Array.from({length:19},(_,i)=>media(1400+i,["Drame"]));
+    const generic=Array.from({length:40},(_,i)=>media(1600+i,["Drame"]));
+    const slides=featuredSlides([
+      {id:"new-seasons",title:"Nouvelles saisons et suites",items:news},
+      {id:"top-ten",title:"Tendances",items:generic}
+    ]);
+    expect(slides).toHaveLength(19);
+    expect(slides.map(x=>x.id)).toEqual(news.map(x=>x.id));
+  });
+  it("excludes already watched heroes and duplicate episodes of one series",()=>{
+    const ep1=media(1701,[],{type:"Episode",
+      seriesId:id(1750),played:false,hasBackdrop:true});
+    const ep2=media(1702,[],{type:"Episode",
+      seriesId:id(1750),played:false,hasBackdrop:true});
+    const watched=media(1703,[],{played:true,hasBackdrop:true});
+    const film=media(1704,[],{hasBackdrop:true});
+    const slides=featuredSlides([
+      {id:"for-you",title:"Pour vous",items:[watched,ep1,ep2,film]}
+    ]);
+    expect(slides.map(x=>x.id)).toEqual([ep1.id,film.id]);
   });
   it("never confuses an old movie recently added with a recent release",()=>{
     const fresh=[media(503,["Action"],{
@@ -78,6 +156,17 @@ describe("Vynéo native shelves are metadata-driven and deterministic",()=>{
     expect(selected.items.map(i=>i.id)).toEqual(
       expect.arrayContaining(fresh.map(i=>i.id)));
     expect(selected.items.every(i=>(i.year??0)>=2024)).toBe(true);
+  });
+  it("filters stale completed items from Reprendre even without Played flag",()=>{
+    const r1=media(300,[ "Drame" ],{progress:98,played:false});
+    const r2=media(301,[ "Drame" ],{progress:100,played:true});
+    const r3=media(302,[ "Drame" ],{progress:48,played:false});
+    const r4=media(303,[ "Drame" ],{progress:94.9,played:false});
+    const r5=media(304,[ "Drame" ],{progress:null,played:false});
+    const rows=buildShelves({...sample(),resume:[r1,r2,r3,r4,r5]},
+      "a".repeat(32),new Date("2026-10-20"));
+    expect(rows.find(x=>x.id==="resume")?.items.map(x=>x.id))
+      .toEqual([r3.id,r4.id,r5.id]);
   });
   it("shows no imaginary rankings when catalogue is empty",()=>{
     const zero:LibrarySnapshot={

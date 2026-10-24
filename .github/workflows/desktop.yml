@@ -101,6 +101,22 @@ jobs:
         run: |
           rustc --edition=2021 --test src-tauri/src/quality_policy.rs -o ./vyneo-quality-tests.exe
           ./vyneo-quality-tests.exe
+      - name: Verify signed artifact version binding
+        working-directory: desktop
+        run: cargo test --locked --manifest-path qa/signed-update-verifier/Cargo.toml
+      - name: Verify native Tauri media grant and byte-range tests
+        working-directory: desktop/src-tauri
+        run: |
+          cargo test --bin vyneo-desktop update_tests::
+          cargo test --bin vyneo-desktop native_stream::tests
+          cargo test --bin vyneo-desktop native_hls::tests
+          cargo test --bin vyneo-desktop --features native-e2e-qa native_e2e_qa::tests
+      - name: Decode real H.264/AAC HLS fixture in headless Chromium
+        working-directory: desktop
+        run: npm run qa:hls-first-frame
+      - name: Enforce Jellyfin UI parity on isolated browser fixtures
+        working-directory: desktop
+        run: npm run qa:parity
       - name: Build unsigned PR or manual Windows installer
         if: github.ref_type != 'tag'
         working-directory: desktop
@@ -109,6 +125,50 @@ jobs:
         if: github.ref_type != 'tag'
         working-directory: desktop
         run: npm run tauri -- build --bundles nsis --config src-tauri/tauri.preview.conf.json
+      # QA-only binary. It has a distinct Tauri identifier, no updater
+      # artifacts, no credentials and no access to the user's Windows host.
+      - name: Keep disposable isolated Preview installer for VM QA
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vyneo-preview-pr-${{ github.event.pull_request.number }}-${{ github.sha }}
+          path: desktop/src-tauri/target/release/bundle/nsis/*0.2.0-beta.1*setup.exe
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+      # Debug-only separate QA identity: Jellyfin read-only, no OS vault,
+      # no updater, no NSIS installer, no stable/release build. Only pull_request.
+      - name: Verify guest-only Jellyfin QA identity before packaging
+        if: github.event_name == 'pull_request'
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          $qa = Get-Content src-tauri/tauri.authenticated-qa.conf.json -Raw | ConvertFrom-Json
+          if ($qa.identifier -cne 'fr.visyren.vyneo.desktop.authqa' -or
+              $qa.bundle.createUpdaterArtifacts -ne $false -or
+              $qa.build.frontendDist -cne '../frontend/dist') {
+            throw 'ISOLATED_READONLY_QA_IDENTITY_MISMATCH'
+          }
+      - name: Build guest-only unbundled debug Jellyfin QA
+        if: github.event_name == 'pull_request'
+        working-directory: desktop
+        run: npm run tauri -- build --debug --no-bundle --features interactive-jellyfin-qa --config src-tauri/tauri.authenticated-qa.conf.json
+      - name: Keep disposable debug-only Jellyfin QA for guest VM
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vyneo-jellyfin-readonly-qa-pr-${{ github.event.pull_request.number }}-${{ github.sha }}
+          path: desktop/src-tauri/target/debug/vyneo-desktop.exe
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+      - name: Verify stable NSIS upgrades in place without installing on COCO
+        if: github.event_name == 'pull_request'
+        working-directory: desktop
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./qa/nsis-in-place-upgrade.ps1
 
   windows_release:
     name: Windows x64 / release signée
@@ -144,6 +204,16 @@ jobs:
         run: |
           rustc --edition=2021 --test src-tauri/src/quality_policy.rs -o ./vyneo-quality-tests.exe
           ./vyneo-quality-tests.exe
+      - name: Verify native Tauri media grant and byte-range tests
+        working-directory: desktop/src-tauri
+        run: |
+          cargo test --bin vyneo-desktop update_tests::
+          cargo test --bin vyneo-desktop native_stream::tests
+          cargo test --bin vyneo-desktop native_hls::tests
+          cargo test --bin vyneo-desktop --features native-e2e-qa native_e2e_qa::tests
+      - name: Enforce Jellyfin UI parity before a signed Windows release
+        working-directory: desktop
+        run: npm run qa:parity
       - name: Build signed Windows updater and NSIS installer
         if: github.ref_type == 'tag'
         working-directory: desktop

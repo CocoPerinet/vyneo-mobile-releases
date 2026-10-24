@@ -12,7 +12,11 @@ use tauri::http::{header, Method, Request, Response, StatusCode};
 use crate::native_stream::{StreamGrant, StreamKind, Tickets};
 
 const UPSTREAM: &str = "https://cocojellyfin.duckdns.org:38443";
-const MAX_PLAYLIST: usize = 512 * 1024;
+// Long-form Jellyfin film playlists can exceed 512 KiB because each HLS
+// segment has a negotiated query string. Keep a hard 4 MiB upper bound;
+// segment bodies remain limited independently to 16 MiB, and each
+// manifest still goes through the same-origin per-item URI validation.
+const MAX_PLAYLIST: usize = 4 * 1024 * 1024;
 const MAX_SEGMENT: usize = 16 * 1024 * 1024;
 const MAX_ASSETS: usize = 4096;
 const PARALLEL_REQUESTS: usize = 8;
@@ -662,6 +666,32 @@ mod tests {
             assert!(rewrite_playlist(input,&base,&grant,&"d".repeat(32)).is_err());
             assert!(grant.assets.lock().unwrap().is_empty());
         }
+    }
+    #[test]
+    fn long_movie_playlist_above_half_mib_is_bounded_and_tokenless() {
+        let grant=fixture();
+        let base=private_base(&grant.item).unwrap();
+        // 850 six-second segments with typical lengthy non-secret
+        // upstream query data exceed the former 512 KiB cap.
+        let padding="x".repeat(680);
+        let mut manifest=String::from("#EXTM3U\n#EXT-X-VERSION:3\n");
+        for i in 0..850 {
+            manifest.push_str(&format!(
+                "#EXTINF:6.0,\nhls1/main/{i}.ts?v={padding}\n"
+            ));
+        }
+        assert!(manifest.len()>512*1024);
+        assert!(manifest.len()<MAX_PLAYLIST);
+        let result=rewrite_playlist(
+            &manifest,&base,&grant,&"d".repeat(32)
+        ).expect("bounded Jellyfin movie playlist");
+        assert!(!result.contains("cocojellyfin.duckdns.org"));
+        assert!(result.contains("vyneo-media.localhost/hls/"));
+        assert_eq!(grant.assets.lock().unwrap().len(),850);
+        let oversized=format!("#EXTM3U\n#{}", "x".repeat(MAX_PLAYLIST));
+        assert_eq!(rewrite_playlist(
+            &oversized,&base,&grant,&"d".repeat(32)
+        ),Err("HLS_INVALID_MANIFEST"));
     }
     #[test]
     fn oversized_qa_reason_is_bounded_and_never_contains_media_details() {

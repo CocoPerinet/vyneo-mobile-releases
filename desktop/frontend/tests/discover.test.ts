@@ -212,8 +212,10 @@ describe("Vynéo native shelves are metadata-driven and deterministic",()=>{
       .toEqual([continueGotham.id]);
     const missingNextUpId=media(1917,["Comédie"],{type:"Episode",
       title:"S28E02",seriesId:null,seriesName:"South Park"});
-    const otherDirection=buildShelves({...sample(),resume:[resumeOne],
-      nextUp:[missingNextUpId,continueVincenzo]},id(43),new Date("2026-10-25"));
+    const otherDirection=buildShelves({...sample(),resume:[{
+      ...resumeOne,seriesName:"South Park"
+    }],nextUp:[missingNextUpId,continueVincenzo]},
+      id(43),new Date("2026-10-25"));
     expect(otherDirection.find(x=>x.id==="next-up")?.items.map(x=>x.id))
       .toEqual([continueVincenzo.id]);
     // Jellyfin can assign different GUIDs to two representations of

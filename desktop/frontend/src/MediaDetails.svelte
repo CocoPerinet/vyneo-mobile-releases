@@ -12,7 +12,8 @@
   import {PlaybackReporter,playbackClock} from "./playback-report";
   import {unavailablePlaybackMessage,nativeHlsFailureMessage,
     nativeHlsQaDiagnostic,htmlVideoFailureMessage,
-    playbackInspectionErrorMessage} from "./playback-errors";
+    playbackInspectionErrorMessage,subtitleFailureMessage}
+    from "./playback-errors";
   import type {JellyfinApi} from "./api";
   import type {MediaAction} from "./media-actions";
   import VyIcon from "./VyIcon.svelte";
@@ -322,9 +323,9 @@
       subtitleBlobUrl=URL.createObjectURL(new Blob([vtt],{
         type:"text/vtt;charset=utf-8"
       }));
-    }catch{
+    }catch(error){
       if(request===subtitleEpoch && version===epoch)
-        subtitleError="Sous-titres momentanément indisponibles pour cette piste.";
+        subtitleError=subtitleFailureMessage(error);
     }finally{
       if(subtitleAbort===controller)subtitleAbort=null;
       if(request===subtitleEpoch)subtitleLoading=false;

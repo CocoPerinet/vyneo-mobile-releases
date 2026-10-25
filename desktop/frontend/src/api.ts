@@ -159,6 +159,9 @@ export class JellyfinApi {
   // Opt-in only after the native debug QA feature is verified at startup.
   // Once enabled, this instance can never return to write mode.
   private readOnlyQa=false;
+  // Cancel queued network writes on sign-out or user switch. The generation
+  // check below also rejects fetch implementations that ignore abort().
+  private readonly activePlaybackReports=new Set<AbortController>();
   enableReadOnlyQa():void { this.readOnlyQa=true; }
   private readonly fetcher:typeof fetch;
   private readonly deviceId:string;
@@ -182,6 +185,8 @@ export class JellyfinApi {
     // Immediate native revocation when switching Jellyfin accounts. The
     // Tauri command is idempotent and cannot affect the server's sessions.
     if(isTauri())void invoke("stop_all_native_streams").catch(()=>{});
+    for(const controller of this.activePlaybackReports)controller.abort();
+    this.activePlaybackReports.clear();
     this.authGeneration++;
     this.quickSecret=null;
     this.libraryRoots=null;
@@ -696,14 +701,26 @@ export class JellyfinApi {
     const url=new URL(reportPath(event.kind),this.origin);
     const headers={...identityHeaders(this.token,this.deviceId),
       "Content-Type":"application/json"};
+    // A playback POST must not continue in the background after logout.
+    // AbortSignal.any preserves the independent 9s network deadline.
+    const controller=new AbortController();
+    this.activePlaybackReports.add(controller);
     let response:Response;
     try{
       response=await this.fetcher(url,{
         method:"POST",headers,body:JSON.stringify(reportBody(event)),
         mode:"cors",credentials:"omit",cache:"no-store",redirect:"error",
-        referrerPolicy:"no-referrer",signal:AbortSignal.timeout(9000)
+        referrerPolicy:"no-referrer",
+        signal:AbortSignal.any([controller.signal,AbortSignal.timeout(9000)])
       });
-    }catch{throw new Error("PLAYBACK_REPORT_NETWORK");}
+    }catch{
+      if(controller.signal.aborted || generation!==this.authGeneration ||
+         this.userId!==user)throw new Error("SESSION_CHANGED");
+      throw new Error("PLAYBACK_REPORT_NETWORK");
+    }finally{
+      this.activePlaybackReports.delete(controller);
+    }
+    // A custom fetcher may ignore abort; never accept its late response.
     this.assertSession(user,generation);
     if(!response.ok || response.redirected)
       throw new Error(response.status===401?"SESSION_EXPIRED":

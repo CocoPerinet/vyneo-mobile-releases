@@ -121,6 +121,47 @@ describe("accurate, non-invasive Jellyfin playback lifecycle",()=>{
       positionTicks:100,canSeek:true,isPaused:false,isMuted:false,
       volumeLevel:68})).rejects.toThrow("AUTH_REQUIRED");
   });
+  it("aborts every in-flight write on logout, then permits the next session",async()=>{
+    const aborted:AbortSignal[]=[];
+    let writes=0;
+    const fetcher=vi.fn(async(input:RequestInfo|URL,opts:RequestInit={})=>{
+      const path=new URL(String(input)).pathname;
+      if(path==="/Users/AuthenticateByName")
+        return authResponse({User:{Id:USER,Name:"Alice"},AccessToken:TOKEN});
+      if(path==="/Users/Me")
+        return authResponse({Id:USER,Name:"Alice",Policy:{IsDisabled:false}});
+      if(path.startsWith("/Sessions/Playing")){
+        writes++;
+        if(writes===3)return new Response(null,{status:204});
+        const signal=opts.signal;
+        if(!(signal instanceof AbortSignal))
+          throw new Error("MISSING_ABORT_SIGNAL");
+        aborted.push(signal);
+        return new Promise<Response>((_resolve,reject)=>{
+          signal.addEventListener("abort",()=>{
+            reject(new DOMException("Aborted","AbortError"));
+          },{once:true});
+        });
+      }
+      throw new Error("UNEXPECTED_REQUEST");
+    }) as typeof fetch;
+    const api=new JellyfinApi({fetcher});
+    await api.login("Alice","password");
+    const data:PlaybackReport={...context,kind:"start",
+      positionTicks:0,canSeek:true,isPaused:false,isMuted:false,
+      volumeLevel:58};
+    const pendingStart=api.reportPlayback(data);
+    const pendingProgress=api.reportPlayback({...data,kind:"progress",
+      positionTicks:250_000_000});
+    await vi.waitFor(()=>expect(aborted).toHaveLength(2));
+    api.logout();
+    expect(aborted.every(signal=>signal.aborted)).toBe(true);
+    await expect(pendingStart).rejects.toThrow("SESSION_CHANGED");
+    await expect(pendingProgress).rejects.toThrow("SESSION_CHANGED");
+    await api.login("Alice","password");
+    await expect(api.reportPlayback(data)).resolves.toBeUndefined();
+    expect(writes).toBe(3);
+  });
   it("keeps the player independent from a forbidden Jellyfin report",async()=>{
     const writes:PlaybackReport[]=[];
     const recorder=new PlaybackReporter(context,async value=>{

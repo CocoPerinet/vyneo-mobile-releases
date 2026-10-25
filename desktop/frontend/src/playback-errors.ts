@@ -87,6 +87,23 @@ export function nativeHlsQaDiagnostic(data:unknown):string|null{
     :"HTTP "+status;
 }
 
+/** Fixed, token-safe subtitle diagnostics. A slow remote STRM extraction
+ * must not be reported as a generic connectivity failure. */
+export function subtitleFailureMessage(error:unknown):string{
+  const code=error instanceof Error?error.message:null;
+  if(code==="SUBTITLE_TIMEOUT" ||
+     (error instanceof Error && error.name==="TimeoutError"))
+    return "Jellyfin n'a pas pu extraire cette piste avant le délai "+
+      "de 95 secondes. Réessayez ou choisissez une autre piste.";
+  if(code==="SUBTITLE_UNAVAILABLE")
+    return "Jellyfin ne peut pas fournir cette piste de sous-titres. "+
+      "Essayez une autre piste.";
+  if(code==="SESSION_EXPIRED")
+    return "La session Jellyfin a expiré. Reconnectez-vous pour "+
+      "charger les sous-titres.";
+  return "Sous-titres momentanément indisponibles pour cette piste.";
+}
+
 export function htmlVideoFailureMessage(code:number|null):string{
   if(code===3 || code===4)
     return "WebView2 ne parvient pas à décoder cette source vidéo.";

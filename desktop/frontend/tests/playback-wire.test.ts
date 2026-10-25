@@ -142,6 +142,7 @@ describe("Jellyfin playback wire contract over isolated loopback HTTP",()=>{
       },event=>api.reportPlayback(event));
       movie.playing(clock(8));
       movie.progress(clock(45),true);
+      await movie.drain(); // Simulate a real HTTP interval before stopping.
       movie.stop(clock(73));
       await movie.drain();
       expect((await api.getResume()).map(item=>({

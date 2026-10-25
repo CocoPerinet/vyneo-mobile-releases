@@ -1,7 +1,8 @@
 import {describe,it,expect} from "vitest";
 import {
   unavailablePlaybackMessage,nativeHlsFailureMessage,nativeHlsQaDiagnostic,
-  htmlVideoFailureMessage,playbackInspectionErrorMessage
+  htmlVideoFailureMessage,playbackInspectionErrorMessage,
+  subtitleFailureMessage
 } from "../src/playback-errors";
 import type {PlaybackProbe,PlaybackSource} from "../src/types";
 const source:PlaybackSource={
@@ -90,6 +91,24 @@ describe("safe and actionable Jellyfin playback diagnostics",()=>{
       })}})
     ]){
       expect(result).not.toMatch(/SECRET|api_key|access_token|https?:/);
+    }
+  });
+  it("explains a timed-out subtitle extraction without leaking private URL",()=>{
+    expect(subtitleFailureMessage(new Error("SUBTITLE_TIMEOUT")))
+      .toContain("95 secondes");
+    expect(subtitleFailureMessage(new DOMException("late","TimeoutError")))
+      .toContain("95 secondes");
+    expect(subtitleFailureMessage(new Error("SUBTITLE_UNAVAILABLE")))
+      .toContain("autre piste");
+    expect(subtitleFailureMessage(new Error("SESSION_EXPIRED")))
+      .toContain("Reconnectez-vous");
+    for(const error of [
+      new Error("https://secret.invalid/video?api_key=SECRET"),
+      new Error("SUBTITLE_TIMEOUT https://secret.invalid?token=SECRET"),
+      {response:{url:"https://secret.invalid?token=SECRET"}}
+    ]){
+      expect(subtitleFailureMessage(error))
+        .not.toMatch(/SECRET|token=|api_key|https?:/);
     }
   });
   it("maps network, media and HTMLMediaElement errors without raw details",()=>{

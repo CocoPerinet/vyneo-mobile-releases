@@ -84,7 +84,8 @@ describe("bounded credential-free WebVTT subtitle delivery",()=>{
     expect(calls).toHaveLength(3);
     expect(calls[2].options.signal?.aborted).toBe(false);
     controller.abort();
-    await expect(pending).rejects.toThrow("SUBTITLE_NETWORK");
+    // Intentional track changes are distinct from a failed network fetch.
+    await expect(pending).rejects.toThrow("SUBTITLE_CANCELLED");
     expect(calls[2].options.signal?.aborted).toBe(true);
   });
   it("rejects reads after logout or a failed connection",async()=>{

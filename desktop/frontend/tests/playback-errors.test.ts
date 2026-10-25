@@ -1,6 +1,6 @@
 import {describe,it,expect} from "vitest";
 import {
-  unavailablePlaybackMessage,nativeHlsFailureMessage,
+  unavailablePlaybackMessage,nativeHlsFailureMessage,nativeHlsQaDiagnostic,
   htmlVideoFailureMessage,playbackInspectionErrorMessage
 } from "../src/playback-errors";
 import type {PlaybackProbe,PlaybackSource} from "../src/types";
@@ -47,6 +47,49 @@ describe("safe and actionable Jellyfin playback diagnostics",()=>{
     ]){
       const message=playbackInspectionErrorMessage(error);
       expect(message).not.toMatch(/SECRET|api_key|access_token|https?:/);
+    }
+  });
+  it("classifies intermittent HLS 502 using only bounded QA proxy reason",()=>{
+    const xhr={getResponseHeader:(name:string)=>
+      name==="x-vyneo-qa-hls-reason"?"HLS_UPSTREAM_HTTP_STATUS":null};
+    const event={
+      type:"networkError",details:"fragLoadError",fatal:false,
+      response:{code:502,url:"https://private.invalid/?api_key=SECRET"},
+      networkDetails:xhr
+    };
+    expect(nativeHlsQaDiagnostic(event))
+      .toBe("HLS_UPSTREAM_HTTP_STATUS (HTTP 502)");
+    expect(nativeHlsQaDiagnostic({...event,fatal:true}))
+      .toBe("HLS_UPSTREAM_HTTP_STATUS (HTTP 502)");
+    const headers=new Headers({"x-vyneo-qa-hls-reason":"HLS_UPSTREAM_BODY"});
+    expect(nativeHlsQaDiagnostic({...event,networkDetails:{headers}}))
+      .toBe("HLS_UPSTREAM_BODY (HTTP 502)");
+    expect(nativeHlsQaDiagnostic({...event,networkDetails:null,
+      loader:{getResponseHeader:()=> "HLS_UPSTREAM_NETWORK"}}))
+      .toBe("HLS_UPSTREAM_NETWORK (HTTP 502)");
+  });
+  it("never reveals untrusted headers, response URLs or tokens in QA output",()=>{
+    const evil="HLS_UPSTREAM_HTTP_STATUS?api_key=SECRET&url=https://private.invalid";
+    const base={type:"networkError",details:"fragLoadError",
+      response:{code:502,url:"https://private.invalid?access_token=SECRET"},
+      networkDetails:{headers:new Headers({
+        "x-vyneo-qa-hls-reason":evil
+      })}};
+    expect(nativeHlsQaDiagnostic(base)).toBe("HTTP 502");
+    expect(nativeHlsQaDiagnostic({...base,response:{code:200}})).toBeNull();
+    expect(nativeHlsQaDiagnostic({...base,type:"mediaError"})).toBeNull();
+    expect(nativeHlsQaDiagnostic({...base,response:{code:Infinity}}))
+      .toBeNull();
+    expect(nativeHlsQaDiagnostic({...base,
+      networkDetails:{getResponseHeader:()=>{throw new Error(evil);}}}))
+      .toBe("HTTP 502");
+    for(const result of [
+      nativeHlsQaDiagnostic(base),
+      nativeHlsQaDiagnostic({...base,networkDetails:{headers:new Headers({
+        "x-vyneo-qa-hls-reason":"HLS_UPSTREAM_NETWORK"
+      })}})
+    ]){
+      expect(result).not.toMatch(/SECRET|api_key|access_token|https?:/);
     }
   });
   it("maps network, media and HTMLMediaElement errors without raw details",()=>{

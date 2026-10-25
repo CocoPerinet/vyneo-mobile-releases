@@ -11,7 +11,8 @@
   import type {NativeStreamTicket} from "./native-playback";
   import {PlaybackReporter,playbackClock} from "./playback-report";
   import {unavailablePlaybackMessage,nativeHlsFailureMessage,
-    htmlVideoFailureMessage,playbackInspectionErrorMessage} from "./playback-errors";
+    nativeHlsQaDiagnostic,htmlVideoFailureMessage,
+    playbackInspectionErrorMessage} from "./playback-errors";
   import type {JellyfinApi} from "./api";
   import type {MediaAction} from "./media-actions";
   import VyIcon from "./VyIcon.svelte";
@@ -530,8 +531,17 @@
             void videoElement?.play().catch(()=>{});
         });
         engine.on(Hls.Events.ERROR,(_event,detail)=>{
-          if(detail.fatal && request===streamEpoch){
-            streamError=nativeHlsFailureMessage(detail.type,detail.details);
+          if(request!==streamEpoch)return;
+          // Intermittent HTTP 502 errors often recover after hls.js retry.
+          // Record only allowlisted proxy codes and an HTTP status in the
+          // isolated QA console, never the raw event, URL or token.
+          const qaDiagnostic=qaReadOnly?nativeHlsQaDiagnostic(detail):null;
+          if(qaDiagnostic)
+            console.warn("VYNEO_QA_HLS",qaDiagnostic,
+              detail.fatal?"fatal":"recoverable");
+          if(detail.fatal){
+            streamError=nativeHlsFailureMessage(detail.type,detail.details)+
+              (qaDiagnostic?" Code QA : "+qaDiagnostic+".":"");
             streamEpoch++;stopStream(true);
           }
         });

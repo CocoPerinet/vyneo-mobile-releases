@@ -75,7 +75,9 @@ export class PlaybackReporter {
   private hasStarted=false;
   private hasStopped=false;
   private lastPeriodicAt=Number.NEGATIVE_INFINITY;
-  private sequence=Promise.resolve();
+  private sequence:Promise<void>=Promise.resolve();
+  private pending:PlaybackReport[]=[];
+  private flushing=false;
   private failed=false;
   constructor(
     private readonly context:PlaybackContext,
@@ -85,6 +87,7 @@ export class PlaybackReporter {
   ){}
   private send(kind:PlaybackEventKind,clock:PlaybackClock,
     failed=false):void{
+    if(this.failed)return;
     const report:PlaybackReport={
       ...this.context,kind,
       positionTicks:playbackTicks(clock.positionSeconds),
@@ -92,14 +95,37 @@ export class PlaybackReporter {
       volumeLevel:clock.volume*100,
       canSeek:clock.canSeek,failed
     };
-    this.sequence=this.sequence.then(async()=>{
-      if(this.failed)return;
-      try{await this.write(report);}
-      catch{
-        this.failed=true;
-        try{this.notifyError();}catch{/* The media must keep playing. */}
+    if(kind==="progress"){
+      // Fast seeks can produce hundreds of events before a slow Jellyfin
+      // POST returns. Only the latest UNSENT position is authoritative.
+      const waiting=this.pending.find(entry=>entry.kind==="progress");
+      if(waiting)Object.assign(waiting,report);
+      else this.pending.push(report);
+    }else{
+      // No stale intermediate position may delay the final Stop report.
+      // The in-flight request cannot be revoked safely; preserve its order.
+      if(kind==="stopped")
+        this.pending=this.pending.filter(entry=>entry.kind!=="progress");
+      this.pending.push(report);
+    }
+    if(!this.flushing)this.sequence=this.flush();
+  }
+  private async flush():Promise<void>{
+    this.flushing=true;
+    try{
+      while(this.pending.length){
+        const report=this.pending.shift()!;
+        try{await this.write(report);}
+        catch{
+          this.failed=true;
+          this.pending=[];
+          try{this.notifyError();}catch{/* The media must keep playing. */}
+          break;
+        }
       }
-    });
+    }finally{
+      this.flushing=false;
+    }
   }
   playing(clock:PlaybackClock):void{
     if(this.hasStopped)return;

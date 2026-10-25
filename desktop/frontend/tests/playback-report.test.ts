@@ -55,12 +55,17 @@ describe("accurate, non-invasive Jellyfin playback lifecycle",()=>{
     const write=vi.fn(async(value:PlaybackReport)=>{reports.push(value);});
     const reporter=new PlaybackReporter(context,write,()=>{},()=>now);
     reporter.playing(snapshot(10));
+    await reporter.drain();
     reporter.progress(snapshot(12)); // ignored
     reporter.playing(snapshot(20)); // resume reports current progress
+    await reporter.drain();
     now=19000;
     reporter.progress(snapshot(40));
+    await reporter.drain();
     reporter.pause(snapshot(41,{paused:true}));
+    await reporter.drain();
     reporter.progress(snapshot(100),true); // seeked
+    await reporter.drain();
     reporter.stop(snapshot(110));
     reporter.stop(snapshot(1800)); // idempotent
     await reporter.drain();
@@ -69,6 +74,44 @@ describe("accurate, non-invasive Jellyfin playback lifecycle",()=>{
     ]);
     expect(reports[3].isPaused).toBe(true);
     expect(reports.at(-1)?.positionTicks).toBe(1100000000);
+  });
+  it("coalesces hundreds of fast seeks behind a slow start into one latest progress",async()=>{
+    const calls:PlaybackReport[]=[];
+    let release:()=>void=()=>{};
+    const gate=new Promise<void>(resolve=>{release=resolve;});
+    const reporter=new PlaybackReporter(context,async event=>{
+      calls.push(event);
+      if(event.kind==="start")await gate;
+    });
+    reporter.playing(snapshot(5));
+    for(let seconds=10;seconds<210;seconds++)
+      reporter.progress(snapshot(seconds),true);
+    release();
+    await reporter.drain();
+    expect(calls.map(x=>x.kind)).toEqual(["start","progress"]);
+    expect(calls[1].positionTicks).toBe(209*10_000_000);
+    expect(calls.every(x=>x.itemId===ITEM)).toBe(true);
+  });
+  it("does not delay a final Stop behind stale queued seeks",async()=>{
+    const calls:PlaybackReport[]=[];
+    let release:()=>void=()=>{};
+    const gate=new Promise<void>(resolve=>{release=resolve;});
+    const reporter=new PlaybackReporter(context,async event=>{
+      calls.push(event);
+      if(event.kind==="start")await gate;
+    });
+    reporter.playing(snapshot(4));
+    for(let seconds=10;seconds<510;seconds++)
+      reporter.progress(snapshot(seconds),true);
+    reporter.stop(snapshot(515));
+    release();
+    await reporter.drain();
+    expect(calls.map(x=>x.kind)).toEqual(["start","stopped"]);
+    expect(calls[1].positionTicks).toBe(515*10_000_000);
+    expect(calls[1].failed).toBe(false);
+    reporter.progress(snapshot(520),true);
+    await reporter.drain();
+    expect(calls).toHaveLength(2);
   });
   it("reports actual natural end and not a fabricated earlier finished event",async()=>{
     const calls:PlaybackReport[]=[];
@@ -283,6 +326,7 @@ describe("accurate, non-invasive Jellyfin playback lifecycle",()=>{
     const movie=new PlaybackReporter(context,report=>api.reportPlayback(report));
     movie.playing(snapshot(10));
     movie.pause(snapshot(73,{paused:true}));
+    await movie.drain(); // An actual network interval before the final stop.
     movie.stop(snapshot(73,{paused:true}));
     await movie.drain();
     const resume=await api.getResume();

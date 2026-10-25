@@ -635,6 +635,16 @@ export class JellyfinApi {
     const url=new URL("/Videos/"+itemId+"/"+mediaSourceId+
       "/Subtitles/"+streamIndex+"/Stream.vtt",this.origin);
     const limit=768*1024;
+    const deadline=AbortSignal.timeout(95000);
+    const signal=abort?AbortSignal.any([abort,deadline]):deadline;
+    // Never propagate network exceptions: they may contain a signed URL.
+    const failure=(error:unknown):Error=>{
+      if(abort?.aborted)return new Error("SUBTITLE_CANCELLED");
+      if(deadline.aborted ||
+         (error instanceof Error && error.name==="TimeoutError"))
+        return new Error("SUBTITLE_TIMEOUT");
+      return new Error("SUBTITLE_NETWORK");
+    };
     let response:Response;
     try{
       response=await this.fetcher(url,{
@@ -643,13 +653,12 @@ export class JellyfinApi {
           Accept:"text/vtt,text/plain;q=0.5"
         },mode:"cors",credentials:"omit",cache:"no-store",
         redirect:"error",referrerPolicy:"no-referrer",
-        // A cold STRM subtitle extraction may take a minute. The UI can
-        // still cancel it promptly on track change or player teardown.
-        signal:abort?AbortSignal.any([abort,AbortSignal.timeout(95000)]):
-          AbortSignal.timeout(95000)
+        // Cold STRM extraction can be slow. Keep one deadline across
+        // response headers AND body, while allowing immediate cancellation.
+        signal
       });
-    }catch{
-      throw new Error("SUBTITLE_NETWORK");
+    }catch(error){
+      throw failure(error);
     }
     this.assertSession(uid,generation);
     if(!response.ok || response.redirected)
@@ -671,6 +680,12 @@ export class JellyfinApi {
         text+=decoder.decode(chunk.value,{stream:true});
       }
       text+=decoder.decode();
+    }catch(error){
+      if(error instanceof Error &&
+         (error.message==="SUBTITLE_INVALID" ||
+          error.message==="SESSION_CHANGED"))
+        throw error;
+      throw failure(error);
     }finally{
       // A Response cloned by a cache/test may tee its body. Awaiting
       // cancellation can then hang until the unused second branch closes.

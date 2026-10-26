@@ -5,6 +5,8 @@
   import {nativeVault} from "./credential-vault";
   import {nativeUpdater,updateNotice,updateFailure} from "./native-updater";
   import {JellyfinApi} from "./api";
+  import {flushActivePlayback,NATIVE_WINDOW_ACTION_EVENT}
+    from "./playback-window-lifecycle";
   import {ArtworkCache,hasArtwork,lazyArtwork} from "./artwork";
   import {buildShelves,featuredSlides,orderHomeShelves} from "./discover";
   import {matchTrending} from "./trending";
@@ -52,6 +54,8 @@
   let quickCode=$state<string|null>(null);
   let quickError=$state("");
   let quickRequest=0;
+  let nativeActionBusy=false;
+  let logoutBusy=false;
   let vaultNotice=$state("");
   let rememberMe=$state(true);
   let temporaryQa=$state(false);
@@ -715,7 +719,24 @@
         vaultNotice="Connexion automatique indisponible. Reconnectez-vous si nécessaire.";
     }finally{restoreBusy=false;}
   }
+  function handleNativeWindowAction(event:Event){
+    const action=(event as CustomEvent<unknown>).detail;
+    if((action!=="hide" && action!=="quit") || nativeActionBusy)return;
+    nativeActionBusy=true;
+    void (async()=>{
+      try{
+        await flushActivePlayback(window);
+        // Rust accepts only a pending native hide/quit command.
+        await invoke("complete_window_action",{action});
+      }catch{
+        // Rust's bounded native fallback completes the action.
+      }finally{
+        nativeActionBusy=false;
+      }
+    })();
+  }
   onMount(()=>{
+    window.addEventListener(NATIVE_WINDOW_ACTION_EVENT,handleNativeWindowAction);
     void (async()=>{
       if(nativeVault.available){
         try{
@@ -736,6 +757,8 @@
       }
       await restoreSaved();
     })();
+    return ()=>window.removeEventListener(
+      NATIVE_WINDOW_ACTION_EVENT,handleNativeWindowAction);
   });
   async function persistLogin(authenticated:SessionPublic){
     const credential=api.savedCredential();
@@ -867,6 +890,10 @@
     }finally{updateBusy=false;}
   }
   async function logout(){
+    if(logoutBusy)return;
+    logoutBusy=true;
+    // The last Stopped must be sent before logout aborts every report.
+    try{await flushActivePlayback(window);}catch{/* Logout remains usable. */}
     epoch++;refreshVersion++;profileOpen=false;credentialStored=false;
     closeHover();clearAvatar();hoverDetailsCache.clear();
     hiddenCards=[];recentSeasons=[];seriesEvidence=[];trending=[];
@@ -885,7 +912,7 @@
     loginBusy=true;
     try{await nativeVault.clear();}
     catch{vaultNotice="Impossible d'effacer la connexion mémorisée sur cet appareil.";}
-    finally{loginBusy=false;}
+    finally{loginBusy=false;logoutBusy=false;}
   }
   function updateSearch(){
     if(searchTimer!==null)clearTimeout(searchTimer);

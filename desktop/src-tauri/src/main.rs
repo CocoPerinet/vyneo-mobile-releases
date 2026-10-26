@@ -12,7 +12,7 @@ mod native_hls;
 mod native_e2e_qa;
 
 use std::time::{Duration, Instant};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::Mutex;
 use tauri::{
     menu::MenuBuilder,
@@ -43,6 +43,68 @@ impl UpdatePermit {
 impl Drop for UpdatePermit {
     fn drop(&mut self) {
         UPDATE_RUNNING.store(false,Ordering::Release);
+    }
+}
+
+// Coordinate native close-to-tray and quit with the renderer's final Jellyfin
+// Stopped POST. A bounded native fallback prevents an unresponsive webview from
+// trapping the window. No renderer-provided URL or script is evaluated.
+static WINDOW_ACTION_PENDING: AtomicU8 = AtomicU8::new(0);
+static WINDOW_ACTION_GENERATION: AtomicU64 = AtomicU64::new(0);
+fn finish_native_window_action(window: &tauri::WebviewWindow, code:u8) {
+    if code == 1 {
+        let _ = window.hide();
+    } else {
+        window.app_handle().exit(0);
+    }
+}
+fn request_window_action(window: tauri::WebviewWindow, action: &'static str) {
+    let code = match action {
+        "hide" => 1,
+        "quit" => 2,
+        _ => return,
+    };
+    let generation = WINDOW_ACTION_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    WINDOW_ACTION_PENDING.store(code, Ordering::SeqCst);
+    let script = match code {
+        1 => "window.dispatchEvent(new CustomEvent('vyneo:native-window-action',{detail:'hide'}))",
+        _ => "window.dispatchEvent(new CustomEvent('vyneo:native-window-action',{detail:'quit'}))",
+    };
+    if window.eval(script).is_err() {
+        WINDOW_ACTION_PENDING.store(0, Ordering::SeqCst);
+        finish_native_window_action(&window, code);
+        return;
+    }
+    let fallback = window.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(3500)).await;
+        if WINDOW_ACTION_GENERATION.load(Ordering::SeqCst) == generation &&
+           WINDOW_ACTION_PENDING.compare_exchange(
+               code, 0, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+            finish_native_window_action(&fallback, code);
+        }
+    });
+}
+#[tauri::command]
+fn complete_window_action(
+    window: tauri::WebviewWindow, action: String
+) -> Result<(), &'static str> {
+    if interactive_qa() || window.label() != "main" {
+        return Err("WINDOW_ACTION_NOT_AVAILABLE");
+    }
+    let code = match action.as_str() {
+        "hide" => 1,
+        "quit" => 2,
+        _ => return Err("WINDOW_ACTION_INVALID"),
+    };
+    WINDOW_ACTION_PENDING.compare_exchange(
+        code, 0, Ordering::SeqCst, Ordering::SeqCst)
+        .map_err(|_|"WINDOW_ACTION_NOT_PENDING")?;
+    if code == 1 {
+        window.hide().map_err(|_|"WINDOW_HIDE_FAILED")
+    } else {
+        window.app_handle().exit(0);
+        Ok(())
     }
 }
 
@@ -211,6 +273,7 @@ fn main() {
             native_stream::create_native_stream_ticket,
             native_stream::stop_native_stream_ticket,
             native_stream::stop_all_native_streams,
+            complete_window_action,
         ])
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(main) = app.get_webview_window("main") {
@@ -253,13 +316,10 @@ fn main() {
                     // A portable QA has no tray; closing its window must end
                     // the test rather than leaving an invisible process.
                     if interactive_qa() { return; }
-                    // Warm close preserves our OWN Vynéo DOM, not Jellyfin Web.
-                    // Video is paused before hiding to avoid invisible playback.
+                    // Give Jellyfin a bounded chance to receive Stopped,
+                    // then hide. Rust enforces a 3.5s fallback on failure.
                     api.prevent_close();
-                    let _ = close_target.eval(
-                        "document.querySelectorAll('video').forEach(v => v.pause())",
-                    );
-                    let _ = close_target.hide();
+                    request_window_action(close_target.clone(), "hide");
                 }
             });
 
@@ -284,7 +344,13 @@ fn main() {
                             }
                             schedule_update_if_due((*app).clone());
                         }
-                        "quit" => app.exit(0),
+                        "quit" => {
+                            if let Some(main) = app.get_webview_window("main") {
+                                request_window_action(main, "quit");
+                            } else {
+                                app.exit(0);
+                            }
+                        },
                         _ => {}
                     })
                     .build(app)?;

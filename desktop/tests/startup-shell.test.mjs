@@ -27,10 +27,14 @@ test("native menu bar removed, tray keeps Vynéo UI warm",()=>{
   assert.doesNotMatch(rust,/app\.set_menu/);
   assert.match(rust,/WindowEvent::CloseRequested/);
   assert.match(rust,/api\.prevent_close\(\)/);
-  assert.match(rust,/close_target\.hide\(\)/);
+  assert.match(rust,/request_window_action\(close_target\.clone\(\), "hide"\)/);
   assert.match(rust,/tauri_plugin_single_instance::init/);
-  assert.match(rust,/"quit" => app\.exit\(0\)/);
-  assert.match(rust,/v\.pause\(\)/);
+  assert.match(rust,/request_window_action\(main, "quit"\)/);
+  assert.match(rust,/WINDOW_ACTION_PENDING\.compare_exchange/);
+  assert.match(rust,/complete_window_action/);
+  assert.match(app,/await flushActivePlayback\(window\)/);
+  const detail=read("frontend/src/MediaDetails.svelte");
+  assert.match(detail,/detail\.waitUntil\(finished\.drain\(\)\)/);
 });
 test("local frontend restricts network and never stores access tokens",()=>{
   assert.match(html,/Content-Security-Policy/);

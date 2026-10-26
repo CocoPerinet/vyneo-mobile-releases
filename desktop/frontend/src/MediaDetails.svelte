@@ -10,6 +10,8 @@
     fragmentReachesResumePosition} from "./hls-load-policy";
   import type {NativeStreamTicket} from "./native-playback";
   import {PlaybackReporter,playbackClock} from "./playback-report";
+  import {FLUSH_ACTIVE_PLAYBACK_EVENT} from "./playback-window-lifecycle";
+  import type {PlaybackFlushDetail} from "./playback-window-lifecycle";
   import {unavailablePlaybackMessage,nativeHlsFailureMessage,
     nativeHlsQaDiagnostic,htmlVideoFailureMessage,
     playbackInspectionErrorMessage,subtitleFailureMessage}
@@ -111,10 +113,21 @@
       ?"S"+String(season).padStart(2,"0")+
        "E"+String(episode).padStart(2,"0"):"Épisode";
   };
+  function flushForWindowExit(event:Event){
+    const detail=(event as CustomEvent<PlaybackFlushDetail>).detail;
+    if(!detail || typeof detail.waitUntil!=="function")return;
+    const finished=reporter;
+    // Invalidate an unfinished stream negotiation before releasing tickets.
+    streamEpoch++;
+    stopStream();
+    if(finished)detail.waitUntil(finished.drain());
+  }
   onMount(()=>{
+    window.addEventListener(FLUSH_ACTIVE_PLAYBACK_EVENT,flushForWindowExit);
     closeButton?.focus();
     void hydrate();
     return ()=>{
+      window.removeEventListener(FLUSH_ACTIVE_PLAYBACK_EVENT,flushForWindowExit);
       epoch++;seasonEpoch++;playbackEpoch++;streamEpoch++;
       stopStream();
     };

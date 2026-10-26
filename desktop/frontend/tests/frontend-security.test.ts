@@ -16,7 +16,7 @@ describe("standalone native packaging contract",()=>{
     expect(html).not.toContain("jellyfin-vyneo/web");
     expect(html).not.toContain("inject.js");
     expect(html).not.toContain("<iframe");
-    expect(html).toContain("connect-src 'self' https://cocojellyfin.duckdns.org:38443");
+    expect(html).toContain("connect-src 'self' ipc: http://ipc.localhost https://cocojellyfin.duckdns.org:38443");
     expect(config.app.security.capabilities).toEqual([]);
   });
   it("does not persist access tokens or use token-bearing media URLs",()=>{

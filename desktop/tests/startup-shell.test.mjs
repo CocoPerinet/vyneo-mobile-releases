@@ -34,7 +34,7 @@ test("native menu bar removed, tray keeps Vynéo UI warm",()=>{
 });
 test("local frontend restricts network and never stores access tokens",()=>{
   assert.match(html,/Content-Security-Policy/);
-  assert.match(html,/connect-src 'self' https:\/\/cocojellyfin\.duckdns\.org:38443/);
+  assert.match(html,/connect-src 'self' ipc: http:\/\/ipc\.localhost https:\/\/cocojellyfin\.duckdns\.org:38443/);
   assert.match(html,/frame-src 'none'/);
   assert.match(html,/object-src 'none'/);
   assert.doesNotMatch(html,/https:\/\/.*\/web\/index\.html/);

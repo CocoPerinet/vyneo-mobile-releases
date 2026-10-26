@@ -65,7 +65,7 @@ test("video CSP allows only Tauri custom media and no token-bearing URLs",()=>{
   assert.match(html, /media-src 'self' blob: http:\/\/vyneo-media\.localhost vyneo-media:/);
   assert.match(html, /worker-src 'self' blob:/);
   assert.match(html, /connect-src[^;]+http:\/\/vyneo-media\.localhost vyneo-media:/);
-  assert.match(html,/connect-src 'self' https:\/\/cocojellyfin\.duckdns\.org:38443/);
+  assert.match(html,/connect-src 'self' ipc: http:\/\/ipc\.localhost https:\/\/cocojellyfin\.duckdns\.org:38443/);
   assert.doesNotMatch(html,/upgrade-insecure-requests/);
   const ui=get("frontend/src/MediaDetails.svelte");
   // Direct MP4 remains selectable by codec, but explicit audio switching

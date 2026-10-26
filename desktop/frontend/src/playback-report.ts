@@ -74,6 +74,9 @@ export function reportPath(kind:PlaybackEventKind):string{
 export class PlaybackReporter {
   private hasStarted=false;
   private hasStopped=false;
+  private startAccepted=false;
+  private stopOnTransientProgressFailure=false;
+  private reportErrorNotified=false;
   private lastPeriodicAt=Number.NEGATIVE_INFINITY;
   private sequence:Promise<void>=Promise.resolve();
   private pending:PlaybackReport[]=[];
@@ -87,7 +90,8 @@ export class PlaybackReporter {
   ){}
   private send(kind:PlaybackEventKind,clock:PlaybackClock,
     failed=false):void{
-    if(this.failed)return;
+    if(this.failed && !(kind==="stopped" &&
+      this.stopOnTransientProgressFailure))return;
     const report:PlaybackReport={
       ...this.context,kind,
       positionTicks:playbackTicks(clock.positionSeconds),
@@ -115,12 +119,28 @@ export class PlaybackReporter {
     try{
       while(this.pending.length){
         const report=this.pending.shift()!;
-        try{await this.write(report);}
-        catch{
+        try{
+          if(report.kind==="stopped")
+            this.stopOnTransientProgressFailure=false;
+          await this.write(report);
+          if(report.kind==="start")this.startAccepted=true;
+        }catch(error){
+          // After an acknowledged Start, a transient Progress network
+          // error must not orphan playback on Jellyfin. Try ONE final Stop.
+          // Refused reports and expired auth remain terminal; the writer
+          // is also bound to the original login generation.
+          const canFinish=report.kind==="progress" &&
+            this.startAccepted && error instanceof Error &&
+            error.message==="PLAYBACK_REPORT_NETWORK";
           this.failed=true;
-          this.pending=[];
-          try{this.notifyError();}catch{/* The media must keep playing. */}
-          break;
+          this.stopOnTransientProgressFailure=canFinish;
+          this.pending=canFinish
+            ?this.pending.filter(entry=>entry.kind==="stopped"):[];
+          if(!this.reportErrorNotified){
+            this.reportErrorNotified=true;
+            try{this.notifyError();}catch{/* Playback keeps running. */}
+          }
+          if(!canFinish)break;
         }
       }
     }finally{

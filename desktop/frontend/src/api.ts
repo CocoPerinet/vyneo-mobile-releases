@@ -741,6 +741,16 @@ export class JellyfinApi {
       throw new Error(response.status===401?"SESSION_EXPIRED":
         "PLAYBACK_REPORT_DENIED");
   }
+  /** Bind deferred playback writes to this exact login generation.
+   * A delayed Stop from a previous session cannot affect a new user. */
+  playbackWriter(): (event:PlaybackReport)=>Promise<void>{
+    const user=this.requireUser(),generation=this.authGeneration;
+    return async event=>{
+      this.assertSession(user,generation);
+      await this.reportPlayback(event);
+      this.assertSession(user,generation);
+    };
+  }
   async getPlaybackInfo(itemId:string):Promise<PlaybackProbe>{
     const uid=this.requireUser(),generation=this.authGeneration;
     if(!validId(itemId))throw new Error("PLAYBACK_ITEM_INVALID");

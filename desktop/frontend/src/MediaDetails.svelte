@@ -459,7 +459,7 @@
           playSessionId:probe.playSessionId??null,
           playMethod:mode==="direct"?"DirectPlay":
             !source.transcoding && source.directStream?"DirectStream":"Transcode"
-        },(event)=>api.reportPlayback(event),()=>{
+        },api.playbackWriter(),()=>{
           reportWarning="Lecture possible, mais la synchronisation "+
             "de la progression avec Jellyfin a échoué.";
         });

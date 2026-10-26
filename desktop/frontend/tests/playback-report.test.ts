@@ -1,6 +1,6 @@
 import {describe,it,expect,vi} from "vitest";
 import {PlaybackReporter,playbackTicks,reportBody,reportPath} from "../src/playback-report";
-import type {PlaybackClock,PlaybackReport} from "../src/playback-report";
+import type {PlaybackClock,PlaybackReport,PlaybackEventKind} from "../src/playback-report";
 import {JellyfinApi,SERVER_ORIGIN} from "../src/api";
 import {buildShelves} from "../src/discover";
 
@@ -136,6 +136,90 @@ describe("accurate, non-invasive Jellyfin playback lifecycle",()=>{
     await reporter.drain();
     expect(attempted.map(e=>e.kind)).toEqual(["start"]);
     expect(errors).toHaveBeenCalledTimes(1);
+  });
+  it("sends one final Stop after an acknowledged Start and a transient Progress network failure",async()=>{
+    const sent:PlaybackReport[]=[];
+    const errors=vi.fn();
+    const reporter=new PlaybackReporter(context,async event=>{
+      sent.push(event);
+      if(event.kind==="progress")
+        throw new Error("PLAYBACK_REPORT_NETWORK");
+    },errors);
+    reporter.playing(snapshot(5));
+    await reporter.drain();
+    reporter.progress(snapshot(30),true);
+    await reporter.drain();
+    reporter.progress(snapshot(60),true); // Sync is disabled after failure.
+    reporter.stop(snapshot(70));
+    reporter.stop(snapshot(80)); // Never send a second terminal report.
+    await reporter.drain();
+    expect(sent.map(x=>x.kind)).toEqual(["start","progress","stopped"]);
+    expect(sent[2].positionTicks).toBe(700_000_000);
+    expect(errors).toHaveBeenCalledTimes(1);
+  });
+  it("preserves a queued Stop when the earlier Progress network request fails",async()=>{
+    const calls:PlaybackReport[]=[];
+    let rejectProgress:(error:Error)=>void=()=>{};
+    const pending=new Promise<void>((_,reject)=>{
+      rejectProgress=reject;
+    });
+    const reporter=new PlaybackReporter(context,async event=>{
+      calls.push(event);
+      if(event.kind==="progress")await pending;
+    });
+    reporter.playing(snapshot(4));
+    await reporter.drain();
+    reporter.progress(snapshot(20),true);
+    reporter.stop(snapshot(35));
+    rejectProgress(new Error("PLAYBACK_REPORT_NETWORK"));
+    await reporter.drain();
+    expect(calls.map(x=>x.kind)).toEqual(["start","progress","stopped"]);
+    expect(calls.at(-1)?.positionTicks).toBe(350_000_000);
+  });
+  it("does not send Stop after a denied Progress or a failed Start",async()=>{
+    const denied:PlaybackEventKind[]=[];
+    const reporter=new PlaybackReporter(context,async event=>{
+      denied.push(event.kind);
+      if(event.kind==="progress")
+        throw new Error("PLAYBACK_REPORT_DENIED");
+    });
+    reporter.playing(snapshot(2));
+    await reporter.drain();
+    reporter.progress(snapshot(30),true);
+    await reporter.drain();
+    reporter.stop(snapshot(31));
+    await reporter.drain();
+    expect(denied).toEqual(["start","progress"]);
+  });
+  it("refuses late cleanup after logging out and back in to even the same user",async()=>{
+    let writes=0;
+    const fetcher=vi.fn(async(input:RequestInfo|URL):Promise<Response>=>{
+      const path=new URL(String(input)).pathname;
+      if(path==="/Users/AuthenticateByName")
+        return authResponse({User:{Id:USER,Name:"Alice"},AccessToken:TOKEN});
+      if(path==="/Users/Me")
+        return authResponse({Id:USER,Name:"Alice",Policy:{IsDisabled:false}});
+      if(path.startsWith("/Sessions/Playing")){
+        writes++;
+        return new Response(null,{status:204});
+      }
+      throw new Error("Unexpected request");
+    }) as typeof fetch;
+    const api=new JellyfinApi({fetcher});
+    await api.login("Alice","password");
+    const writer=api.playbackWriter();
+    const event:PlaybackReport={...context,kind:"start",
+      positionTicks:30_000_000,canSeek:true,isPaused:false,
+      isMuted:false,volumeLevel:58};
+    await writer(event);
+    api.logout();
+    await api.login("Alice","password");
+    await expect(writer({...event,kind:"stopped"}))
+      .rejects.toThrow("SESSION_CHANGED");
+    expect(writes).toBe(1);
+    await expect(api.playbackWriter()({...event,kind:"stopped"}))
+      .resolves.toBeUndefined();
+    expect(writes).toBe(2);
   });
   it("does not leak a stale playback report into a different signed-in session",async()=>{
     const calls:string[]=[];

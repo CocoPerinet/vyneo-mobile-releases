@@ -64,7 +64,9 @@ assert.match(rust,/tauri_plugin_updater/);
 assert.match(rust,/WindowEvent::CloseRequested/);
 assert.doesNotMatch(rust,/WebviewUrl::External|app\.set_menu\(/);
 assert.doesNotMatch(rust,/vyneo-preview\.visyren|\/web\/index\.html|inject\.js/);
-assert.match(html,/connect-src 'self' https:\/\/cocojellyfin\.duckdns\.org:38443/);
+assert.match(html,/connect-src 'self' ipc: http:\/\/ipc\.localhost https:\/\/cocojellyfin\.duckdns\.org:38443/);
+// Allow only the local Tauri IPC bridge, never wildcard remote origins.
+assert.doesNotMatch(html,/connect-src[^;]*\*|unsafe-inline|unsafe-eval/);
 assert.doesNotMatch(html,/<iframe|src="https:\/\/cocojellyfin/i);
 assert.match(api,/SERVER_ORIGIN="https:\/\/cocojellyfin\.duckdns\.org:38443"/);
 assert.match(api,/credentials:"omit"/);

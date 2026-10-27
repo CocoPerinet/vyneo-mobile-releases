@@ -226,10 +226,10 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
   flex-wrap:wrap;gap:8px}
 .vy-source-heading strong{font-size:15px}
 .vy-source-heading span{font-size:12px;color:var(--vy-accent-2)}
-.vy-source-tracks{display:grid;grid-template-columns:96px 1fr;
-  gap:10px;margin-top:9px;color:#cbd1dc;font-size:12px}
+.vy-source-tracks{display:grid;grid-template-columns:96px minmax(0,1fr);
+  gap:8px 10px;margin-top:9px;color:#cbd1dc;font-size:12px}
 .vy-source-tracks strong{color:#f0f2f7}
-.vy-source-tracks span{min-width:0;overflow-wrap:anywhere}
+.vy-source-tracks>span{grid-column:2;min-width:0;overflow-wrap:break-word}
 
 .vy-login-header{padding:32px 4%;display:flex;align-items:center;gap:20px}
 .vy-brand-desc{font-size:10px;font-weight:800;color:#8f99ad;letter-spacing:2.4px}

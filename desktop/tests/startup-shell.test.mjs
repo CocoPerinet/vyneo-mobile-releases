@@ -30,8 +30,12 @@ test("native menu bar removed, tray keeps Vynéo UI warm",()=>{
   assert.match(rust,/request_window_action\(close_target\.clone\(\), "hide"\)/);
   assert.match(rust,/tauri_plugin_single_instance::init/);
   assert.match(rust,/request_window_action\(main, "quit"\)/);
-  assert.match(rust,/WINDOW_ACTION_PENDING\.compare_exchange/);
+  assert.match(rust,/fn reserve_window_action/);
+  assert.match(rust,/fn release_window_action/);
+  assert.match(rust,/pending == 2 && code == 1/);
+  assert.match(rust,/fn quit_preempts_pending_hide_and_stale_hide_ack/);
   assert.match(rust,/complete_window_action/);
+  assert.match(app,/invoke\("complete_window_action",\{action,generation\}\)/);
   assert.match(app,/await flushActivePlayback\(window\)/);
   const detail=read("frontend/src/MediaDetails.svelte");
   assert.match(detail,/detail\.waitUntil\(finished\.drain\(\)\)/);

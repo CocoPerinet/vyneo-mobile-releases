@@ -12,7 +12,7 @@ mod native_hls;
 mod native_e2e_qa;
 
 use std::time::{Duration, Instant};
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use tauri::{
     menu::MenuBuilder,
@@ -46,12 +46,43 @@ impl Drop for UpdatePermit {
     }
 }
 
-// Coordinate native close-to-tray and quit with the renderer's final Jellyfin
-// Stopped POST. A bounded native fallback prevents an unresponsive webview from
-// trapping the window. No renderer-provided URL or script is evaluated.
-static WINDOW_ACTION_PENDING: AtomicU8 = AtomicU8::new(0);
-static WINDOW_ACTION_GENERATION: AtomicU64 = AtomicU64::new(0);
-fn finish_native_window_action(window: &tauri::WebviewWindow, code:u8) {
+// Coordinate close-to-tray and quit with the final Jellyfin Stopped POST.
+// One atomic word holds both the requested action and its generation. A
+// later hide cannot replace an explicit quit; a stale JS ACK or timeout
+// cannot finish a newer request. A bounded fallback handles dead webviews.
+const WINDOW_ACTION_MASK: u64 = 0b11;
+static WINDOW_ACTION_STATE: AtomicU64 = AtomicU64::new(0);
+fn reserve_window_action(state: &AtomicU64, code: u8) -> Option<u64> {
+    if code != 1 && code != 2 { return None; }
+    loop {
+        let current = state.load(Ordering::SeqCst);
+        let pending = (current & WINDOW_ACTION_MASK) as u8;
+        // Quit is a terminal, higher-priority command. Duplicate requests
+        // must not postpone the original fallback indefinitely.
+        if pending == code || (pending == 2 && code == 1) {
+            return None;
+        }
+        let generation = (current >> 2).checked_add(1)?;
+        if generation > (u64::MAX >> 2) { return None; }
+        let next = (generation << 2) | u64::from(code);
+        if state.compare_exchange(
+            current, next, Ordering::SeqCst, Ordering::SeqCst
+        ).is_ok() {
+            return Some(generation);
+        }
+    }
+}
+fn release_window_action(state: &AtomicU64, code: u8, generation: u64) -> bool {
+    if (code != 1 && code != 2) || generation == 0 ||
+       generation > (u64::MAX >> 2) {
+        return false;
+    }
+    let pending = (generation << 2) | u64::from(code);
+    state.compare_exchange(
+        pending, generation << 2, Ordering::SeqCst, Ordering::SeqCst
+    ).is_ok()
+}
+fn finish_native_window_action(window: &tauri::WebviewWindow, code: u8) {
     if code == 1 {
         let _ = window.hide();
     } else {
@@ -64,30 +95,31 @@ fn request_window_action(window: tauri::WebviewWindow, action: &'static str) {
         "quit" => 2,
         _ => return,
     };
-    let generation = WINDOW_ACTION_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
-    WINDOW_ACTION_PENDING.store(code, Ordering::SeqCst);
-    let script = match code {
-        1 => "window.dispatchEvent(new CustomEvent('vyneo:native-window-action',{detail:'hide'}))",
-        _ => "window.dispatchEvent(new CustomEvent('vyneo:native-window-action',{detail:'quit'}))",
-    };
+    let Some(generation) = reserve_window_action(&WINDOW_ACTION_STATE, code)
+        else { return; };
+    // Only fixed native action strings and a native monotonic integer enter
+    // the script. The renderer never supplies a URL or executable code.
+    let script = format!(
+        "window.dispatchEvent(new CustomEvent('vyneo:native-window-action',{{detail:{{action:'{}',generation:{}}}}}))",
+        action, generation
+    );
     if window.eval(script).is_err() {
-        WINDOW_ACTION_PENDING.store(0, Ordering::SeqCst);
-        finish_native_window_action(&window, code);
+        if release_window_action(&WINDOW_ACTION_STATE, code, generation) {
+            finish_native_window_action(&window, code);
+        }
         return;
     }
     let fallback = window.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_millis(3500)).await;
-        if WINDOW_ACTION_GENERATION.load(Ordering::SeqCst) == generation &&
-           WINDOW_ACTION_PENDING.compare_exchange(
-               code, 0, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+        if release_window_action(&WINDOW_ACTION_STATE, code, generation) {
             finish_native_window_action(&fallback, code);
         }
     });
 }
 #[tauri::command]
 fn complete_window_action(
-    window: tauri::WebviewWindow, action: String
+    window: tauri::WebviewWindow, action: String, generation: u64
 ) -> Result<(), &'static str> {
     if interactive_qa() || window.label() != "main" {
         return Err("WINDOW_ACTION_NOT_AVAILABLE");
@@ -97,14 +129,62 @@ fn complete_window_action(
         "quit" => 2,
         _ => return Err("WINDOW_ACTION_INVALID"),
     };
-    WINDOW_ACTION_PENDING.compare_exchange(
-        code, 0, Ordering::SeqCst, Ordering::SeqCst)
-        .map_err(|_|"WINDOW_ACTION_NOT_PENDING")?;
+    if !release_window_action(&WINDOW_ACTION_STATE, code, generation) {
+        return Err("WINDOW_ACTION_NOT_PENDING");
+    }
     if code == 1 {
-        window.hide().map_err(|_|"WINDOW_HIDE_FAILED")
+        window.hide().map_err(|_| "WINDOW_HIDE_FAILED")
     } else {
         window.app_handle().exit(0);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod window_action_tests {
+    use super::*;
+    #[test]
+    fn quit_preempts_pending_hide_and_stale_hide_ack_cannot_cancel_quit() {
+        let state = AtomicU64::new(0);
+        let hide = reserve_window_action(&state, 1).unwrap();
+        assert!(reserve_window_action(&state, 1).is_none());
+        let quit = reserve_window_action(&state, 2).unwrap();
+        assert!(quit > hide);
+        assert!(reserve_window_action(&state, 1).is_none());
+        assert!(!release_window_action(&state, 1, hide));
+        assert!(release_window_action(&state, 2, quit));
+        assert!(!release_window_action(&state, 2, quit));
+    }
+    #[test]
+    fn repeated_hide_does_not_replace_original_ack_or_timeout() {
+        let state = AtomicU64::new(0);
+        let first = reserve_window_action(&state, 1).unwrap();
+        assert!(reserve_window_action(&state, 1).is_none());
+        assert!(release_window_action(&state, 1, first));
+        let second = reserve_window_action(&state, 1).unwrap();
+        assert!(second > first);
+        assert!(!release_window_action(&state, 1, first));
+        assert!(release_window_action(&state, 1, second));
+    }
+    #[test]
+    fn pending_quit_cannot_be_downgraded_by_close_or_duplicate_quit() {
+        let state = AtomicU64::new(0);
+        let quit = reserve_window_action(&state, 2).unwrap();
+        assert!(reserve_window_action(&state, 1).is_none());
+        assert!(reserve_window_action(&state, 2).is_none());
+        assert!(!release_window_action(&state, 1, quit));
+        assert!(release_window_action(&state, 2, quit));
+        assert!(!release_window_action(&state, 2, quit));
+    }
+    #[test]
+    fn invalid_action_or_epoch_cannot_release_an_active_request() {
+        let state = AtomicU64::new(0);
+        assert!(reserve_window_action(&state, 0).is_none());
+        let current = reserve_window_action(&state, 1).unwrap();
+        assert!(!release_window_action(&state, 1, 0));
+        assert!(!release_window_action(&state, 0, current));
+        assert!(!release_window_action(&state, 1, current + 1));
+        assert!(release_window_action(&state, 1, current));
     }
 }
 

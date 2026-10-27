@@ -171,6 +171,31 @@ try{
     UserData:{...films[8].UserData,Played:false,
      PlaybackPositionTicks:99000000000}};
    payload={Items:[...partial,stale],TotalRecordCount:9};
+  }else if(path==="/Shows/"+id(100)+"/Seasons"){
+   assert.equal(qs.get("userId"),user);
+   payload={Items:[
+    {Id:id(8998),Name:"Épisodes spéciaux",IndexNumber:0,
+     ChildCount:1,UserData:{UnplayedItemCount:1}},
+    {Id:id(8999),Name:"Saison 1",IndexNumber:1,
+     ChildCount:2,UserData:{UnplayedItemCount:0}},
+    {Id:id(9000),Name:"Saison 2",IndexNumber:2,
+     ChildCount:2,UserData:{UnplayedItemCount:2}}
+   ]};
+  }else if(path==="/Shows/"+id(100)+"/Episodes"){
+   assert.equal(qs.get("userId"),user);
+   const season=qs.get("seasonId");
+   const num=season===id(9000)?2:season===id(8999)?1:0;
+   const rows=Array.from({length:num===0?1:2},(_,n)=>({
+    Id:id(31000+num*10+n),Name:"S"+num+" épisode "+(n+1),
+    Type:"Episode",SeriesId:id(100),SeasonId:season,
+    ParentIndexNumber:num,IndexNumber:n+1,
+    RunTimeTicks:1200*10_000_000,
+    UserData:{Played:num===1,IsFavorite:false}
+   }));
+   const start=Number(qs.get("StartIndex")??0);
+   const limit=Number(qs.get("Limit")??24);
+   payload={Items:rows.slice(start,start+limit),
+    TotalRecordCount:rows.length};
   }else if(path==="/Shows/NextUp"){
    const start=Number(qs.get("StartIndex")??0);
    const limit=Number(qs.get("Limit")??300);
@@ -352,6 +377,36 @@ try{
  assert.equal(await page.locator(".vy-hero .vy-kicker").textContent(),
   "NOUVELLE SAISON",
   "An engaged S2E1 must retain its own new-season hero badge");
+ // The authenticated NextUp shelf knows this series is on season 2.
+ // Opening the hero must land there, never at Specials or S1, and a
+ // manual season change must remain under user control.
+ await page.getByRole("button",{name:"Voir la fiche",exact:true}).click();
+ const details=page.locator(".vy-detail-screen");
+ await details.waitFor({timeout:3500});
+ const seasonTabs=details.locator(".vy-season-selector button");
+ await page.waitForFunction(()=>{
+   const tabs=[...document.querySelectorAll(
+     ".vy-detail-screen .vy-season-selector button")];
+   return tabs.some(tab=>tab.textContent?.includes("Saison 2") &&
+     tab.classList.contains("active"));
+ },null,{timeout:5000});
+ assert.equal(await details.locator(".vy-episode").first().innerText()
+   .then(text=>text.includes("S2 épisode 1")),true);
+ await seasonTabs.filter({hasText:"Saison 1"}).click();
+ await page.waitForFunction(()=>{
+   const tabs=[...document.querySelectorAll(
+     ".vy-detail-screen .vy-season-selector button")];
+   return tabs.some(tab=>tab.textContent?.includes("Saison 1") &&
+     tab.classList.contains("active"));
+ },null,{timeout:5000});
+ await details.locator(".vy-episode").first().waitFor({timeout:5000});
+ assert((await details.locator(".vy-episode").first().innerText())
+   .includes("S1 épisode 1"));
+ await page.keyboard.press("Escape");
+ await details.waitFor({state:"hidden",timeout:3000});
+ assert(external.every(x=>!x.url.includes(token)),
+   "Season navigation must not leak credentials in request URLs");
+ console.log("JELLYFIN_PARITY_RESUME_SEASON_DEFAULT_AND_MANUAL_OVERRIDE_PASS");
  const freshFilmHero=page.getByRole("button",{
   name:/Bannière \d+ : Film de test 36$/
  }).first();

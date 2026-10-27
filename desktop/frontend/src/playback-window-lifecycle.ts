@@ -73,3 +73,14 @@ export async function acknowledgeNativeWindowAction(
     // the native timeout remains the fail-safe.
   }
 }
+
+// A normal detail close is different from native window hide: the <video>
+// binding may disappear during component teardown. Send the final Stop while
+// the element and its playback position are still available. UI close must
+// still complete if a local media cleanup unexpectedly throws.
+export function stopPlaybackBeforeClosing(
+  stop:()=>void,close:()=>void
+):void{
+  try{stop();}
+  finally{close();}
+}

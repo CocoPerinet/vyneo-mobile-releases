@@ -10,7 +10,8 @@
     fragmentReachesResumePosition} from "./hls-load-policy";
   import type {NativeStreamTicket} from "./native-playback";
   import {PlaybackReporter,playbackClock} from "./playback-report";
-  import {FLUSH_ACTIVE_PLAYBACK_EVENT} from "./playback-window-lifecycle";
+  import {FLUSH_ACTIVE_PLAYBACK_EVENT,trackFinalPlaybackReport}
+    from "./playback-window-lifecycle";
   import type {PlaybackFlushDetail} from "./playback-window-lifecycle";
   import {unavailablePlaybackMessage,nativeHlsFailureMessage,
     nativeHlsQaDiagnostic,htmlVideoFailureMessage,
@@ -389,6 +390,9 @@
     reporter=null;
     if(finished && videoElement){
       finished.stop(playbackClock(videoElement),failed);
+      // Keep this terminal write alive in the exit coordinator, including
+      // if a later logout or native quit sees reporter=null.
+      trackFinalPlaybackReport(finished.drain());
       notifyPlaybackOnce(finished);
     }
     const player=hlsPlayer;

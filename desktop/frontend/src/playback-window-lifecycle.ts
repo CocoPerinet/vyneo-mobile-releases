@@ -44,3 +44,32 @@ export async function flushActivePlayback(
     if(timeout!==undefined)clearTimeout(timeout);
   }
 }
+
+export type NativeWindowAction="hide"|"quit";
+export interface NativeWindowActionRequest {
+  action:NativeWindowAction;
+  generation:number;
+}
+/** Every native request needs an independent final report flush. A Quit may
+ * supersede Hide while it is awaiting Jellyfin; the Rust generation guard
+ * rejects the stale Hide ACK. Never drop the newer action in the renderer. */
+export async function acknowledgeNativeWindowAction(
+  event:Event,
+  target:EventTarget,
+  complete:(action:NativeWindowAction,generation:number)=>Promise<unknown>
+):Promise<void>{
+  const detail=(event as CustomEvent<unknown>).detail;
+  if(!detail || typeof detail!=="object")return;
+  const {action,generation}=detail as Partial<NativeWindowActionRequest>;
+  if((action!=="hide" && action!=="quit") ||
+    typeof generation!=="number" ||
+    !Number.isSafeInteger(generation) || generation<=0)return;
+  try{
+    await flushActivePlayback(target);
+    // Only Rust may decide whether this exact generation is still current.
+    await complete(action,generation);
+  }catch{
+    // A stale ACK is expected if Quit replaced Hide. For a genuine failure,
+    // the native timeout remains the fail-safe.
+  }
+}

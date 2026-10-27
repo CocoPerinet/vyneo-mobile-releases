@@ -78,6 +78,9 @@ export class PlaybackReporter {
   private stopOnTransientProgressFailure=false;
   private reportErrorNotified=false;
   private lastPeriodicAt=Number.NEGATIVE_INFINITY;
+  // The <video> binding may be released before onMount teardown when a
+  // parent changes tabs. Keep only inert clock numbers, never an element.
+  private lastClock:PlaybackClock|null=null;
   private sequence:Promise<void>=Promise.resolve();
   private pending:PlaybackReport[]=[];
   private flushing=false;
@@ -149,6 +152,7 @@ export class PlaybackReporter {
   }
   playing(clock:PlaybackClock):void{
     if(this.hasStopped)return;
+    this.lastClock={...clock};
     if(!this.hasStarted){
       this.hasStarted=true;this.lastPeriodicAt=this.clock();
       this.send("start",clock);
@@ -156,6 +160,9 @@ export class PlaybackReporter {
   }
   progress(clock:PlaybackClock,force=false):void{
     if(!this.hasStarted || this.hasStopped || this.failed)return;
+    // Remember the real latest time, even when this periodic POST is
+    // throttled. A later unmount must not revert the final position.
+    this.lastClock={...clock};
     const now=this.clock();
     if(!force && now-this.lastPeriodicAt<15000)return;
     this.lastPeriodicAt=now;
@@ -171,9 +178,17 @@ export class PlaybackReporter {
   }
   stop(clock:PlaybackClock,failed=false):void{
     if(this.hasStopped)return;
+    this.lastClock={...clock};
     this.hasStopped=true;
     // Before the first decoded/playing frame no watch history is written.
     if(this.hasStarted)this.send("stopped",clock,failed);
+  }
+  /** Teardown fallback when Svelte has already unbound <video>. */
+  stopAtLastKnownPosition(failed=false):void{
+    this.stop(this.lastClock??{
+      positionSeconds:0,durationSeconds:0,paused:true,
+      muted:false,volume:1,canSeek:false
+    },failed);
   }
   get didStart():boolean{return this.hasStarted;}
   async drain():Promise<void>{await this.sequence;}

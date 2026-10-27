@@ -92,6 +92,34 @@ describe("accurate, non-invasive Jellyfin playback lifecycle",()=>{
     expect(calls[1].positionTicks).toBe(209*10_000_000);
     expect(calls.every(x=>x.itemId===ITEM)).toBe(true);
   });
+  it("uses the last throttled playback position after video unbind",async()=>{
+    let now=1000;
+    const reported:PlaybackReport[]=[];
+    const reporter=new PlaybackReporter(context,async report=>{
+      reported.push(report);
+    },()=>{},()=>now);
+    reporter.playing(snapshot(5));
+    await reporter.drain();
+    // The 15-second periodic POST is skipped, but its clock is not.
+    now=2000;
+    reporter.progress(snapshot(43));
+    expect(reported.map(event=>event.kind)).toEqual(["start"]);
+    // The Svelte bind:this reference is gone at teardown.
+    reporter.stopAtLastKnownPosition();
+    await reporter.drain();
+    expect(reported.map(event=>event.kind)).toEqual(["start","stopped"]);
+    expect(reported[1].positionTicks).toBe(430_000_000);
+    reporter.stopAtLastKnownPosition();
+    await reporter.drain();
+    expect(reported).toHaveLength(2);
+  });
+  it("never reports an unstarted stream when video unbinds",async()=>{
+    const write=vi.fn(async(_event:PlaybackReport)=>{});
+    const reporter=new PlaybackReporter(context,write);
+    reporter.stopAtLastKnownPosition(true);
+    await reporter.drain();
+    expect(write).not.toHaveBeenCalled();
+  });
   it("does not delay a final Stop behind stale queued seeks",async()=>{
     const calls:PlaybackReport[]=[];
     let release:()=>void=()=>{};

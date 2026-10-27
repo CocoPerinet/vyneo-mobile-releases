@@ -21,6 +21,7 @@
   import MediaCard from "./MediaCard.svelte";
   import UniverseEntry from "./UniverseEntry.svelte";
   import MediaDetails from "./MediaDetails.svelte";
+  import {preferredSeasonFromShelves} from "./media-details";
   import {planMediaMutation,projectMediaMutation} from "./media-actions";
   import type {MediaAction} from "./media-actions";
 
@@ -1449,6 +1450,8 @@
     {/if}
     {#if selected}
       <MediaDetails item={selected} {api} cache={artwork}
+        preferredSeasonId={preferredSeasonFromShelves(
+          selected.id,data.resume,data.nextUp)}
         qaReadOnly={temporaryQa} onaction={changeMediaState}
         onplaybackchange={()=>void refresh()}
         onclose={closeMediaDetails}/>

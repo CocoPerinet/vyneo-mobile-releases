@@ -49,6 +49,15 @@ test("native menu bar removed, tray keeps Vynéo UI warm",()=>{
   assert.match(detail,/event\.preventDefault\(\);closeDetails\(\)/);
   assert.doesNotMatch(detail,/onclick=\{onclose\}/);
 });
+test("series landing uses authenticated resume/NextUp and skips specials",()=>{
+  const details=read("frontend/src/MediaDetails.svelte");
+  const chooser=read("frontend/src/media-details.ts");
+  assert.match(app,/preferredSeasonId=\{preferredSeasonFromShelves\(/);
+  assert.match(app,/selected\.id,data\.resume,data\.nextUp/);
+  assert.match(details,/selectInitialSeason\(results,preferredSeasonId\)/);
+  assert.doesNotMatch(details,/chooseSeason\(results\[0\]\.id\)/);
+  assert.match(chooser,/season\.number!==0/);
+});
 test("real Jellyfin source tracks do not flow into the narrow label column",()=>{
   const css=read("frontend/src/styles.css");
   const detail=read("frontend/src/MediaDetails.svelte");

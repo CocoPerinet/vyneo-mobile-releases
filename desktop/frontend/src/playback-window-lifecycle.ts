@@ -8,6 +8,17 @@ export interface PlaybackFlushDetail{
   waitUntil:(pending:Promise<void>)=>void;
 }
 export type FlushStatus="drained"|"timed-out";
+// Keep final Jellyfin Stopped writes observable even after the media
+// details component unmounts. Concurrent logout/hide/quit must all wait
+// for the same outstanding report (up to their bounded native deadline).
+const pendingFinalReports=new Set<Promise<void>>();
+export function trackFinalPlaybackReport(report:Promise<void>):void{
+  pendingFinalReports.add(report);
+  void report.then(
+    ()=>{pendingFinalReports.delete(report);},
+    ()=>{pendingFinalReports.delete(report);}
+  );
+}
 export async function flushActivePlayback(
   target:EventTarget,deadlineMs=2500
 ):Promise<FlushStatus>{
@@ -16,6 +27,10 @@ export async function flushActivePlayback(
     FLUSH_ACTIVE_PLAYBACK_EVENT,{
       detail:{waitUntil:(job)=>pending.push(job)}
     }));
+  // Include previous Stop requests, even if the video dialog has already
+  // closed or another simultaneous window action consumed its reporter.
+  if(pendingFinalReports.size)
+    pending.push(Promise.allSettled([...pendingFinalReports]).then(()=>{}));
   if(!pending.length)return "drained";
   let timeout:ReturnType<typeof setTimeout>|undefined;
   try{

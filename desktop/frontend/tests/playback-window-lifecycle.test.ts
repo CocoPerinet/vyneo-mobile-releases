@@ -1,7 +1,8 @@
 import {describe,it,expect,vi} from "vitest";
 import {FLUSH_ACTIVE_PLAYBACK_EVENT,flushActivePlayback,
   trackFinalPlaybackReport,acknowledgeNativeWindowAction,
-  NATIVE_WINDOW_ACTION_EVENT} from "../src/playback-window-lifecycle";
+  NATIVE_WINDOW_ACTION_EVENT,stopPlaybackBeforeClosing}
+  from "../src/playback-window-lifecycle";
 import type {PlaybackFlushDetail} from "../src/playback-window-lifecycle";
 import {PlaybackReporter} from "../src/playback-report";
 import type {PlaybackClock,PlaybackReport} from "../src/playback-report";
@@ -182,6 +183,73 @@ describe("native hide and logout final report handshake",()=>{
         target,complete);
     }
     expect(complete).not.toHaveBeenCalled();
+  });
+  it("sends the last Stopped before X/Escape removes the video binding",async()=>{
+    const sent:PlaybackReport[]=[];
+    let allowStopped!:()=>void;
+    const stopGate=new Promise<void>(resolve=>{allowStopped=resolve;});
+    const reporter=new PlaybackReporter({
+      itemId:"a".repeat(32),mediaSourceId:"b".repeat(32),
+      playSessionId:null,playMethod:"DirectPlay"
+    },async report=>{
+      sent.push(report);
+      if(report.kind==="stopped")await stopGate;
+    });
+    const clock=(pos:number):PlaybackClock=>({
+      positionSeconds:pos,durationSeconds:120,
+      paused:false,muted:false,volume:1,canSeek:true
+    });
+    reporter.playing(clock(3));
+    await reporter.drain();
+    let videoStillBound=true;
+    let closeCount=0;
+    stopPlaybackBeforeClosing(()=>{
+      expect(videoStillBound).toBe(true);
+      reporter.stop(clock(43));
+      trackFinalPlaybackReport(reporter.drain());
+    },()=>{
+      videoStillBound=false;closeCount++;
+      expect(sent.map(x=>x.kind)).toEqual(["start","stopped"]);
+    });
+    expect(closeCount).toBe(1);
+    let drained=false;
+    const pending=flushActivePlayback(new EventTarget(),1000)
+      .then(status=>{drained=status==="drained";});
+    await Promise.resolve();
+    expect(drained).toBe(false);
+    allowStopped();
+    await pending;
+    expect(drained).toBe(true);
+    expect(sent[1].positionTicks).toBe(430_000_000);
+    // The later component onDestroy cleanup is idempotent.
+    reporter.stop(clock(70));
+    await reporter.drain();
+    expect(sent).toHaveLength(2);
+  });
+  it("still closes the detail if a media teardown throws",()=>{
+    const done=vi.fn();
+    expect(()=>stopPlaybackBeforeClosing(()=>{
+      throw new Error("VIDEO_TEARDOWN_FAILED");
+    },done)).toThrow("VIDEO_TEARDOWN_FAILED");
+    expect(done).toHaveBeenCalledTimes(1);
+  });
+  it("closing a detail without playback never creates watch history",async()=>{
+    const events:PlaybackReport[]=[];
+    const reporter=new PlaybackReporter({
+      itemId:"a".repeat(32),mediaSourceId:"b".repeat(32),
+      playSessionId:null,playMethod:"Transcode"
+    },async report=>{events.push(report);});
+    const done=vi.fn();
+    stopPlaybackBeforeClosing(()=>{
+      reporter.stop({
+        positionSeconds:0,durationSeconds:0,paused:true,
+        muted:false,volume:1,canSeek:false
+      });
+      trackFinalPlaybackReport(reporter.drain());
+    },done);
+    await flushActivePlayback(new EventTarget(),100);
+    expect(done).toHaveBeenCalledOnce();
+    expect(events).toHaveLength(0);
   });
   it("does not hang a native close on an unresponsive server",async()=>{
     const target=new EventTarget();

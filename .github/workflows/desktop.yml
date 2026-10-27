@@ -108,6 +108,7 @@ jobs:
         working-directory: desktop/src-tauri
         run: |
           cargo test --bin vyneo-desktop update_tests::
+          cargo test --bin vyneo-desktop window_action_tests::
           cargo test --bin vyneo-desktop native_stream::tests
           cargo test --bin vyneo-desktop native_hls::tests
           cargo test --bin vyneo-desktop --features native-e2e-qa native_e2e_qa::tests
@@ -208,6 +209,7 @@ jobs:
         working-directory: desktop/src-tauri
         run: |
           cargo test --bin vyneo-desktop update_tests::
+          cargo test --bin vyneo-desktop window_action_tests::
           cargo test --bin vyneo-desktop native_stream::tests
           cargo test --bin vyneo-desktop native_hls::tests
           cargo test --bin vyneo-desktop --features native-e2e-qa native_e2e_qa::tests

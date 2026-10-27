@@ -1,6 +1,7 @@
 import {describe,it,expect,vi} from "vitest";
 import {FLUSH_ACTIVE_PLAYBACK_EVENT,flushActivePlayback,
-  trackFinalPlaybackReport} from "../src/playback-window-lifecycle";
+  trackFinalPlaybackReport,acknowledgeNativeWindowAction,
+  NATIVE_WINDOW_ACTION_EVENT} from "../src/playback-window-lifecycle";
 import type {PlaybackFlushDetail} from "../src/playback-window-lifecycle";
 import {PlaybackReporter} from "../src/playback-report";
 import type {PlaybackClock,PlaybackReport} from "../src/playback-report";
@@ -114,6 +115,73 @@ describe("native hide and logout final report handshake",()=>{
       .toBe("drained");
     expect(await flushActivePlayback(new EventTarget(),100))
       .toBe("drained");
+  });
+  it("accepts superseding Quit while Hide waits for a real final Stop",async()=>{
+    const target=new EventTarget();
+    let resolveStop!:()=>void;
+    const stopGate=new Promise<void>(resolve=>{resolveStop=resolve;});
+    const reports:PlaybackReport[]=[];
+    const reporter=new PlaybackReporter({
+      itemId:"a".repeat(32),mediaSourceId:"b".repeat(32),
+      playSessionId:null,playMethod:"Transcode"
+    },async report=>{
+      reports.push(report);
+      if(report.kind==="stopped")await stopGate;
+    });
+    const snapshot=(seconds:number):PlaybackClock=>({
+      positionSeconds:seconds,durationSeconds:90,paused:false,
+      muted:false,volume:1,canSeek:true
+    });
+    reporter.playing(snapshot(5));
+    await reporter.drain();
+    target.addEventListener(FLUSH_ACTIVE_PLAYBACK_EVENT,event=>{
+      reporter.stop(snapshot(32));
+      const stopped=reporter.drain();
+      trackFinalPlaybackReport(stopped);
+      (event as CustomEvent<PlaybackFlushDetail>).detail
+        .waitUntil(stopped);
+    });
+    const attempted:string[]=[];
+    const accepted:string[]=[];
+    const complete=vi.fn(async(action:"hide"|"quit",generation:number)=>{
+      attempted.push(action+":"+generation);
+      // Native Rust has advanced to generation 2: Hide 1 is stale.
+      if(generation!==2)throw new Error("WINDOW_ACTION_NOT_PENDING");
+      accepted.push(action+":"+generation);
+    });
+    const event=(action:"hide"|"quit",generation:number)=>
+      new CustomEvent(NATIVE_WINDOW_ACTION_EVENT,{
+        detail:{action,generation}
+      });
+    const hide=acknowledgeNativeWindowAction(event("hide",1),
+      target,complete);
+    const quit=acknowledgeNativeWindowAction(event("quit",2),
+      target,complete);
+    await Promise.resolve();
+    expect(complete).not.toHaveBeenCalled();
+    resolveStop();
+    await Promise.all([hide,quit]);
+    expect(attempted).toEqual(["hide:1","quit:2"]);
+    expect(accepted).toEqual(["quit:2"]);
+    expect(reports.map(report=>report.kind))
+      .toEqual(["start","stopped"]);
+    expect(reports[1].positionTicks).toBe(320_000_000);
+  });
+  it("ignores malformed and forged native window action details",async()=>{
+    const complete=vi.fn(async()=>{});
+    const target=new EventTarget();
+    for(const detail of [
+      null,{action:"close",generation:1},
+      {action:"quit",generation:0},
+      {action:"quit",generation:2.5},
+      {action:"quit",generation:Number.MAX_SAFE_INTEGER+1},
+      {action:"hide",generation:"3"}
+    ]){
+      await acknowledgeNativeWindowAction(
+        new CustomEvent(NATIVE_WINDOW_ACTION_EVENT,{detail}),
+        target,complete);
+    }
+    expect(complete).not.toHaveBeenCalled();
   });
   it("does not hang a native close on an unresponsive server",async()=>{
     const target=new EventTarget();

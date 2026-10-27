@@ -388,10 +388,11 @@
     const current=streamTicket;
     const finished=reporter;
     reporter=null;
-    if(finished && videoElement){
-      finished.stop(playbackClock(videoElement),failed);
-      // Keep this terminal write alive in the exit coordinator, including
-      // if a later logout or native quit sees reporter=null.
+    if(finished){
+      if(videoElement)finished.stop(playbackClock(videoElement),failed);
+      else finished.stopAtLastKnownPosition(failed);
+      // A parent tab change can unbind <video> before Svelte's teardown.
+      // Always keep the terminal Stop visible across that unmount.
       trackFinalPlaybackReport(finished.drain());
       notifyPlaybackOnce(finished);
     }

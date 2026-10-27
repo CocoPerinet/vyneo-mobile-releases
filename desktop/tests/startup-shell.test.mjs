@@ -49,6 +49,13 @@ test("native menu bar removed, tray keeps Vynéo UI warm",()=>{
   assert.match(detail,/event\.preventDefault\(\);closeDetails\(\)/);
   assert.doesNotMatch(detail,/onclick=\{onclose\}/);
 });
+test("real Jellyfin source tracks do not flow into the narrow label column",()=>{
+  const css=read("frontend/src/styles.css");
+  const detail=read("frontend/src/MediaDetails.svelte");
+  assert.match(detail,/class="vy-source-tracks"/);
+  assert.match(css,/\.vy-source-tracks\{display:grid;grid-template-columns:96px minmax\(0,1fr\)/);
+  assert.match(css,/\.vy-source-tracks>span\{grid-column:2;/);
+});
 test("local frontend restricts network and never stores access tokens",()=>{
   assert.match(html,/Content-Security-Policy/);
   assert.match(html,/connect-src 'self' ipc: http:\/\/ipc\.localhost https:\/\/cocojellyfin\.duckdns\.org:38443/);

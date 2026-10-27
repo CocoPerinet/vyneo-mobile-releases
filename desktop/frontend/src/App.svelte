@@ -720,14 +720,21 @@
     }finally{restoreBusy=false;}
   }
   function handleNativeWindowAction(event:Event){
-    const action=(event as CustomEvent<unknown>).detail;
-    if((action!=="hide" && action!=="quit") || nativeActionBusy)return;
+    const detail=(event as CustomEvent<unknown>).detail;
+    if(!detail || typeof detail!=="object")return;
+    const {action,generation}=detail as {
+      action?:unknown;generation?:unknown
+    };
+    if((action!=="hide" && action!=="quit") ||
+      !Number.isSafeInteger(generation) || Number(generation)<=0 ||
+      nativeActionBusy)return;
     nativeActionBusy=true;
     void (async()=>{
       try{
         await flushActivePlayback(window);
-        // Rust accepts only a pending native hide/quit command.
-        await invoke("complete_window_action",{action});
+        // Rust accepts only the exact pending native generation/action.
+        // A stale renderer callback cannot complete a newer Quit request.
+        await invoke("complete_window_action",{action,generation});
       }catch{
         // Rust's bounded native fallback completes the action.
       }finally{

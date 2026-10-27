@@ -5,8 +5,8 @@
   import {nativeVault} from "./credential-vault";
   import {nativeUpdater,updateNotice,updateFailure} from "./native-updater";
   import {JellyfinApi} from "./api";
-  import {flushActivePlayback,NATIVE_WINDOW_ACTION_EVENT}
-    from "./playback-window-lifecycle";
+  import {flushActivePlayback,NATIVE_WINDOW_ACTION_EVENT,
+    acknowledgeNativeWindowAction} from "./playback-window-lifecycle";
   import {ArtworkCache,hasArtwork,lazyArtwork} from "./artwork";
   import {buildShelves,featuredSlides,orderHomeShelves} from "./discover";
   import {matchTrending} from "./trending";
@@ -54,7 +54,6 @@
   let quickCode=$state<string|null>(null);
   let quickError=$state("");
   let quickRequest=0;
-  let nativeActionBusy=false;
   let logoutBusy=false;
   let vaultNotice=$state("");
   let rememberMe=$state(true);
@@ -720,27 +719,10 @@
     }finally{restoreBusy=false;}
   }
   function handleNativeWindowAction(event:Event){
-    const detail=(event as CustomEvent<unknown>).detail;
-    if(!detail || typeof detail!=="object")return;
-    const {action,generation}=detail as {
-      action?:unknown;generation?:unknown
-    };
-    if((action!=="hide" && action!=="quit") ||
-      !Number.isSafeInteger(generation) || Number(generation)<=0 ||
-      nativeActionBusy)return;
-    nativeActionBusy=true;
-    void (async()=>{
-      try{
-        await flushActivePlayback(window);
-        // Rust accepts only the exact pending native generation/action.
-        // A stale renderer callback cannot complete a newer Quit request.
-        await invoke("complete_window_action",{action,generation});
-      }catch{
-        // Rust's bounded native fallback completes the action.
-      }finally{
-        nativeActionBusy=false;
-      }
-    })();
+    // A second native Quit must not be discarded while Hide is still
+    // waiting for the last Jellyfin Stopped report.
+    void acknowledgeNativeWindowAction(event,window,(action,generation)=>
+      invoke("complete_window_action",{action,generation}));
   }
   onMount(()=>{
     window.addEventListener(NATIVE_WINDOW_ACTION_EVENT,handleNativeWindowAction);

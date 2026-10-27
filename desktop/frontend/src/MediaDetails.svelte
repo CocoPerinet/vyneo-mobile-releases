@@ -10,8 +10,8 @@
     fragmentReachesResumePosition} from "./hls-load-policy";
   import type {NativeStreamTicket} from "./native-playback";
   import {PlaybackReporter,playbackClock} from "./playback-report";
-  import {FLUSH_ACTIVE_PLAYBACK_EVENT,trackFinalPlaybackReport}
-    from "./playback-window-lifecycle";
+  import {FLUSH_ACTIVE_PLAYBACK_EVENT,trackFinalPlaybackReport,
+    stopPlaybackBeforeClosing} from "./playback-window-lifecycle";
   import type {PlaybackFlushDetail} from "./playback-window-lifecycle";
   import {unavailablePlaybackMessage,nativeHlsFailureMessage,
     nativeHlsQaDiagnostic,htmlVideoFailureMessage,
@@ -592,8 +592,14 @@
         streamBusy=false;
     }
   }
+  function closeDetails(){
+    // Stop before Svelte unmounts the bound <video>, otherwise the final
+    // position can be lost on a normal X/Escape close.
+    streamEpoch++;
+    stopPlaybackBeforeClosing(()=>stopStream(),onclose);
+  }
   function handleKey(event:KeyboardEvent){
-    if(event.key==="Escape"){event.preventDefault();onclose();}
+    if(event.key==="Escape"){event.preventDefault();closeDetails();}
   }
 </script>
 
@@ -602,7 +608,7 @@
   <div class="vy-detail vy-detail-native" role="dialog" aria-modal="true"
     aria-label={"Fiche : "+item.title}>
     <button bind:this={closeButton} type="button" class="vy-detail-close"
-      aria-label="Fermer" onclick={onclose}>×</button>
+      aria-label="Fermer" onclick={closeDetails}>×</button>
     <div class="vy-detail-top">
       {#if hasArtwork(shown)}
         <img alt="" use:lazyArtwork={{cache,item:shown,kind:"Backdrop" as const}} />

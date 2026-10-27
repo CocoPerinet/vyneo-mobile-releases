@@ -26,6 +26,7 @@
     from "./types";
   import {displayTrack,graphicSubtitleIndex,hasTrack,selectableTracks}
     from "./playback-tracks";
+  import {selectInitialSeason} from "./media-details";
 
   type Props={
     item:MediaItem;
@@ -35,9 +36,10 @@
     onclose:()=>void;
     onplaybackchange:()=>void;
     qaReadOnly?:boolean;
+    preferredSeasonId?:string|null;
   };
   let {item,api,cache,onaction,onclose,onplaybackchange,
-    qaReadOnly=false}:Props=$props();
+    qaReadOnly=false,preferredSeasonId=null}:Props=$props();
   let media=$state<MediaItem|null>(null);
   let seasons=$state<SeasonSummary[]>([]);
   let seasonsLoading=$state(false);
@@ -142,7 +144,8 @@
       void api.getSeriesSeasons(item.id).then(results=>{
         if(version!==epoch)return;
         seasons=results;
-        if(results.length)chooseSeason(results[0].id);
+        const initial=selectInitialSeason(results,preferredSeasonId);
+        if(initial)chooseSeason(initial.id);
       }).catch(()=>{
         if(version===epoch)seasonsError="Saisons momentanément indisponibles.";
       }).finally(()=>{

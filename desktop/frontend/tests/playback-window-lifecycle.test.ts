@@ -1,6 +1,6 @@
 import {describe,it,expect,vi} from "vitest";
-import {FLUSH_ACTIVE_PLAYBACK_EVENT,flushActivePlayback}
-  from "../src/playback-window-lifecycle";
+import {FLUSH_ACTIVE_PLAYBACK_EVENT,flushActivePlayback,
+  trackFinalPlaybackReport} from "../src/playback-window-lifecycle";
 import type {PlaybackFlushDetail} from "../src/playback-window-lifecycle";
 import {PlaybackReporter} from "../src/playback-report";
 import type {PlaybackClock,PlaybackReport} from "../src/playback-report";
@@ -81,6 +81,39 @@ describe("native hide and logout final report handshake",()=>{
     });
     expect(await flushActivePlayback(target,100)).toBe("drained");
     expect(write).not.toHaveBeenCalled();
+  });
+  it("a simultaneous native quit waits for the pending Stop after its dialog is gone",async()=>{
+    const target=new EventTarget();
+    let allowStop!:()=>void;
+    const stopReport=new Promise<void>(resolve=>{allowStop=resolve;});
+    let hasStopped=false;
+    target.addEventListener(FLUSH_ACTIVE_PLAYBACK_EVENT,event=>{
+      if(hasStopped)return;
+      hasStopped=true;
+      trackFinalPlaybackReport(stopReport);
+      (event as CustomEvent<PlaybackFlushDetail>).detail
+        .waitUntil(stopReport);
+    });
+    const firstCompleted=vi.fn(),secondCompleted=vi.fn();
+    const logout=flushActivePlayback(target,1000).then(firstCompleted);
+    // A second event may arrive after the details have been removed from DOM.
+    const quit=flushActivePlayback(new EventTarget(),1000)
+      .then(secondCompleted);
+    await Promise.resolve();
+    expect(firstCompleted).not.toHaveBeenCalled();
+    expect(secondCompleted).not.toHaveBeenCalled();
+    allowStop();
+    await Promise.all([logout,quit]);
+    expect(firstCompleted).toHaveBeenCalledWith("drained");
+    expect(secondCompleted).toHaveBeenCalledWith("drained");
+  });
+  it("a rejected final Stop does not poison future shutdown requests",async()=>{
+    trackFinalPlaybackReport(Promise.reject(
+      new Error("PLAYBACK_REPORT_NETWORK")));
+    expect(await flushActivePlayback(new EventTarget(),100))
+      .toBe("drained");
+    expect(await flushActivePlayback(new EventTarget(),100))
+      .toBe("drained");
   });
   it("does not hang a native close on an unresponsive server",async()=>{
     const target=new EventTarget();

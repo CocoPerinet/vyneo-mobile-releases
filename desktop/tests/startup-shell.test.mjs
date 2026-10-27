@@ -41,6 +41,11 @@ test("native menu bar removed, tray keeps Vynéo UI warm",()=>{
   assert.match(app,/await flushActivePlayback\(window\)/);
   const detail=read("frontend/src/MediaDetails.svelte");
   assert.match(detail,/detail\.waitUntil\(finished\.drain\(\)\)/);
+  assert.match(detail,/function closeDetails\(\)/);
+  assert.match(detail,/stopPlaybackBeforeClosing\(\(\)=>stopStream\(\),onclose\)/);
+  assert.match(detail,/onclick=\{closeDetails\}/);
+  assert.match(detail,/event\.preventDefault\(\);closeDetails\(\)/);
+  assert.doesNotMatch(detail,/onclick=\{onclose\}/);
 });
 test("local frontend restricts network and never stores access tokens",()=>{
   assert.match(html,/Content-Security-Policy/);

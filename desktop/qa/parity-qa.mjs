@@ -955,6 +955,44 @@ try{
   .waitFor({timeout:3500});
  await page.screenshot({path:join(out,"playlists-390.png"),fullPage:false});
  console.log("JELLYFIN_PARITY_MOBILE_COLLECTIONS_PLAYLISTS_NAV_PASS");
+ // Actual browser layout contract, from a real-library QA regression:
+ // with several audio or subtitle tracks, grid auto-placement previously
+ // put the second track in the 96px label column and broke every word.
+ // Test the compiled CSS in Chromium at desktop AND mobile widths.
+ for(const [viewport,stageWidth] of [[1100,780],[390,320]]){
+   await page.setViewportSize({width:viewport,height:800});
+   const geometry=await page.evaluate(width=>{
+     const fixture=document.createElement("div");
+     fixture.style.cssText=
+       "position:fixed;top:60px;left:20px;z-index:99999;"+
+       "background:#141821;padding:8px;width:"+width+"px";
+     fixture.innerHTML=
+       '<div class="vy-source-tracks">'+
+       '<strong>Audio</strong>'+
+       '<span>Français · OPUS · 5.1 · 6 canaux · défaut</span>'+
+       '<span>Japonais · OPUS · 5.1 · 6 canaux</span>'+
+       '<span>Anglais · OPUS · 5.1 · 6 canaux</span>'+
+       '</div>';
+     document.body.appendChild(fixture);
+     try{
+       const label=fixture.querySelector("strong")
+         .getBoundingClientRect();
+       const spans=[...fixture.querySelectorAll(".vy-source-tracks>span")]
+         .map(node=>{
+           const box=node.getBoundingClientRect();
+           return {left:box.left,right:box.right,width:box.width};
+         });
+       return {labelRight:label.right,spans};
+     }finally{fixture.remove();}
+   },stageWidth);
+   assert.equal(geometry.spans.length,3);
+   assert(geometry.spans.every(track=>
+     track.left>=geometry.labelRight+4 &&
+     track.width>=(viewport===1100?500:150)),
+     "A real source track was placed in the narrow label column "+
+       JSON.stringify({viewport,geometry}));
+ }
+ console.log("JELLYFIN_PARITY_REAL_SOURCE_TRACKS_GRID_DESKTOP_MOBILE_PASS");
 }finally{
  await browser?.close();
  await new Promise(resolve=>http.close(resolve));

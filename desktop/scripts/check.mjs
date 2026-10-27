@@ -1,3 +1,4 @@
+import {verifyParityAudit,verifyReleaseParityReadiness} from "./parity-gate.mjs";
 import assert from "node:assert/strict";
 import {readFileSync,existsSync} from "node:fs";
 import {resolve,dirname} from "node:path";
@@ -9,6 +10,9 @@ const conf=JSON.parse(read("src-tauri/tauri.conf.json"));
 const release=JSON.parse(read("src-tauri/tauri.release.conf.json"));
 const preview=JSON.parse(read("src-tauri/tauri.preview.conf.json"));
 const pkg=JSON.parse(read("package.json"));
+const parityAudit=verifyParityAudit();
+if(process.env.GITHUB_REF?.startsWith("refs/tags/desktop-v"))
+  verifyReleaseParityReadiness(parityAudit);
 const lock=JSON.parse(read("package-lock.json"));
 const mobile=JSON.parse(read("../update-manifest.json"));
 const cargo=read("src-tauri/Cargo.toml");
@@ -60,7 +64,9 @@ assert.match(rust,/tauri_plugin_updater/);
 assert.match(rust,/WindowEvent::CloseRequested/);
 assert.doesNotMatch(rust,/WebviewUrl::External|app\.set_menu\(/);
 assert.doesNotMatch(rust,/vyneo-preview\.visyren|\/web\/index\.html|inject\.js/);
-assert.match(html,/connect-src 'self' https:\/\/cocojellyfin\.duckdns\.org:38443/);
+assert.match(html,/connect-src 'self' ipc: http:\/\/ipc\.localhost https:\/\/cocojellyfin\.duckdns\.org:38443/);
+// Allow only the local Tauri IPC bridge, never wildcard remote origins.
+assert.doesNotMatch(html,/connect-src[^;]*\*|unsafe-inline|unsafe-eval/);
 assert.doesNotMatch(html,/<iframe|src="https:\/\/cocojellyfin/i);
 assert.match(api,/SERVER_ORIGIN="https:\/\/cocojellyfin\.duckdns\.org:38443"/);
 assert.match(api,/credentials:"omit"/);

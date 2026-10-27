@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; connect-src 'self' http://vyneo-media.localhost http://127.0.0.1:%%QA_PORT%%; media-src 'self' blob: http://vyneo-media.localhost; worker-src 'self' blob:; img-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'">
+<title>Vynéo invisible native media fixture</title>
+</head>
+<body style="background:#111;color:#fff">
+<video id="video" muted playsinline autoplay></video>
+<script src="./hls.min.js"></script>
+<script src="./test.js"></script>
+</body>
+</html>

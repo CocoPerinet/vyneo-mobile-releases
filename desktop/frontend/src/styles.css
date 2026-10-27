@@ -51,6 +51,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
   color:white;border:1px solid #ffffff24;border-radius:8px;
   padding:10px 13px;font-weight:700}
 .vy-account-menu button:hover{background:#41495d}
+.vy-account-menu button:disabled{opacity:.6;cursor:progress}
+.vy-account-menu .vy-update-notice{margin:7px 0 12px;line-height:1.45;
+  overflow-wrap:anywhere}
 .vy-hero{position:relative;isolation:isolate;min-height:min(70vh,650px);
   display:flex;align-items:center;margin-top:-74px;padding:130px 3.3% 155px;
   overflow:hidden;background:linear-gradient(120deg,#172032,#10131b 68%,#282032)}
@@ -223,10 +226,10 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
   flex-wrap:wrap;gap:8px}
 .vy-source-heading strong{font-size:15px}
 .vy-source-heading span{font-size:12px;color:var(--vy-accent-2)}
-.vy-source-tracks{display:grid;grid-template-columns:96px 1fr;
-  gap:10px;margin-top:9px;color:#cbd1dc;font-size:12px}
+.vy-source-tracks{display:grid;grid-template-columns:96px minmax(0,1fr);
+  gap:8px 10px;margin-top:9px;color:#cbd1dc;font-size:12px}
 .vy-source-tracks strong{color:#f0f2f7}
-.vy-source-tracks span{min-width:0;overflow-wrap:anywhere}
+.vy-source-tracks>span{grid-column:2;min-width:0;overflow-wrap:break-word}
 
 .vy-login-header{padding:32px 4%;display:flex;align-items:center;gap:20px}
 .vy-brand-desc{font-size:10px;font-weight:800;color:#8f99ad;letter-spacing:2.4px}
@@ -257,6 +260,16 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vy-accent-2);ou
 .vy-login-card .vy-primary:disabled{opacity:.62;cursor:wait}
 .vy-auth-hint{color:#7a828f;font-size:11px;text-align:center;margin-top:20px}
 .vy-login-card .vy-auth-error{color:#ffb0a0;margin:0 0 12px}
+.vy-login-card .vy-quick-instructions{font-size:13px;line-height:1.65;margin:4px 0 12px;color:#b6bdc8}
+.vy-quick-code{display:block;text-align:center;letter-spacing:.24em;
+  background:#0c0e13;border:1px solid #df653f66;border-radius:12px;
+  padding:15px 6px;margin:8px 0 19px;font-size:clamp(23px,4vw,32px);
+  font-variant-numeric:tabular-nums;color:#ffc49f;font-weight:800}
+.vy-quick-secondary{background:transparent;border:1px solid #ffffff30;
+  border-radius:9px;color:#b9c0c9;padding:11px 14px;width:100%;
+  cursor:pointer;font:inherit;font-size:13px;margin-top:10px}
+.vy-quick-secondary:disabled{opacity:.5;cursor:wait}
+.vy-quick-secondary:focus-visible{outline:2px solid var(--vy-accent);outline-offset:2px}
 @media(min-width:1920px){.vy-hero{min-height:670px}}
 @media(max-width:1100px){.vy-header{gap:15px}.vy-nav button{padding:9px 11px;font-size:13px}
   .vy-search-label input{width:95px}.vy-search-label input:focus{width:135px}}

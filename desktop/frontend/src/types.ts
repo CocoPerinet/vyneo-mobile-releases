@@ -1,4 +1,5 @@
-export type MediaType="Movie"|"Series"|"Episode"|"BoxSet";
+export type MediaType="Movie"|"Series"|"Episode"|"BoxSet"|"Playlist";
+export type LibraryGroupKind="BoxSet"|"Playlist";
 export type CatalogKind="Movie"|"Series"|"Anime";
 export type CatalogLibraryIds=Record<CatalogKind,string|null>;
 export interface CatalogPage {
@@ -33,19 +34,27 @@ export interface PlaybackTrack {
   isExternal:boolean;
 }
 export interface PlaybackSource {
+  /** Validated Jellyfin media-source GUID; never a file path or URL. */
+  id:string|null;
   title:string;
   container:string;
   bitrate:number|null;
+  /** Actual media duration may exist only here for remote .strm files. */
+  runtimeTicks:number|null;
   directPlay:boolean;
   directStream:boolean;
   transcoding:boolean;
+  /** Jellyfin remote source (.strm) can redirect even if codecs look direct-playable. */
+  isRemote:boolean;
   tracks:PlaybackTrack[];
 }
 export interface PlaybackProbe {
   sources:PlaybackSource[];
   errorCode:string|null;
+  /** Validated Jellyfin playback session identifier, not an access token. */
+  playSessionId?:string|null;
 }
-export type ViewKey="home"|"movies"|"series"|"anime"|"favorites"|"universes";
+export type ViewKey="home"|"movies"|"series"|"anime"|"collections"|"playlists"|"favorites";
 export interface MediaItem {
   id:string;
   title:string;
@@ -59,6 +68,8 @@ export interface MediaItem {
   isFavorite:boolean;
   played:boolean;
   progress:number|null;
+  /** Jellyfin PlaybackPositionTicks (100 ns units) for precise resume. */
+  resumeTicks?:number|null;
   premiereDate:string;
   hasPrimary:boolean;
   hasBackdrop:boolean;
@@ -69,9 +80,12 @@ export interface MediaItem {
   seasonId?:string|null;
   playedPercentage?:number|null;
   franchiseId?:string|null;
+  tmdbId?:string|null;
+  tvdbCollectionIds?:string[];
   seasonNumber?:number|null;
   episodeNumber?:number|null;
   runtimeTicks?:number|null;
+  seasonCount?:number|null;
   seriesName:string;
 }
 export interface SessionPublic {

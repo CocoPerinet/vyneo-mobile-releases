@@ -1,4 +1,4 @@
-import type {PlaybackProbe,PlaybackSource,PlaybackTrack,SeasonSummary} from "./types";
+import type {MediaItem,PlaybackProbe,PlaybackSource,PlaybackTrack,SeasonSummary} from "./types";
 
 const ID=/^[a-f0-9]{32}$/i;
 const object=(value:unknown):Record<string,unknown>=>
@@ -33,6 +33,53 @@ export function parseSeasons(payload:unknown):SeasonSummary[]{
   return items.sort((a,b)=>(a.number??Number.MAX_SAFE_INTEGER)-
     (b.number??Number.MAX_SAFE_INTEGER) || a.title.localeCompare(b.title));
 }
+/** Use only already authenticated Home shelves, without new Jellyfin
+ * requests or a media probe. An unfinished episode takes precedence over
+ * NextUp; neither source can select a season from another series. */
+export function preferredSeasonFromShelves(
+  seriesId:string,resume:readonly MediaItem[],
+  nextUp:readonly MediaItem[]
+):string|null{
+  if(!ID.test(seriesId))return null;
+  for(const shelf of [resume,nextUp]){
+    const found=shelf.find(episode=>
+      episode.type==="Episode" &&
+      episode.seriesId?.toLowerCase()===seriesId.toLowerCase() &&
+      typeof episode.seasonId==="string" && ID.test(episode.seasonId));
+    if(found?.seasonId)return found.seasonId;
+  }
+  return null;
+}
+
+/** Open the active season by Jellyfin's actual resume/NextUp episode when
+ * possible. Otherwise use read-only per-season unplayed counts; never
+ * guess that missing user data means the season was completed. */
+export function selectInitialSeason(
+  seasons:readonly SeasonSummary[],preferredSeasonId:string|null=null
+):SeasonSummary|null{
+  if(!seasons.length)return null;
+  const sorted=[...seasons].sort((a,b)=>
+    (a.number??Number.MAX_SAFE_INTEGER)-
+    (b.number??Number.MAX_SAFE_INTEGER) || a.title.localeCompare(b.title));
+  if(preferredSeasonId && ID.test(preferredSeasonId)){
+    const match=sorted.find(season=>
+      season.id.toLowerCase()===preferredSeasonId.toLowerCase() &&
+      season.episodeCount!==0);
+    if(match)return match;
+  }
+  // Specials (S00) do not become the landing season unless the user is
+  // actually watching a special or there are no ordinary seasons.
+  const regular=sorted.filter(season=>
+    season.number!==0 && season.episodeCount!==0);
+  const nonEmpty=sorted.filter(season=>season.episodeCount!==0);
+  const candidates=regular.length?regular:
+    nonEmpty.length?nonEmpty:sorted;
+  // After S1 is fully watched, open S2. Unknown counts are NOT complete.
+  return candidates.find(season=>
+    season.unplayedCount===null || season.unplayedCount>0) ??
+    candidates[candidates.length-1];
+}
+
 export function parsePlaybackInfo(payload:unknown):PlaybackProbe{
   const root=object(payload),raw=root.MediaSources;
   if(!Array.isArray(raw))throw new Error("PLAYBACK_INFO_INVALID");
@@ -58,16 +105,21 @@ export function parsePlaybackInfo(payload:unknown):PlaybackProbe{
       });
     }
     sources.push({
+      id:typeof row.Id==="string" && ID.test(row.Id)?row.Id:null,
       title:text(row.Name,120)||"Source vidéo",
       container:text(row.Container,40).toUpperCase(),
       bitrate:whole(row.Bitrate,1,1_000_000_000),
+      runtimeTicks:whole(row.RunTimeTicks,1,864_000_000_000),
       directPlay:row.SupportsDirectPlay===true,
       directStream:row.SupportsDirectStream===true,
       transcoding:row.SupportsTranscoding===true,
+      isRemote:row.IsRemote===true,
       tracks
     });
   }
   const allowed=new Set(["NotAllowed","NoCompatibleStream","RateLimitExceeded"]);
   const error=text(root.ErrorCode,40);
-  return {sources,errorCode:allowed.has(error)?error:null};
+  return {sources,errorCode:allowed.has(error)?error:null,
+    playSessionId:typeof root.PlaySessionId==="string" &&
+      ID.test(root.PlaySessionId)?root.PlaySessionId:null};
 }

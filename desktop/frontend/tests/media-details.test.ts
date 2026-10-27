@@ -1,6 +1,8 @@
 import {describe,it,expect,vi} from "vitest";
-import {JellyfinApi,normalizeItem,SERVER_ORIGIN} from "../src/api";
-import {parsePlaybackInfo,parseSeasons} from "../src/media-details";
+import {JellyfinApi,normalizeItem,SERVER_ORIGIN,
+  PLAYBACK_INSPECTION_TIMEOUT_MS} from "../src/api";
+import {parsePlaybackInfo,parseSeasons,preferredSeasonFromShelves,
+  selectInitialSeason} from "../src/media-details";
 
 const USER="a".repeat(32),SHOW="b".repeat(32),SEASON="c".repeat(32);
 const FILM="d".repeat(32),TOKEN="x".repeat(64);
@@ -20,7 +22,8 @@ const mediaSources=()=>({
     Path:"/mnt/secret/movies/film.mkv",
     TranscodingUrl:"https://example.invalid/?api_key=SECRET",
     SupportsDirectPlay:true,SupportsDirectStream:true,
-    SupportsTranscoding:true,MediaStreams:[
+    SupportsTranscoding:true,IsRemote:true,
+    RunTimeTicks:13741910000,MediaStreams:[
       {Type:"Video",Index:0,Codec:"hevc",Width:3840,Height:2160,
         DisplayTitle:"4K HEVC"},
       {Type:"Audio",Index:1,Codec:"aac",Channels:6,
@@ -63,6 +66,66 @@ function fixture(){
   return {api:new JellyfinApi({fetcher}),calls,
     delay:()=>{delayed=true;},release:()=>hold(response(mediaSources()))};
 }
+describe("default user season, read-only evidence",()=>{
+  const season=(value:number,unplayed:number|null,
+    count:number|null=12)=>({
+    id:id(value),title:value===0?"Spéciaux":"Saison "+value,
+    number:value,episodeCount:count,unplayedCount:unplayed
+  });
+  const shelvesEpisode=(value:number,seriesId:string,seasonId:string)=>
+    normalizeItem({
+      Id:id(value),Name:"Épisode",Type:"Episode",
+      SeriesId:seriesId,SeasonId:seasonId,IndexNumber:1,
+      ParentIndexNumber:2,UserData:{Played:false,IsFavorite:false}
+    })!;
+  it("prefers an in-progress resume over NextUp of the same series",()=>{
+    const resume=[
+      shelvesEpisode(101,SHOW,id(2)),
+      shelvesEpisode(102,id(77),id(9))
+    ];
+    const next=[shelvesEpisode(103,SHOW,id(3))];
+    expect(preferredSeasonFromShelves(SHOW,resume,next)).toBe(id(2));
+    expect(preferredSeasonFromShelves(SHOW,[],next)).toBe(id(3));
+    expect(preferredSeasonFromShelves(id(44),resume,next)).toBeNull();
+  });
+  it("matches auth-scoped episode metadata without leaking foreign series",()=>{
+    const valid=shelvesEpisode(105,SHOW,id(0xabcd));
+    expect(preferredSeasonFromShelves(SHOW.toUpperCase(),[valid],[]))
+      .toBe(id(0xabcd));
+    expect(preferredSeasonFromShelves("invalid",[valid],[])).toBeNull();
+    expect(preferredSeasonFromShelves(SHOW,
+      [{...valid,seasonId:"bad-id"}],[])).toBeNull();
+  });
+  it("opens actual next or resumed season, including explicit specials",()=>{
+    const all=[season(0,3,5),season(1,0),season(2,6),season(3,12)];
+    expect(selectInitialSeason(all,id(3))?.number).toBe(3);
+    expect(selectInitialSeason(all,id(0))?.number).toBe(0);
+    // A stale missing season gracefully falls back to watched counts.
+    expect(selectInitialSeason(all,id(999))?.number).toBe(2);
+  });
+  it("skips specials and completed seasons when first opening a series",()=>{
+    const all=[season(0,4),season(1,0),season(2,6),season(3,12)];
+    expect(selectInitialSeason(all)?.number).toBe(2);
+    expect(selectInitialSeason([season(0,2),season(1,12),
+      season(2,12)])?.number).toBe(1);
+    expect(selectInitialSeason([season(0,2)])?.number).toBe(0);
+  });
+  it("does not mistake missing Jellyfin UserData for a completed season",()=>{
+    expect(selectInitialSeason([season(1,0),season(2,null),
+      season(3,0)])?.number).toBe(2);
+    expect(selectInitialSeason([season(1,null),season(2,0)])?.number).toBe(1);
+    expect(selectInitialSeason([season(1,0),season(2,0),
+      season(3,0)])?.number).toBe(3);
+  });
+  it("ignores empty seasons, handles unordered input and no seasons",()=>{
+    expect(selectInitialSeason([season(3,4),season(0,2,5),
+      season(1,0),season(2,1,0)])?.number).toBe(3);
+    expect(selectInitialSeason([])).toBeNull();
+    expect(selectInitialSeason([season(0,0,0),season(1,0,0)])
+      ?.number).toBe(1);
+  });
+});
+
 describe("read-only native media details",()=>{
   it("normalizes series and episode numbers without leaking file paths",()=>{
     const ep=normalizeItem(episode(3))!;
@@ -70,6 +133,10 @@ describe("read-only native media details",()=>{
     expect([ep.seasonNumber,ep.episodeNumber,ep.runtimeTicks])
       .toEqual([1,3,1_200_000_000]);
     expect(ep.seriesId).toBe(SHOW);
+    expect(normalizeItem({Id:FILM,Name:"Film",Type:"Movie",
+      RunTimeTicks:1800*10_000_000,
+      UserData:{PlaybackPositionTicks:650_000_000}})?.resumeTicks)
+      .toBe(650_000_000);
   });
   it("parses bounded season lists without duplicate ids",()=>{
     expect(parseSeasons({Items:[
@@ -89,7 +156,14 @@ describe("read-only native media details",()=>{
   it("returns only safe technical fields, never paths or sessions",()=>{
     const parsed=parsePlaybackInfo(mediaSources());
     expect(parsed.sources).toHaveLength(1);
+    expect(parsed.sources[0].id).toBeNull();
+    expect(parsed.playSessionId).toBeNull();
+    expect(parsePlaybackInfo({
+      PlaySessionId:"e".repeat(32),MediaSources:[]
+    }).playSessionId).toBe("e".repeat(32));
     expect(parsed.sources[0].container).toBe("MKV");
+    expect(parsed.sources[0].isRemote).toBe(true);
+    expect(parsed.sources[0].runtimeTicks).toBe(13741910000);
     expect(parsed.sources[0].tracks.map(t=>t.kind))
       .toEqual(["Video","Audio","Subtitle"]);
     expect(parsed.sources[0].tracks[0].height).toBe(2160);
@@ -111,7 +185,13 @@ describe("read-only native media details",()=>{
     expect(calls.every(x=>!x.url.href.includes(TOKEN))).toBe(true);
     expect(calls.every(x=>x.opts.credentials==="omit")).toBe(true);
     expect(calls.some(x=>x.url.pathname.endsWith("/PlaybackInfo"))).toBe(false);
-    const probe=await api.getPlaybackInfo(FILM);
+    const timeout=vi.spyOn(AbortSignal,"timeout");
+    let probe;
+    try{
+      probe=await api.getPlaybackInfo(FILM);
+      expect(timeout).toHaveBeenCalledWith(PLAYBACK_INSPECTION_TIMEOUT_MS);
+      expect(PLAYBACK_INSPECTION_TIMEOUT_MS).toBe(25_000);
+    }finally{timeout.mockRestore();}
     expect(probe.sources[0].tracks).toHaveLength(3);
     expect(calls.at(-1)?.url.searchParams.get("userId")).toBe(USER);
     expect(calls.at(-1)?.opts.headers).toMatchObject({
@@ -129,6 +209,21 @@ describe("read-only native media details",()=>{
     release();
     await expect(pending).rejects.toThrow("SESSION_CHANGED");
     await expect(api.getSeriesSeasons(SHOW)).rejects.toThrow("AUTH_REQUIRED");
+  });
+  it("classifies a fetch timeout without forwarding a sensitive error",async()=>{
+    const fetcher=vi.fn(async()=>{
+      throw new DOMException(
+        "Sensitive upstream URL: https://private.invalid/?api_key=SECRET",
+        "TimeoutError");
+    }) as typeof fetch;
+    const api=new JellyfinApi({fetcher});
+    await expect(api.login("Alice","password"))
+      .rejects.toThrow("REQUEST_TIMEOUT");
+    const failingNetwork=vi.fn(async()=>{
+      throw new TypeError("Sensitive path https://private.invalid/");
+    }) as typeof fetch;
+    await expect(new JellyfinApi({fetcher:failingNetwork})
+      .login("Alice","password")).rejects.toThrow("NETWORK_UNAVAILABLE");
   });
   it("rejects invalid ids and episodes parameters before sending requests",async()=>{
     const {api,calls}=fixture();

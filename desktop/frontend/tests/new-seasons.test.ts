@@ -1,5 +1,6 @@
 import {describe,it,expect} from "vitest";
 import {newBadge,classifyNewReleases,includeNewReleaseShelf} from "../src/new-seasons";
+import {buildShelves} from "../src/discover";
 import type {MediaItem,LibrarySnapshot,Shelf} from "../src/types";
 
 const id=(n:number)=>n.toString(16).padStart(32,"0");
@@ -85,6 +86,96 @@ describe("Jellyfin parity: seasons, sequels and novelty badges",()=>{
     expect(classifyNewReleases(library([],[old]),[],[],now)
       .newReleases).toEqual([]);
   });
+  it("moves an engaged OLD season E1 to the tail of À suivre",()=>{
+    const agedSeries=item(14,"Series",{
+      playedPercentage:70,premiereDate:"2015-01-01"});
+    const oldE1=item(205,"Episode",{seriesId:id(14),seasonId:id(140),
+      seasonNumber:4,episodeNumber:1,premiereDate:"2025-05-15"});
+    const ongoing=item(207,"Episode",{seriesId:id(15),seasonId:id(150),
+      seasonNumber:4,episodeNumber:5,premiereDate:"2026-10-01"});
+    const neverStarted=item(208,"Episode",{seriesId:id(17),seasonId:id(170),
+      seasonNumber:1,episodeNumber:1,premiereDate:"2025-01-01"});
+    const result=classifyNewReleases(
+      library([oldE1,ongoing,neverStarted,ep]),
+      [season],[series,agedSeries],now);
+    expect(result.newReleases.map(x=>x.id)).toEqual([series.id]);
+    expect(result.nextUp.map(x=>x.id)).toEqual([
+      ongoing.id,neverStarted.id,oldE1.id]);
+    expect(result.relevantSeasons).toEqual([season]);
+  });
+  it("never gives an episode without SeasonId a speculative season badge",()=>{
+    const missingSeason=item(202,"Episode",{
+      seriesId:id(10),episodeNumber:4,seasonId:null});
+    expect(newBadge(missingSeason,[season],now)).toBeNull();
+  });
+  it("a sequel is NOT suggested before an earlier unseen saga installment",()=>{
+    const earlier=item(28,"Movie",{franchiseId:"112233",
+      premiereDate:"2021-06-01"});
+    const later=item(29,"Movie",{franchiseId:"112233",
+      premiereDate:"2026-10-01"});
+    const result=classifyNewReleases(
+      library([],[later,earlier]),[],[],now);
+    expect(result.newReleases).toEqual([]);
+    const playedEarlier={...earlier,played:true};
+    const after=classifyNewReleases({
+      ...library([],[later]),watched:[
+        ...library([]).watched,playedEarlier
+      ]
+    },[],[],now);
+    expect(after.newReleases.map(x=>x.id)).toEqual([later.id]);
+  });
+  it("never promotes an old episode merely because DateCreated is recent",()=>{
+    const s=item(12,"Series",{playedPercentage:80});
+    const episode=item(220,"Episode",{seriesId:id(12),
+      seasonId:id(120),seasonNumber:3,episodeNumber:1,
+      premiereDate:"2024-09-01"});
+    const result=classifyNewReleases(
+      library([episode]),[],[s],now);
+    expect(result.newReleases).toEqual([]);
+    expect(result.nextUp.map(x=>x.id)).toEqual([episode.id]);
+  });
+  it("recognizes an evidenced TVDb spin-off without assuming the collection is a franchise",()=>{
+    const seed=item(401,"Series",{played:true,year:2020,
+      premiereDate:"2020-01-01",tags:["Chronologie commune"],
+      tvdbCollectionIds:["8841"],genres:["Science-fiction"]});
+    const old=item(402,"Series",{year:2018,
+      premiereDate:"2018-01-01",tags:["Chronologie commune"],
+      tvdbCollectionIds:["8841"],genres:["Science-fiction"]});
+    const newSpinOff=item(403,"Series",{year:2026,
+      premiereDate:"2026-10-09",tags:["Chronologie commune"],
+      tvdbCollectionIds:["8841"],genres:["Science-fiction"]});
+    const intrusion=item(404,"Movie",{year:2026,
+      premiereDate:"2026-10-01",tags:["Palmarès annuel"],
+      tvdbCollectionIds:["8841"]});
+    const data={...library([]),watched:[seed],
+      recent:[old,newSpinOff,intrusion],candidates:[]};
+    expect(classifyNewReleases(data,[],[],now).newReleases.map(x=>x.id))
+      .toEqual([newSpinOff.id]);
+  });
+  it("ignores incoherent TVDb editorial groups despite shared collection IDs",()=>{
+    const seed=item(405,"Series",{played:true,
+      tags:["Horreur"],tvdbCollectionIds:["999"]});
+    const group=[item(406,"Series",{tags:["Science-fiction"],
+      tvdbCollectionIds:["999"]}),item(407,"Movie",{
+      tags:["Animation"],tvdbCollectionIds:["999"]}),
+      item(408,"Series",{tags:["Thriller"],tvdbCollectionIds:["999"]})];
+    expect(classifyNewReleases({
+      ...library([]),watched:[seed],recent:group
+    },[],[],now).newReleases).toEqual([]);
+  });
+  it("does not treat an untagged anime bonus film as a main TVDb sequel",()=>{
+    const seed=item(409,"Series",{played:true,genres:["Anime"],
+      tags:["Dragon Ball"],tvdbCollectionIds:["812"]});
+    const another=item(410,"Series",{genres:["Anime"],
+      tags:["Dragon Ball"],tvdbCollectionIds:["812"],
+      premiereDate:"2024-01-01"});
+    const bonus=item(411,"Movie",{genres:["Action"],
+      tags:["Dragon Ball"],tvdbCollectionIds:["812"],
+      premiereDate:"2026-10-01"});
+    expect(classifyNewReleases({
+      ...library([]),watched:[seed],recent:[another,bonus]
+    },[],[],now).newReleases).toEqual([]);
+  });
   it("adds the adaptive shelf only when backed by recent real evidence",()=>{
     const row:Shelf={id:"next-up",title:"À suivre",items:[ep]};
     const newRows=includeNewReleaseShelf([row],library([ep]),
@@ -94,5 +185,53 @@ describe("Jellyfin parity: seasons, sequels and novelty badges",()=>{
     expect(includeNewReleaseShelf([row],library([]),
       [season],[series],now)[0].items).toHaveLength(0);
   });
+  it("does not resurrect resumed episodes after the new-season pass",()=>{
+    const resumed=item(550,"Episode",{title:"Y'en a dans le ventilo",
+      seriesId:id(55),seriesName:"South Park",progress:29,
+      seasonNumber:5,episodeNumber:1});
+    const rawNext=item(551,"Episode",{title:"La Dame au chapeau",
+      seriesId:id(55),seriesName:"South Park",
+      seasonNumber:28,episodeNumber:2});
+    const gotham=item(552,"Episode",{title:"L'homme au masque",
+      seriesId:id(56),seriesName:"Gotham",
+      seasonNumber:1,episodeNumber:8});
+    const data={...library([rawNext,ep,gotham]),resume:[resumed]};
+    const base=buildShelves(data,id(77),now);
+    expect(base.find(r=>r.id==="resume")?.items.map(x=>x.id))
+      .toEqual([resumed.id]);
+    expect(base.find(r=>r.id==="next-up")?.items.map(x=>x.id))
+      .toEqual([ep.id,gotham.id]);
+    const out=includeNewReleaseShelf(base,data,[season],[series],now);
+    expect(out.find(r=>r.id==="next-up")?.items.map(x=>x.id))
+      .toEqual([gotham.id]);
+    expect(out.find(r=>r.id==="new-seasons")?.items.map(x=>x.id))
+      .toEqual([series.id]);
+    // The exclusion also survives when no new season is identified.
+    const withoutSeasons=includeNewReleaseShelf(base,data,[],[],now);
+    expect(withoutSeasons.find(r=>r.id==="next-up")?.items.map(x=>x.id))
+      .toEqual([ep.id,gotham.id]);
+    expect(out.find(r=>r.id==="resume")?.items.map(x=>x.id))
+      .toEqual([resumed.id]);
+  });
+  it("preserves old E1 reordering without restoring filtered NextUp IDs",()=>{
+    const resumed=item(559,"Episode",{seriesId:id(59),
+      seriesName:"South Park",progress:12});
+    const duplicate=item(560,"Episode",{seriesId:id(59),
+      seriesName:"South Park",episodeNumber:2});
+    const oldE1=item(561,"Episode",{seriesId:id(14),seasonId:id(140),
+      seasonNumber:4,episodeNumber:1,premiereDate:"2025-05-15"});
+    const ongoing=item(562,"Episode",{seriesId:id(15),seasonId:id(150),
+      seasonNumber:4,episodeNumber:5,premiereDate:"2026-10-01"});
+    const agedSeries=item(14,"Series",{
+      playedPercentage:70,premiereDate:"2015-01-01"});
+    const data={...library([oldE1,duplicate,ongoing]),resume:[resumed]};
+    const base=buildShelves(data,id(77),now);
+    const result=includeNewReleaseShelf(base,data,[],
+      [agedSeries],now);
+    expect(result.find(r=>r.id==="next-up")?.items.map(x=>x.id))
+      .toEqual([ongoing.id,oldE1.id]);
+    expect(result.find(r=>r.id==="new-seasons")).toBeUndefined();
+  });
+
 });
 

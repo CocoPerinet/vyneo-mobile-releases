@@ -19,8 +19,13 @@ function series(n:number){
     ProductionYear:2024,Studios:[{Name:"Marvel Studios"}],
     PremiereDate:"2024-01-01",ImageTags:{Primary:"tag"}};
 }
-function fixture({nextUpCount=275,failSecond=false}:{nextUpCount?:number;failSecond?:boolean}={}){
+function fixture({nextUpCount=275,failSecond=false,seriesMatchSelection=false,
+  universeCount=201,universeDelayMs=0,universePageDeniedAt=-1}:{
+  nextUpCount?:number;failSecond?:boolean;seriesMatchSelection?:boolean;
+  universeCount?:number;universeDelayMs?:number;universePageDeniedAt?:number
+}={}){
   const calls:Array<{url:URL;options:RequestInit}>=[];
+  let activeUniverse=0,peakUniverse=0;
   const fetcher=vi.fn(async(u:RequestInfo|URL,options:RequestInit={})=>{
     const url=new URL(String(u)),path=url.pathname;
     calls.push({url,options});
@@ -47,16 +52,29 @@ function fixture({nextUpCount=275,failSecond=false}:{nextUpCount?:number;failSec
             PremiereDate:"2019-04-01",DateCreated:"2026-10-19",Type:"Season"}
         ]});
       }
-      if(types==="Series")return output({Items:[series(100),series(101)]});
+      if(types==="Series"){
+        if(seriesMatchSelection){
+          const selected=url.searchParams.get("Ids")?.split(",")??[];
+          return output({Items:selected.map(sid=>({
+            ...series(Number.parseInt(sid,16)),Id:sid
+          }))});
+        }
+        return output({Items:[series(100),series(101)]});
+      }
       if(types==="Movie,Series"){
         const start=Number(url.searchParams.get("StartIndex"));
+        if(start===universePageDeniedAt)return output({error:"Denied"},403);
+        activeUniverse++;peakUniverse=Math.max(peakUniverse,activeUniverse);
+        if(universeDelayMs)await new Promise(resolve=>
+          setTimeout(resolve,universeDelayMs));
+        activeUniverse--;
         return output({Items:Array.from(
-          {length:start===0?200:1},(_,i)=>({
+          {length:Math.max(0,Math.min(200,universeCount-start))},(_,i)=>({
             Id:id(start+i+5000),Type:"Movie",Name:"Film "+(start+i),
             PremiereDate:"2025-01-01",
             ProviderIds:{TmdbCollection:"4455"},
             Studios:[{Name:"Pixar"}]
-          })),TotalRecordCount:201});
+          })),TotalRecordCount:universeCount});
       }
     }
     if(path.startsWith("/Users/"+USER+"/FavoriteItems/") ||
@@ -64,7 +82,8 @@ function fixture({nextUpCount=275,failSecond=false}:{nextUpCount?:number;failSec
       return new Response(null,{status:204});
     return output({Items:[]});
   }) as typeof fetch;
-  return {api:new JellyfinApi({fetcher}),calls,fetcher};
+  return {api:new JellyfinApi({fetcher}),calls,fetcher,
+    peakUniverse:()=>peakUniverse};
 }
 describe("Jellyfin UI parity uses real scoped API metadata",()=>{
  it("retrieves all 275 NextUp cards, not the former 24-item cap",async()=>{
@@ -86,6 +105,19 @@ describe("Jellyfin UI parity uses real scoped API metadata",()=>{
    await interrupted.api.login("Alice","password");
    const entries=await interrupted.api.getNextUp();
    expect(entries).toHaveLength(300);
+ });
+ it("normalizes multiple TVDb collection IDs without trusting arbitrary strings",()=>{
+   const normalized=normalizeItem({Id:id(449),Type:"Series",
+     Name:"Série dérivée",ProviderIds:{
+       TvdbCollection:"54; 17; 54; not-an-id; 9001",
+       TmdbCollection:"812"
+     }})!;
+   expect(normalized.franchiseId).toBe("812");
+   expect(normalized.tvdbCollectionIds).toEqual(["54","17","9001"]);
+   expect(normalizeItem({Id:id(450),Type:"Series",
+     Name:"No match",ProviderIds:{
+       TvdbCollection:"malformed-id<script>"
+     }})?.tvdbCollectionIds).toEqual([]);
  });
  it("identifies recent seasons by PremiereDate, never import date",async()=>{
    const {api,calls}=fixture();await api.login("Alice","password");
@@ -109,6 +141,79 @@ describe("Jellyfin UI parity uses real scoped API metadata",()=>{
    expect(last.url.href).not.toContain(TOKEN);
    expect(last.options.credentials).toBe("omit");
  });
+ it("reads genuine TMDb popularity from the pinned proxy without any private authorization header",async()=>{
+   const publicCalls:Array<{url:URL;options:RequestInit}>=[];
+   const f=async(input:RequestInfo|URL,options:RequestInit={})=>{
+     const url=new URL(String(input));
+     if(url.pathname.startsWith("/tmdb/discover/")){
+       publicCalls.push({url,options});
+       const offset=(Number(url.searchParams.get("page"))-1)*20;
+       return new Response(JSON.stringify({
+         results:[{id:200+offset+1},{id:200+offset+2},
+           {id:200+offset+3,adult:true}]
+       }),{status:200,headers:{"Content-Type":"application/json"}});
+     }
+     return fixture().fetcher(input,options);
+   };
+   const api=new JellyfinApi({fetcher:f as typeof fetch});
+   await api.login("Alice","password");
+   const ranks=await api.getTrendingRanks();
+   expect(publicCalls).toHaveLength(6);
+   expect(publicCalls.map(x=>x.url.pathname)).toEqual([
+     "/tmdb/discover/movie","/tmdb/discover/tv",
+     "/tmdb/discover/movie","/tmdb/discover/tv",
+     "/tmdb/discover/movie","/tmdb/discover/tv"
+   ]);
+   expect(publicCalls.every(({url,options})=>
+     url.origin===SERVER_ORIGIN &&
+     url.searchParams.get("sort_by")==="popularity.desc" &&
+     url.searchParams.get("include_adult")==="false" &&
+     options.credentials==="omit" && options.method==="GET" &&
+     !(options.headers as Record<string,string>).Authorization &&
+     !url.href.includes(TOKEN))).toBe(true);
+   expect(ranks).toHaveLength(12);
+   expect(ranks.every(x=>x.tmdbId!=="203")).toBe(true);
+ });
+ it("does not invent trends from an unavailable TMDb proxy",async()=>{
+   const {fetcher}=fixture();
+   const denied=async(input:RequestInfo|URL,options:RequestInit={})=>{
+     const url=new URL(String(input));
+     if(url.pathname.startsWith("/tmdb/discover/"))
+       return new Response("not available",{status:503});
+     return fetcher(input,options);
+   };
+   const api=new JellyfinApi({fetcher:denied as typeof fetch});
+   await api.login("Alice","password");
+   expect(await api.getTrendingRanks()).toEqual([]);
+ });
+ it("enriches over 300 unique NextUp series without losing the last 150",async()=>{
+   const {api,calls}=fixture({seriesMatchSelection:true});
+   await api.login("Alice","password");
+   const prototype=normalizeItem(episode(0))!;
+   const items=Array.from({length:450},(_,n)=>({
+     ...prototype,id:id(5000+n),seriesId:id(8000+n)
+   }));
+   const evidence=await api.getNextUpSeries(items);
+   expect(evidence).toHaveLength(450);
+   expect(evidence[0].id).toBe(id(8000));
+   expect(evidence.at(-1)?.id).toBe(id(8449));
+   const batches=calls.filter(x=>
+     x.url.pathname==="/Users/"+USER+"/Items" &&
+     x.url.searchParams.get("IncludeItemTypes")==="Series");
+   expect(batches).toHaveLength(8);
+   expect(batches.every(x=>(x.url.searchParams.get("Ids")??"")
+     .split(",").length<=60)).toBe(true);
+   expect(batches.every(x=>!x.url.href.includes(TOKEN) &&
+     x.options.credentials==="omit")).toBe(true);
+ });
+ it("requests sufficient Resume results before filtering stale completed titles",async()=>{
+   const {api,calls}=fixture();
+   await api.login("Alice","password");
+   await api.getResume();
+   const resume=calls.find(x=>x.url.pathname==="/UserItems/Resume")!;
+   expect(resume.url.searchParams.get("Limit")).toBe("100");
+   expect(resume.url.searchParams.get("userId")).toBe(USER);
+ });
  it("collects 201 universe items by authorized pages",async()=>{
    const {api,calls}=fixture();await api.login("Alice","password");
    const films=await api.getUniverseCatalog();
@@ -117,6 +222,30 @@ describe("Jellyfin UI parity uses real scoped API metadata",()=>{
    expect(calls.filter(x=>x.url.searchParams.get("IncludeItemTypes")==="Movie,Series")
      .map(x=>x.url.searchParams.get("StartIndex"))).toEqual(["0","200"]);
    expect(calls.every(x=>x.url.origin===SERVER_ORIGIN)).toBe(true);
+ });
+ it("scans 1450 universe titles in at most 3 simultaneous scoped pages",async()=>{
+   const {api,calls,peakUniverse}=fixture({
+     universeCount:1450,universeDelayMs:12});
+   await api.login("Alice","password");
+   const films=await api.getUniverseCatalog();
+   expect(films).toHaveLength(1450);
+   expect(films[0].id).toBe(id(5000));
+   expect(films.at(-1)?.id).toBe(id(6449));
+   expect(new Set(films.map(x=>x.id)).size).toBe(1450);
+   expect(peakUniverse()).toBe(3);
+   const pages=calls.filter(x=>x.url.searchParams.get(
+     "IncludeItemTypes")==="Movie,Series");
+   expect(pages.map(x=>x.url.searchParams.get("StartIndex"))).toEqual(
+     ["0","200","400","600","800","1000","1200","1400"]);
+   expect(pages.every(x=>x.url.origin===SERVER_ORIGIN &&
+     !x.url.href.includes(TOKEN) &&
+     x.options.credentials==="omit")).toBe(true);
+ });
+ it("fails closed when a universe page is denied by the server",async()=>{
+   const {api}=fixture({universeCount:800,
+     universePageDeniedAt:400});
+   await api.login("Alice","password");
+   await expect(api.getUniverseCatalog()).rejects.toThrow("REQUEST_DENIED");
  });
  it("updates favorite/played only for current account with POST/DELETE",async()=>{
    const {api,calls}=fixture();await api.login("Alice","password");

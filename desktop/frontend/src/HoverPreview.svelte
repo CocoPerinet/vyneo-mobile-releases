@@ -24,6 +24,10 @@
 <div class="vy-hover-popup" role="dialog" tabindex="-1" aria-label={"Aperçu : "+item.title}
   style:left={x+"px"} style:top={y+"px"}
   onpointerenter={onenter} onpointerleave={onleave}
+  onfocusout={(event)=>{
+    if(!(event.relatedTarget instanceof Node &&
+      event.currentTarget.contains(event.relatedTarget)))onleave();
+  }}
   data-vy-popup="true">
   <button class="vy-hover-image" type="button" onclick={onopen}
     aria-label={"Voir la fiche de "+item.title}>

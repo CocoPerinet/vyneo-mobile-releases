@@ -42,7 +42,7 @@ describe("Native private, proof-backed discovery",()=>{
     expect(outcome.items.every(x=>!x.reason?.includes("Genre de"))).toBe(true);
     const shelves=buildShelves(input,"a".repeat(32),NOW);
     const forYou=shelves.find(row=>row.id==="for-you")!;
-    expect(forYou.title).toBe("Pour vous · Des histoires qui vous ressemblent");
+    expect(forYou.title).toBe("Pour vous");
     expect(forYou.reasons?.[ID(11)]).toContain("Titre ");
     expect(forYou.reasons?.[ID(13)]).toBeUndefined();
   });

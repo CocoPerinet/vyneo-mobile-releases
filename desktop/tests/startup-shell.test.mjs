@@ -42,6 +42,8 @@ test("native menu bar removed, tray keeps Vynéo UI warm",()=>{
   const detail=read("frontend/src/MediaDetails.svelte");
   assert.match(detail,/detail\.waitUntil\(finished\.drain\(\)\)/);
   assert.match(detail,/function closeDetails\(\)/);
+  assert.match(detail,/if\(finished\)\{/);
+  assert.match(detail,/else finished\.stopAtLastKnownPosition\(failed\)/);
   assert.match(detail,/stopPlaybackBeforeClosing\(\(\)=>stopStream\(\),onclose\)/);
   assert.match(detail,/onclick=\{closeDetails\}/);
   assert.match(detail,/event\.preventDefault\(\);closeDetails\(\)/);
